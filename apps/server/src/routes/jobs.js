@@ -57,9 +57,11 @@ async function createBackup(actorId = null) {
 
 async function trainForecast({ includeProxy=false, horizonDays=30, actorId=null }) {
   const observations = await fetchAll(() => {
-    let q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source').order('occurred_on');
-    if (!includeProxy) q = q.eq('source','actual_sale');
-    return q;
+    let q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source');
+    q = includeProxy
+      ? q.in('source',['actual_sale','imported_training_data','legacy_transaction_proxy'])
+      : q.in('source',['actual_sale','imported_training_data']);
+    return q.order('occurred_on');
   });
   if (observations.length < 30) return { skipped:true, reason:'Not enough demand observations.' };
   const runId = crypto.randomUUID();

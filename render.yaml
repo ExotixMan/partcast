@@ -1,10 +1,11 @@
 services:
   - type: web
+    name: partcast-api
     runtime: docker
-    name: partcast-npg-api
     plan: free
     region: singapore
     dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:
@@ -30,18 +31,20 @@ services:
         sync: false
       - key: BREVO_SENDER_NAME
         value: NPG Autoparts - PartCast
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
       - key: BACKUP_RETENTION_DAYS
         value: "30"
 
   - type: web
+    name: partcast-web
     runtime: static
-    name: partcast-npg-web
-    buildCommand: cd apps/web && npm install && npm run build
+    buildCommand: cd apps/web && npm ci && npm run build
     staticPublishPath: ./apps/web/dist
     autoDeployTrigger: commit
     envVars:
-      - key: NODE_VERSION
-        value: 22.16.0
       - key: VITE_SUPABASE_URL
         sync: false
       - key: VITE_SUPABASE_ANON_KEY

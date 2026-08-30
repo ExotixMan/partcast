@@ -2,23 +2,31 @@ import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import crypto from 'node:crypto';
+import rateLimit from 'express-rate-limit';
 import { adminDb, userDb } from '../supabase.js';
 import { requireRole } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { fetchAll, cleanText } from '../utils/helpers.js';
-import { importInventoryWorkbook, importLegacySalesWorkbook } from '../services/importers.js';
+import { importInventoryWorkbook, importLegacySalesWorkbook, importDemandTrainingWorkbook, importSpreadsheetAuto, isSupportedSpreadsheetName } from '../services/importers.js';
 import { buildReportWorkbook } from '../utils/excel.js';
 import { runForecastPython } from '../utils/ml.js';
+import { answerAssistant, assistantMode } from '../services/assistant.js';
 
 const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, /\.xlsx$/i.test(file.originalname))
+  fileFilter: (req, file, cb) => {
+    if (isSupportedSpreadsheetName(file.originalname)) return cb(null, true);
+    const error = new Error('Upload a spreadsheet in .xlsx, .xlsm, or .csv format. The file can have any name.');
+    error.status = 415;
+    return cb(error);
+  }
 });
 
 const rolesWrite = requireRole('owner','admin','inventory_staff');
 const rolesAdmin = requireRole('owner','admin');
+const assistantLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 
 router.get('/me', (req, res) => res.json({ user: req.user }));
 
@@ -260,6 +268,34 @@ router.get('/forecast/runs', async (req,res,next) => {
   } catch(e){ next(e); }
 });
 
+router.get('/forecast/products', async (req,res,next) => {
+  try {
+    const { data: latest, error: latestError } = await adminDb.from('latest_completed_forecast_run').select('id,horizon_days,completed_at').maybeSingle();
+    if (latestError) throw latestError;
+    if (!latest) return res.json({ run: null, data: [] });
+    const rows = await fetchAll(() => adminDb.from('demand_forecasts')
+      .select('product_id,forecast_date,predicted_quantity,product:products(part_number,description,brand)')
+      .eq('run_id', latest.id).gte('forecast_date', new Date().toISOString().slice(0,10)).order('forecast_date'));
+    const grouped = new Map();
+    for (const row of rows) {
+      const current = grouped.get(row.product_id) || {
+        product_id: row.product_id,
+        part_number: row.product?.part_number || null,
+        description: row.product?.description || 'Product',
+        brand: row.product?.brand || null,
+        predicted_total: 0,
+        forecast_days: 0
+      };
+      current.predicted_total += Number(row.predicted_quantity || 0);
+      current.forecast_days += 1;
+      grouped.set(row.product_id, current);
+    }
+    const data = [...grouped.values()].map(x => ({ ...x, predicted_total: Number(x.predicted_total.toFixed(2)) }))
+      .sort((a,b) => b.predicted_total - a.predicted_total || a.description.localeCompare(b.description));
+    res.json({ run: latest, data });
+  } catch(e){ next(e); }
+});
+
 router.get('/forecast/product/:id', async (req,res,next) => {
   try {
     const { data, error } = await adminDb.from('demand_forecasts')
@@ -277,10 +313,12 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
     const runId = crypto.randomUUID();
     const observations = await fetchAll(() => {
       let q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source');
-      if (!body.includeProxy) q = q.eq('source','actual_sale');
+      q = body.includeProxy
+        ? q.in('source',['actual_sale','imported_training_data','legacy_transaction_proxy'])
+        : q.in('source',['actual_sale','imported_training_data']);
       return q.order('occurred_on');
     });
-    if (observations.length < 30) return res.status(422).json({ error: 'Not enough demand observations for XGBoost. Record more sales or explicitly include legacy transaction proxies.' });
+    if (observations.length < 30) return res.status(422).json({ error: 'Not enough usable demand observations for XGBoost. Import the training-ready spreadsheet or record more actual sales.' });
 
     const productIds = [...new Set(observations.map(o=>o.product_id))];
     const { data: created, error: runError } = await adminDb.from('forecast_runs').insert({
@@ -314,9 +352,29 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.post('/imports/spreadsheet', rolesAdmin, upload.single('file'), async (req,res,next) => {
+  try {
+    if (!req.file) return res.status(400).json({error:'Attach an .xlsx, .xlsm, or .csv spreadsheet.'});
+    const kind = z.enum(['auto','inventory','legacy-sales','demand-training']).default('auto').parse(req.body.kind || 'auto');
+    const useProxy = String(req.body.useProxy || 'false') === 'true';
+    const result = await importSpreadsheetAuto(req.file.buffer, req.file.originalname, req.user.id, kind, useProxy);
+    await audit(req,'import','spreadsheet',result.batchId,{file:req.file.originalname,detectedType:result.detectedType,rows:result.rowsImported});
+    res.json(result);
+  } catch(e){ next(e); }
+});
+
+router.post('/imports/demand-training', rolesAdmin, upload.single('file'), async (req,res,next) => {
+  try {
+    if (!req.file) return res.status(400).json({error:'Attach a demand-training spreadsheet.'});
+    const result = await importDemandTrainingWorkbook(req.file.buffer, req.file.originalname, req.user.id);
+    await audit(req,'import','demand_training_workbook',result.batchId,{file:req.file.originalname,rows:result.rowsImported});
+    res.json(result);
+  } catch(e){ next(e); }
+});
+
 router.post('/imports/inventory', rolesAdmin, upload.single('file'), async (req,res,next) => {
   try {
-    if (!req.file) return res.status(400).json({error:'Attach an .xlsx inventory workbook.'});
+    if (!req.file) return res.status(400).json({error:'Attach an .xlsx, .xlsm, or .csv inventory spreadsheet.'});
     const result = await importInventoryWorkbook(req.file.buffer, req.file.originalname, req.user.id);
     await audit(req,'import','inventory_workbook',result.batchId,{file:req.file.originalname,rows:result.rowsImported});
     res.json(result);
@@ -325,7 +383,7 @@ router.post('/imports/inventory', rolesAdmin, upload.single('file'), async (req,
 
 router.post('/imports/legacy-sales', rolesAdmin, upload.single('file'), async (req,res,next) => {
   try {
-    if (!req.file) return res.status(400).json({error:'Attach an .xlsx sales workbook.'});
+    if (!req.file) return res.status(400).json({error:'Attach an .xlsx, .xlsm, or .csv sales spreadsheet.'});
     const useProxy = String(req.body.useProxy || 'false') === 'true';
     const result = await importLegacySalesWorkbook(req.file.buffer, req.file.originalname, req.user.id, useProxy);
     await audit(req,'import','legacy_sales_workbook',result.batchId,{file:req.file.originalname,rows:result.rowsImported,useProxy});
@@ -379,14 +437,24 @@ router.get('/reports/:type.xlsx', async (req,res,next) => {
 
 router.get('/data-quality', async (req,res,next) => {
   try {
-    const [actual, proxy, legacy, unmatched] = await Promise.all([
+    const [actual, imported, proxy, legacy, unmatched] = await Promise.all([
       adminDb.from('demand_observations').select('*',{count:'exact',head:true}).eq('source','actual_sale'),
+      adminDb.from('demand_observations').select('*',{count:'exact',head:true}).eq('source','imported_training_data'),
       adminDb.from('demand_observations').select('*',{count:'exact',head:true}).eq('source','legacy_transaction_proxy'),
       adminDb.from('legacy_sales').select('*',{count:'exact',head:true}),
       adminDb.from('legacy_sales').select('*',{count:'exact',head:true}).is('matched_product_id',null)
     ]);
-    res.json({actualDemandRows:actual.count||0,proxyDemandRows:proxy.count||0,legacySalesRows:legacy.count||0,unmatchedLegacySales:unmatched.count||0});
+    res.json({actualDemandRows:actual.count||0,importedTrainingRows:imported.count||0,proxyDemandRows:proxy.count||0,legacySalesRows:legacy.count||0,unmatchedLegacySales:unmatched.count||0});
   } catch(e){next(e);}
+});
+
+router.get('/assistant/status', (req,res) => res.json(assistantMode()));
+router.post('/assistant/chat', assistantLimiter, async (req,res,next) => {
+  try {
+    const body = z.object({ message: z.string().trim().min(1).max(1000) }).parse(req.body || {});
+    const result = await answerAssistant(body.message);
+    res.json(result);
+  } catch(e){ next(e); }
 });
 
 export default router;

@@ -14,6 +14,8 @@ const schema = z.object({
   BREVO_API_KEY: z.string().optional().default(''),
   BREVO_SENDER_EMAIL: z.string().email().optional().or(z.literal('')).default(''),
   BREVO_SENDER_NAME: z.string().default('NPG Autoparts - PartCast'),
+  GEMINI_API_KEY: z.string().optional().default(''),
+  GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   PYTHON_BIN: z.string().default('python3'),
   ML_SCRIPT_PATH: z.string().default('../../ml/train_forecast.py'),
   BACKUP_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30)

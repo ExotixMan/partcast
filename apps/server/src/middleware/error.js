@@ -18,7 +18,28 @@ export function errorHandler(err, req, res, next) {
   if (err?.code === '23503') return res.status(409).json({ error: 'This record is still referenced by another record.' });
   if (err?.code === '23514' || err?.code === '22P02') return res.status(422).json({ error: 'The supplied value is not valid for this operation.' });
 
-  const status = Number(err?.status) || 500;
-  const message = status >= 500 ? 'The server could not complete the request.' : err.message;
+  const status =
+    Number(err?.status) || 500;
+
+  console.error('PARTCAST ERROR:', {
+    message: err?.message,
+    code: err?.code,
+    details: err?.details,
+    hint: err?.hint,
+    stack: err?.stack
+  });
+
+  const isDevelopment =
+    process.env.NODE_ENV !== 'production';
+
+  const message =
+    status >= 500 && !isDevelopment
+      ? 'The server could not complete the request.'
+      : err?.message ||
+        'Unknown server error.';
+
+  res.status(status).json({
+    error: message
+});
   res.status(status).json({ error: message });
 }

@@ -16,6 +16,9 @@ Using one dynamic Render service is deliberate: Node.js is the API process and i
 2. Open **SQL Editor**.
 3. Run `supabase/migrations/0001_schema.sql` completely.
 4. Run `supabase/migrations/0002_rls.sql` completely.
+5. Run `supabase/migrations/0003_training_import.sql` completely.
+
+If this is an existing PartCast database that already has 0001 and 0002, only run 0003 for this update.
 5. In **Authentication settings**, disable public user signups. PartCast creates users through the server admin API.
 6. Copy:
    - Project URL
@@ -121,3 +124,8 @@ Because the Supabase Free plan has storage limits and does not include platform-
 The model needs dated quantity observations and requires enough history to create 28-day lag features. Normal PartCast sales automatically create actual demand observations. When the legacy proxy option is not used, the team should collect enough real sales history before evaluating forecasting accuracy.
 
 The Forecast page stores and shows MAE, RMSE, R², training/test counts, model version, and run history.
+
+
+## AI-assisted chatbot
+
+The chatbot works immediately in Smart Local mode using live PartCast data. To enable Gemini-assisted wording, add `GEMINI_API_KEY` to the Render API service and keep `GEMINI_MODEL=gemini-2.5-flash`. Never add the Gemini key to the React static-site variables. The server sends only minimized inventory/forecast context and deliberately excludes customer names, supplier email addresses, passwords, and other secrets.

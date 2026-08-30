@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
+import AssistantChat from './AssistantChat.jsx';
 
 const nav = [
   { to:'/', label:'Dashboard', icon:BarChart3, end:true },
@@ -67,5 +68,6 @@ export default function AppShell() {
       </header>
       <main className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8"><Outlet/></main>
     </div>
+    <AssistantChat/>
   </div>;
 }
