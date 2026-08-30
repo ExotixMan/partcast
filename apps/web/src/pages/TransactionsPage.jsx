@@ -1,0 +1,14 @@
+import { useEffect, useState } from 'react';
+import { api } from '../lib/api.js';
+import Loading from '../components/Loading.jsx';
+import EmptyState from '../components/EmptyState.jsx';
+import Pagination from '../components/Pagination.jsx';
+import PageHeader from '../components/PageHeader.jsx';
+import StatusBadge from '../components/StatusBadge.jsx';
+
+const peso=v=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(Number(v||0));
+export default function TransactionsPage(){
+ const [rows,setRows]=useState([]),[count,setCount]=useState(0),[page,setPage]=useState(1),[type,setType]=useState('all'),[loading,setLoading]=useState(true),[error,setError]=useState(''); const pageSize=25;
+ useEffect(()=>{setLoading(true);api.get(`/api/transactions?page=${page}&pageSize=${pageSize}&type=${type}`).then(r=>{setRows(r.data);setCount(r.count||0);setError('');}).catch(e=>setError(e.message)).finally(()=>setLoading(false));},[page,type]);
+ return <><PageHeader title="Transactions" subtitle="Immutable stock-in, stock-out, and sales history for inventory accountability."/><section className="panel overflow-hidden"><div className="panel-header"><select className="input w-full sm:w-48" value={type} onChange={e=>{setType(e.target.value);setPage(1);}}><option value="all">All transactions</option><option value="stock_in">Stock in</option><option value="stock_out">Stock out</option><option value="sale">Sales</option><option value="initial">Initial stock</option></select></div>{error?<div className="p-5 text-sm text-red-700">{error}</div>:loading?<Loading/>:rows.length===0?<EmptyState/>:<div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Product</th><th className="px-4 py-3 text-right">Qty</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3">Supplier / Customer</th><th className="px-5 py-3 text-right">Amount</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.map(r=><tr key={r.id}><td className="whitespace-nowrap px-5 py-3 text-slate-600">{new Date(r.occurred_at).toLocaleString()}</td><td className="px-4 py-3"><StatusBadge status={r.tx_type}/></td><td className="px-4 py-3"><p className="font-medium text-slate-900">{r.product?.part_number||'N/A'}</p><p className="max-w-xs truncate text-xs text-slate-500">{r.product?.description}</p></td><td className="px-4 py-3 text-right font-semibold">{Number(r.quantity).toFixed(0)}</td><td className="px-4 py-3 text-slate-600">{r.reference_no||'—'}</td><td className="px-4 py-3 text-slate-600">{r.supplier?.name||r.customer_name||'—'}</td><td className="px-5 py-3 text-right text-slate-700">{r.total_amount!=null?peso(r.total_amount):'—'}</td></tr>)}</tbody></table></div>}<Pagination page={page} pageSize={pageSize} count={count} onPage={setPage}/></section></>;
+}
