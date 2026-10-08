@@ -49,6 +49,7 @@ export async function sendSupplierEmail({ supplier, items }) {
       'content-type': 'application/json',
       accept: 'application/json'
     },
+    signal: AbortSignal.timeout(20000),
     body: JSON.stringify({
       sender: { name: config.BREVO_SENDER_NAME, email: config.BREVO_SENDER_EMAIL },
       to: [{ email: supplier.email, name: supplier.name }],

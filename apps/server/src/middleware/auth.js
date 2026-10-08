@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import { config } from '../config.js';
 import { adminDb } from '../supabase.js';
 
 export async function authenticate(req, res, next) {
@@ -35,6 +37,6 @@ export function requireRole(...roles) {
 
 export function cronAuth(req, res, next) {
   const secret = req.headers['x-cron-secret'];
-  if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Invalid job secret.' });
+  if (typeof secret !== 'string' || Buffer.byteLength(secret) !== Buffer.byteLength(config.CRON_SECRET) || !crypto.timingSafeEqual(Buffer.from(secret),Buffer.from(config.CRON_SECRET))) return res.status(401).json({ error: 'Invalid job secret.' });
   next();
 }

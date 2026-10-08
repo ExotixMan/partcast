@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bot, Send, Store, X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext.jsx';
+import { answerLocally } from '../lib/localAssistant.js';
 import { api } from '../lib/api.js';
 
 const suggestions = [
@@ -10,6 +12,7 @@ const suggestions = [
 ];
 
 export default function AssistantChat() {
+  const {session}=useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -29,6 +32,10 @@ export default function AssistantChat() {
     }
   }, [open, messages, busy]);
 
+  useEffect(()=>{if(!open)return;const escape=e=>{if(e.key==='Escape')setOpen(false);};window.addEventListener('keydown',escape);return()=>window.removeEventListener('keydown',escape);},[open]);
+
+  useEffect(()=>{const openHelp=()=>setOpen(true);window.addEventListener('partcast:help',openHelp);return()=>window.removeEventListener('partcast:help',openHelp);},[]);
+
   async function send(value = text) {
     const message = String(value || '').trim();
 
@@ -47,26 +54,25 @@ export default function AssistantChat() {
     setBusy(true);
 
     try {
-      const response = await api.post(
-        '/api/assistant/chat',
-        { message }
-      );
+      const response = await answerLocally(message,session.user.id,navigator.onLine) || await api.post('/api/assistant/chat',{message});
 
       setMessages(current => [
         ...current,
         {
           role: 'assistant',
+          source: response.mode === 'gemini' ? 'AI-assisted · verify before acting' : response.mode === 'database' ? 'Live store records' : 'On this device',
           text:
             response.answer ||
             'I could not find an answer from the current store records.'
         }
       ]);
     } catch (error) {
+      const local = await answerLocally(message,session.user.id,false);
       setMessages(current => [
         ...current,
         {
           role: 'assistant',
-          text: 'I could not check the store records right now. Please try again.'
+          text: 'I could not check live records. '+(local?.answer || 'Please reconnect and try again.')
         }
       ]);
     } finally {
@@ -79,7 +85,7 @@ export default function AssistantChat() {
       <button
         aria-label="Open Store Assistant"
         onClick={() => setOpen(true)}
-        className={`fixed bottom-5 right-4 z-40 flex items-center gap-2 rounded-full bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-xl transition hover:bg-black sm:right-6 ${
+        className={`fixed bottom-5 right-4 z-40 hidden items-center sm:flex gap-2 rounded-full bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-xl transition hover:bg-black sm:right-6 ${
           open
             ? 'pointer-events-none scale-95 opacity-0'
             : 'opacity-100'
@@ -96,8 +102,8 @@ export default function AssistantChat() {
           className="fixed inset-0 z-50 flex items-end justify-end bg-slate-950/25 p-0 sm:p-5"
           onClick={() => setOpen(false)}
         >
-          <section
-            className="flex h-[82vh] w-full flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl sm:h-[620px] sm:max-h-[82vh] sm:w-[410px] sm:rounded-2xl"
+          <section role="dialog" aria-modal="true" aria-label="Store Assistant"
+            className="flex h-[88dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl sm:h-[620px] sm:max-h-[88dvh] sm:w-[410px] sm:rounded-2xl"
             onClick={event =>
               event.stopPropagation()
             }
@@ -143,7 +149,7 @@ export default function AssistantChat() {
                           : 'rounded-bl-md border border-slate-200 bg-white text-slate-700 shadow-sm'
                       }`}
                     >
-                      {message.text}
+                      <p className="whitespace-pre-wrap">{message.text}</p>{message.source&&<p className="mt-2 text-[10px] opacity-70">{message.source}</p>}
                     </div>
                   </div>
                 ))}
@@ -183,6 +189,8 @@ export default function AssistantChat() {
             >
               <div className="flex items-end gap-2">
                 <textarea
+                  aria-label="Message to Store Assistant"
+                  maxLength={1000}
                   rows={1}
                   value={text}
                   onChange={event =>
@@ -212,7 +220,7 @@ export default function AssistantChat() {
               </div>
 
               <p className="mt-2 text-[11px] leading-4 text-slate-400">
-                Answers are based on the store's current inventory and available sales records.
+                Local help first, then store records. AI is used only for questions the store rules cannot answer.
               </p>
             </form>
           </section>

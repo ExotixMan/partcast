@@ -18,6 +18,10 @@ export function errorHandler(err, req, res, next) {
   if (err?.code === '23503') return res.status(409).json({ error: 'This record is still referenced by another record.' });
   if (err?.code === '23514' || err?.code === '22P02') return res.status(422).json({ error: 'The supplied value is not valid for this operation.' });
 
+  if (err?.code === 'P0001' && /Insufficient stock|Product not found/.test(err.message)) return res.status(409).json({error:err.message});
+  if (err?.code === '22023') return res.status(422).json({error:'Invalid or conflicting stock movement. Review the saved change.'});
+  if (err?.code === '42501') return res.status(403).json({error:'This account is not allowed to make this change.'});
+
   const status =
     Number(err?.status) || 500;
 
@@ -41,5 +45,4 @@ export function errorHandler(err, req, res, next) {
   res.status(status).json({
     error: message
 });
-  res.status(status).json({ error: message });
 }

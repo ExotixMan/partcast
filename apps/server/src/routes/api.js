@@ -28,7 +28,31 @@ const rolesWrite = requireRole('owner','admin','inventory_staff');
 const rolesAdmin = requireRole('owner','admin');
 const assistantLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 
-router.get('/me', (req, res) => res.json({ user: req.user }));
+router.get('/me', (req, res) => { const {accessToken,...user}=req.user;res.json({user}); });
+
+router.get('/offline-snapshot', async (req,res,next) => {
+  try {
+    const [products,suppliers] = await Promise.all([
+      fetchAll(() => adminDb.from('inventory_status').select('id,part_number,sub_number,description,brand,unit,location,current_stock,minimum_stock,safety_stock,unit_cost,selling_price,stock_status,updated_at').eq('active',true).order('id')),
+      fetchAll(() => adminDb.from('suppliers').select('id,name').eq('active',true).order('id'))
+    ]);
+    res.json({products,suppliers,savedAt:new Date().toISOString()});
+  } catch(e){next(e);}
+});
+router.get('/notifications', async (req,res,next) => {
+  try {
+    const [{data,error},{data:reads,error:readError}] = await Promise.all([
+      adminDb.from('stock_notifications').select('*').is('resolved_at',null).order('created_at',{ascending:false}).limit(100),
+      adminDb.from('notification_reads').select('notification_id').eq('user_id',req.user.id)
+    ]);
+    if(error||readError)throw error||readError;
+    const ids=new Set((reads||[]).map(r=>r.notification_id));
+    res.json({data:(data||[]).map(r=>({...r,read:ids.has(r.id)}))});
+  }catch(e){next(e);}
+});
+router.post('/notifications/:id/read',async (req,res,next)=>{
+  try{const id=z.string().uuid().parse(req.params.id);const {error}=await adminDb.from('notification_reads').upsert({notification_id:id,user_id:req.user.id},{onConflict:'notification_id,user_id'});if(error)throw error;res.json({ok:true});}catch(e){next(e);}
+});
 
 router.patch('/me', async (req,res,next) => {
   try {
@@ -151,6 +175,7 @@ router.patch('/products/:id', rolesWrite, async (req, res, next) => {
 router.post('/inventory/movement', rolesWrite, async (req, res, next) => {
   try {
     const body = z.object({
+      client_operation_id: z.string().uuid(),
       product_id: z.string().uuid(),
       tx_type: z.enum(['stock_in','stock_out','sale']),
       quantity: z.coerce.number().positive(),
@@ -163,21 +188,12 @@ router.post('/inventory/movement', rolesWrite, async (req, res, next) => {
       notes: z.string().trim().max(1000).nullable().optional(),
       occurred_at: z.string().datetime().optional()
     }).parse(req.body);
-    const { data, error } = await userDb(req.user.accessToken).rpc('apply_inventory_transaction', {
-      p_product_id: body.product_id,
-      p_tx_type: body.tx_type,
-      p_quantity: body.quantity,
-      p_unit_cost: body.unit_cost ?? null,
-      p_unit_price: body.unit_price ?? null,
-      p_reference_no: body.reference_no ?? null,
-      p_supplier_id: body.supplier_id ?? null,
-      p_customer_name: body.customer_name ?? null,
-      p_total_amount: body.total_amount ?? null,
-      p_notes: body.notes ?? null,
-      p_occurred_at: body.occurred_at ?? new Date().toISOString()
+    const {client_operation_id,...payload}=body;
+    const { data, error } = await userDb(req.user.accessToken).rpc('sync_inventory_movement', {
+      p_operation_id: client_operation_id, p_payload: payload
     });
     if (error) throw error;
-    await audit(req, body.tx_type, 'inventory_transaction', data, { product_id: body.product_id, quantity: body.quantity });
+    await audit(req, body.tx_type, 'inventory_transaction', data, { product_id: body.product_id, quantity: body.quantity }).catch(() => console.error('Movement audit logging failed.'));
     res.status(201).json({ transactionId: data });
   } catch (e) { next(e); }
 });

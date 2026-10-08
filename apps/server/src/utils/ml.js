@@ -25,11 +25,12 @@ export async function runForecastPython(payload) {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PYTHONUNBUFFERED: '1' }
       });
+      const timeout = setTimeout(() => { child.kill('SIGKILL');reject(new Error('Forecast calculation timed out. Try a smaller dataset.')); },120000);
       let stderr = '';
-      child.stderr.on('data', d => { stderr += d.toString(); });
+      child.stderr.on('data', d => { stderr = (stderr + d.toString()).slice(-4000); });
       child.stdout.on('data', d => process.stdout.write(`[ml] ${d}`));
-      child.on('error', reject);
-      child.on('close', code => code === 0 ? resolve() : reject(new Error(stderr || `ML process exited with code ${code}`)));
+      child.on('error', error => {clearTimeout(timeout);reject(error);});
+      child.on('close', code => {clearTimeout(timeout);code === 0 ? resolve() : reject(Object.assign(new Error(stderr.trim() || `ML process exited with code ${code}`), code === 2 ? {status:422} : {}));});
     });
 
     const result = JSON.parse(await readFile(output, 'utf8'));

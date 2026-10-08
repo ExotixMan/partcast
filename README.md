@@ -82,3 +82,12 @@ GEMINI_MODEL=gemini-2.5-flash
 ```
 
 Never put `GEMINI_API_KEY` in the React/Vite environment.
+
+
+## Offline-first update
+
+See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply `supabase/migrations/0004_offline_security_notifications.sql` after the original migrations before starting this version.
+
+This version adds an installable PWA, saved inventory and duplicate-safe stock movement sync, readable mobile stock controls, in-app stock notifications and automatic supplier checks. The assistant uses local help, then live store records, then optional AI. Forecast evaluation now excludes same-day demand leakage and compares against a simple baseline; the supplied data does not establish reliable forecast accuracy.
+
+See [Preparing actual forecasting data](docs/FORECASTING_DATA.md) for joining raw inventory quantities to sales invoices, producing cleaned workbooks with row provenance, and comparing historical 30-day forecasts. Current forecasting rejects future dates and stale eligible history rather than assuming unrecorded days had zero sales.

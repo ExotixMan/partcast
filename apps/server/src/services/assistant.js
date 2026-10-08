@@ -224,16 +224,16 @@ async function loadContext(message) {
 }
 
 function technicalQuestion(question) {
-  return /\b(api|database|supabase|xgboost|machine learning|algorithm|model metrics?|training data|dataset|backend|frontend|server|code|coding|developer|deployment|render|github|system status)\b/i.test(
+  return /\b(api|database|supabase|machine learning|algorithm|model metrics?|training data|dataset|backend|frontend|server|code|coding|developer|deployment|render|github|system status)\b/i.test(
     question
   );
 }
 
-function localAnswer(message, context) {
+export function localAnswer(message, context) {
   const question = String(message || '').toLowerCase();
   const metrics = context.metrics || {};
 
-  if (technicalQuestion(question)) {
+  if (technicalQuestion(question) && !/forecast|demand|xgboost/.test(question)) {
     return 'I can help you with store information instead. You can ask me about available stock, out-of-stock items, sales, best-selling or slow-moving parts, prices, suppliers, restocking, inventory value, or expected demand.';
   }
 
@@ -406,7 +406,7 @@ function localAnswer(message, context) {
     ).toLocaleString()} are out of stock.`;
   }
 
-  if (context.searchTerm) {
+  if (context.searchTerm && /stock|available|price|cost|where|location|part|have|sell/.test(question)) {
     if (!context.matchingProducts.length) {
       return `I could not find an active inventory item matching “${context.searchTerm}”. Try the part number, brand, or a word from the item description.`;
     }
@@ -442,13 +442,7 @@ function localAnswer(message, context) {
     }`;
   }
 
-  return `I can help with your store records. Right now there are ${safeNumber(
-    metrics.totalProducts
-  ).toLocaleString()} active products, ${safeNumber(
-    metrics.lowStock
-  ).toLocaleString()} low-stock item(s), and ${safeNumber(
-    metrics.outOfStock
-  ).toLocaleString()} out-of-stock item(s). You can ask about stock availability, sales, prices, best-selling parts, slow-moving items, suppliers, restocking, inventory value, or expected demand.`;
+  return null;
 }
 
 async function geminiAnswer(message, context) {
@@ -542,33 +536,11 @@ export function assistantMode() {
 
 export async function answerAssistant(message) {
   const context = await loadContext(message);
-
-  if (config.GEMINI_API_KEY) {
-    try {
-      const answer = await geminiAnswer(
-        message,
-        context
-      );
-
-      return {
-        answer,
-        mode: 'gemini',
-        model: config.GEMINI_MODEL
-      };
-    } catch (error) {
-      console.error(
-        'Store assistant fallback:',
-        error.message
-      );
-    }
+  const answer = localAnswer(message,context);
+  if(answer) return {answer,mode:'database',model:null,updatedAt:new Date().toISOString()};
+  if(config.GEMINI_API_KEY) {
+    try {return {answer:await geminiAnswer(message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[email removed]'),context),mode:'gemini',model:config.GEMINI_MODEL};}
+    catch {console.error('Assistant AI unavailable; using store guidance.');}
   }
-
-  return {
-    answer: localAnswer(
-      message,
-      context
-    ),
-    mode: 'smart-local',
-    model: null
-  };
+  return {answer:'I can check stock, prices, sales, suppliers and expected demand. Try a part number or ask “Which parts need restocking?”',mode:'database',model:null};
 }

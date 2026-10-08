@@ -5,14 +5,16 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
+import SyncStatus from './SyncStatus.jsx';
+import NotificationCenter from './NotificationCenter.jsx';
 import AssistantChat from './AssistantChat.jsx';
 
 const nav = [
-  { to:'/', label:'Dashboard', icon:BarChart3, end:true },
+  { to:'/', label:'Store overview', icon:BarChart3, end:true },
   { to:'/inventory', label:'Inventory', icon:Boxes },
-  { to:'/transactions', label:'Transactions', icon:History },
-  { to:'/forecast', label:'Demand Forecast', icon:BrainCircuit },
-  { to:'/reorder', label:'Reorder & Suppliers', icon:Truck },
+  { to:'/transactions', label:'Stock history', icon:History },
+  { to:'/forecast', label:'Demand planning', icon:BrainCircuit },
+  { to:'/reorder', label:'Restock & suppliers', icon:Truck },
   { to:'/reports', label:'Reports', icon:FileDown },
   { to:'/account', label:'My Account', icon:UserCog },
   { to:'/imports', label:'Import Data', icon:Upload, admin:true },
@@ -31,7 +33,7 @@ function SidebarContent({ close }) {
     <div className="px-4 pb-2 pt-5">
       <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-3">
         <p className="text-xs font-semibold uppercase tracking-[.18em] text-slate-400">PartCast</p>
-        <p className="mt-1 text-sm font-semibold text-white">Inventory & Demand Forecasting</p>
+        <p className="mt-1 text-sm font-semibold text-white">Parts, sales & restocking</p>
       </div>
     </div>
     <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
@@ -54,18 +56,19 @@ export default function AppShell() {
   const location=useLocation();
   const current = nav.find(n => n.to==='/' ? location.pathname==='/' : location.pathname.startsWith(n.to));
   return <div className="min-h-screen bg-slate-50">
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-[#050505] lg:flex"><SidebarContent/></aside>
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-slate-950 lg:flex"><SidebarContent/></aside>
     {open && <div className="fixed inset-0 z-40 bg-slate-950/60 lg:hidden" onClick={()=>setOpen(false)}>
-      <aside className="flex h-full w-[86vw] max-w-72 flex-col bg-[#050505]" onClick={e=>e.stopPropagation()}>
-        <button className="absolute right-4 top-4 rounded-lg bg-white/10 p-2 text-white" onClick={()=>setOpen(false)}><X size={18}/></button><SidebarContent close={()=>setOpen(false)}/>
+      <aside className="flex h-full w-[86vw] max-w-72 flex-col bg-slate-950" onClick={e=>e.stopPropagation()}>
+        <button aria-label="Close navigation" className="absolute right-4 top-4 rounded-lg bg-white/10 p-2 text-white" onClick={()=>setOpen(false)}><X size={18}/></button><SidebarContent close={()=>setOpen(false)}/>
       </aside>
     </div>}
     <div className="lg:pl-64">
       <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur sm:px-6 lg:px-8">
-        <button className="rounded-lg border border-slate-200 p-2 text-slate-700 lg:hidden" onClick={()=>setOpen(true)}><Menu size={20}/></button>
+        <button aria-label="Open navigation" className="rounded-lg border border-slate-200 p-2 text-slate-700 lg:hidden" onClick={()=>setOpen(true)}><Menu size={20}/></button>
         <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{current?.label || 'PartCast'}</p><p className="hidden text-xs text-slate-500 sm:block">NPG Autoparts · Toyota Specialist</p></div>
-        <div className="ml-auto flex items-center gap-2 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700"><ShieldCheck size={15}/> Secure session</div>
+        <div className="ml-auto flex items-center gap-3"><button aria-label="Open Store Assistant" className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold sm:hidden" onClick={()=>window.dispatchEvent(new Event('partcast:help'))}>Help</button><NotificationCenter/><div className="hidden items-center gap-2 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 sm:flex"><ShieldCheck size={15}/> Staff access</div></div>
       </header>
+      <SyncStatus/>
       <main className="mx-auto max-w-[1600px] p-4 sm:p-6 lg:p-8"><Outlet/></main>
     </div>
     <AssistantChat/>

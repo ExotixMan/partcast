@@ -8,7 +8,7 @@ import { errorHandler, notFound } from './middleware/error.js';
 import setupRoutes from './routes/setup.js';
 import apiRoutes from './routes/api.js';
 import adminRoutes from './routes/admin.js';
-import jobsRoutes from './routes/jobs.js';
+import jobsRoutes, { autoEmailSuppliers } from './routes/jobs.js';
 
 const app=express();
 app.set('trust proxy',1);
@@ -22,6 +22,7 @@ app.use(cors({
   allowedHeaders:['Content-Type','Authorization','X-Cron-Secret'],
   maxAge:600
 }));
+app.use('/api', (req,res,next) => {res.set('Cache-Control','no-store');next();});
 app.use(express.json({limit:'2mb'}));
 app.use(express.urlencoded({extended:false,limit:'1mb'}));
 app.use(rateLimit({windowMs:15*60*1000,limit:500,standardHeaders:'draft-8',legacyHeaders:false}));
@@ -35,3 +36,9 @@ app.use(notFound);
 app.use(errorHandler);
 
 app.listen(config.PORT,'0.0.0.0',()=>console.log(`PartCast API listening on ${config.PORT}`));
+
+// The database lease also covers external cron invocations. Disabled by settings by default.
+if (config.BREVO_API_KEY && config.BREVO_SENDER_EMAIL) {
+  const timer=setInterval(() => autoEmailSuppliers().catch(() => console.error('Automatic stock email check failed.')),60000);
+  timer.unref();
+}

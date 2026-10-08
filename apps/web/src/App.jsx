@@ -1,23 +1,24 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
 import AppShell from './components/AppShell.jsx';
 import Loading from './components/Loading.jsx';
-import LoginPage from './pages/LoginPage.jsx';
-import DashboardPage from './pages/DashboardPage.jsx';
-import InventoryPage from './pages/InventoryPage.jsx';
-import TransactionsPage from './pages/TransactionsPage.jsx';
-import ForecastPage from './pages/ForecastPage.jsx';
-import ReorderPage from './pages/ReorderPage.jsx';
-import ReportsPage from './pages/ReportsPage.jsx';
-import ImportPage from './pages/ImportPage.jsx';
-import BackupsPage from './pages/BackupsPage.jsx';
-import UsersPage from './pages/UsersPage.jsx';
-import SettingsPage from './pages/SettingsPage.jsx';
-import AccountPage from './pages/AccountPage.jsx';
+const LoginPage = lazy(() => import('./pages/LoginPage.jsx'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
+const InventoryPage = lazy(() => import('./pages/InventoryPage.jsx'));
+const TransactionsPage = lazy(() => import('./pages/TransactionsPage.jsx'));
+const ForecastPage = lazy(() => import('./pages/ForecastPage.jsx'));
+const ReorderPage = lazy(() => import('./pages/ReorderPage.jsx'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage.jsx'));
+const ImportPage = lazy(() => import('./pages/ImportPage.jsx'));
+const BackupsPage = lazy(() => import('./pages/BackupsPage.jsx'));
+const UsersPage = lazy(() => import('./pages/UsersPage.jsx'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const AccountPage = lazy(() => import('./pages/AccountPage.jsx'));
 
 function Protected(){const {session,loading}=useAuth();if(loading)return <Loading label="Checking secure session..."/>;return session?<AppShell/>:<Navigate to="/login" replace/>;}
 function RoleRoute({roles,children}){const {profile}=useAuth();return roles.includes(profile?.role)?children:<Navigate to="/" replace/>;}
-export default function App(){const {session,loading}=useAuth();return <Routes>
+export default function App(){const {session,loading}=useAuth();return <Suspense fallback={<Loading label="Opening page…"/>}><Routes>
  <Route path="/login" element={loading?<Loading/>:session?<Navigate to="/" replace/>:<LoginPage/>}/>
  <Route element={<Protected/>}>
   <Route index element={<DashboardPage/>}/>
@@ -33,4 +34,4 @@ export default function App(){const {session,loading}=useAuth();return <Routes>
   <Route path="settings" element={<RoleRoute roles={['owner']}><SettingsPage/></RoleRoute>}/>
  </Route>
  <Route path="*" element={<Navigate to={session?'/':'/login'} replace/>}/>
- </Routes>}
+ </Routes></Suspense>}
