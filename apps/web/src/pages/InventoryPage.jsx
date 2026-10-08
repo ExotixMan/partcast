@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
-import { ArrowDownToLine, ArrowUpFromLine, Pencil, Plus, Search, ShoppingCart } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDownToLine, ArrowRight, ArrowUpFromLine, CheckCircle2, Info, Package, Pencil, Plus, Search, ShoppingCart, X } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import Modal from '../components/Modal.jsx';
 import Loading from '../components/Loading.jsx';
@@ -7,55 +8,280 @@ import EmptyState from '../components/EmptyState.jsx';
 import Pagination from '../components/Pagination.jsx';
 import PageHeader from '../components/PageHeader.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
-import { useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.jsx';
 import Toast from '../components/Toast.jsx';
 
-const blankProduct={part_number:'',sub_number:'',description:'',brand:'',unit:'pc',location:'',current_stock:0,minimum_stock:1,safety_stock:1,unit_cost:0,selling_price:0};
-const blankMove={product_id:'',tx_type:'stock_in',quantity:1,unit_cost:'',unit_price:'',reference_no:'',supplier_id:'',customer_name:'',total_amount:'',notes:''};
+const blankProduct = { part_number: '', sub_number: '', description: '', brand: '', unit: 'pc', location: '', current_stock: 0, minimum_stock: 1, safety_stock: 1, unit_cost: 0, selling_price: 0 };
+const blankMove = { product_id: '', tx_type: 'stock_in', quantity: 1, unit_cost: '', unit_price: '', reference_no: '', supplier_id: '', customer_name: '', total_amount: '', notes: '' };
+const stockFilters = [{ value: 'all', label: 'All parts' }, { value: 'low', label: 'Running low' }, { value: 'out', label: 'Out of stock' }];
+const formatQuantity = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const validStockNumber = value => {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 && number <= 999999999999.99 && Number(number.toFixed(2)) === number;
+};
 
-export default function InventoryPage(){
- const [params]=useSearchParams();
- const action=params.get('action');
- const [offline,setOffline]=useState(!navigator.onLine);
- const [rows,setRows]=useState([]),[count,setCount]=useState(0),[page,setPage]=useState(1),[q,setQ]=useState(''),[status,setStatus]=useState('all'),[loading,setLoading]=useState(true);
- const [productModal,setProductModal]=useState(false),[editingId,setEditingId]=useState(null),[moveModal,setMoveModal]=useState(false),[product,setProduct]=useState(blankProduct),[move,setMove]=useState(blankMove),[suppliers,setSuppliers]=useState([]),[saving,setSaving]=useState(false),[toast,setToast]=useState(null);
- const requestNumber=useRef(0);
- const pageSize=25;
- const load=async()=>{const request=++requestNumber.current;setLoading(true);try{const r=await api.get(`/api/products?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(q)}&status=${status}`);if(request===requestNumber.current){setRows(r.data);setCount(r.count||0);}}catch(e){if(request===requestNumber.current)setToast({type:'error',message:e.message});}finally{if(request===requestNumber.current)setLoading(false);}};
- useEffect(()=>{const changed=()=>{setOffline(!navigator.onLine);load();};const reachable=e=>setOffline(!navigator.onLine||!e.detail);window.addEventListener('partcast:connection',reachable);window.addEventListener('online',changed);window.addEventListener('offline',changed);window.addEventListener('partcast:queue',changed);return()=>{window.removeEventListener('partcast:connection',reachable);window.removeEventListener('online',changed);window.removeEventListener('offline',changed);window.removeEventListener('partcast:queue',changed);};},[page,q,status]);
- useEffect(()=>{const t=setTimeout(load,250);return()=>clearTimeout(t);},[page,q,status]);
- useEffect(()=>{api.get('/api/suppliers').then(r=>setSuppliers(r.data||[])).catch(()=>{});},[]);
- const selected=useMemo(()=>rows.find(r=>r.id===move.product_id),[rows,move.product_id]);
- function openAdd(){setEditingId(null);setProduct(blankProduct);setProductModal(true);}
- function openEdit(row){setEditingId(row.id);setProduct({part_number:row.part_number||'',sub_number:row.sub_number||'',description:row.description||'',brand:row.brand||'',unit:row.unit||'',location:row.location||'',current_stock:Number(row.current_stock||0),minimum_stock:Number(row.minimum_stock||0),safety_stock:Number(row.safety_stock||0),unit_cost:Number(row.unit_cost||0),selling_price:Number(row.selling_price||0)});setProductModal(true);}
- function openMove(row,type){setMove({...blankMove,product_id:row.id,tx_type:type,unit_cost:row.unit_cost||'',unit_price:row.selling_price||''});setMoveModal(true);}
- async function saveProduct(){
-  setSaving(true);
-  try{
-   if(editingId){
-    const {current_stock,...patch}=product;
-    await api.patch(`/api/products/${editingId}`,patch);
-    setToast({message:'Product details and stock thresholds updated.'});
-   }else{
-    await api.post('/api/products',product);
-    setToast({message:'Product added to inventory.'});
-   }
-   setProduct(blankProduct);setEditingId(null);setProductModal(false);load();
-  }catch(e){setToast({type:'error',message:e.message});}finally{setSaving(false);}
- }
- async function saveMovement(){setSaving(true);try{const payload={...move,supplier_id:move.supplier_id||null,unit_cost:move.unit_cost===''?null:Number(move.unit_cost),unit_price:move.unit_price===''?null:Number(move.unit_price),total_amount:move.total_amount===''?null:Number(move.total_amount)};const result=await api.post('/api/inventory/movement',payload);setMoveModal(false);setToast({message:result.queued?'Saved on this device. It will sync automatically when connected.':`${move.tx_type.replace('_',' ')} recorded successfully.`});load();}catch(e){setToast({type:'error',message:e.message});}finally{setSaving(false);}}
- return <>
-  <PageHeader title="Inventory" subtitle="Find a part, then choose what you need to do. Stock is updated after each confirmed transaction." actions={<button className="btn-primary" disabled={offline} onClick={openAdd}><Plus size={17}/>Add product</button>}/>
-  <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600"><strong className="text-slate-900">{action==='sale'?'Record a sale':action==='stock_in'?'Receive a delivery':'How to use Inventory'}</strong><p>1. Search for the part. &nbsp; 2. Choose <strong>{action==='sale'?'Sell':action==='stock_in'?'Receive stock':'Receive stock, Remove stock, or Sell'}</strong>. &nbsp; 3. Enter the quantity and confirm.</p></div>
-  <section className="panel overflow-hidden">
-   <div className="panel-header"><div className="relative w-full sm:max-w-md"><Search className="absolute left-3 top-2.5 text-slate-400" size={18}/><input className="input pl-10" aria-label="Search inventory" placeholder="Search part number, name, or brand" value={q} onChange={e=>{setQ(e.target.value);setPage(1);}}/></div><select aria-label="Filter by stock level" className="input w-full sm:w-44" value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}><option value="all">All stock</option><option value="low">Low stock</option><option value="out">Out of stock</option></select></div>
-   {loading?<Loading/>:rows.length===0?<EmptyState title="No matching inventory"/>:<div className="hidden overflow-x-auto sm:block"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Part</th><th className="px-4 py-3">Brand</th><th className="px-4 py-3 text-right">On hand</th><th className="px-4 py-3 text-right">Minimum</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.map(r=><tr key={r.id} className="hover:bg-slate-50/70"><td className="px-5 py-3"><p className="font-semibold text-slate-900">{r.part_number||'No part number'}</p><p className="mt-0.5 max-w-md truncate text-xs text-slate-500">{r.description}</p>{r.pending>0&&<p className="text-xs text-amber-700">{r.pending} unsent change(s)</p>}</td><td className="px-4 py-3 text-slate-600">{r.brand||'—'}</td><td className="px-4 py-3 text-right font-semibold">{Number(r.current_stock).toFixed(0)}</td><td className="px-4 py-3 text-right text-slate-600">{Number(r.minimum_stock).toFixed(0)}</td><td className="px-4 py-3 text-slate-600">{r.location||'—'}</td><td className="px-4 py-3"><StatusBadge status={r.stock_status}/></td><td className="px-5 py-3"><div className="flex justify-end gap-1"><button disabled={offline} title="Edit product and thresholds" className="inline-flex min-h-11 items-center gap-1 rounded-lg p-2 text-xs font-semibold text-slate-600 hover:bg-slate-100" onClick={()=>openEdit(r)}><Pencil size={17}/><span>Edit</span></button><button title="Receive stock" aria-label={`Receive stock for ${r.description}`} className="inline-flex min-h-11 items-center gap-1 rounded-lg p-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50" onClick={()=>openMove(r,'stock_in')}><ArrowDownToLine size={17}/><span>Receive</span></button><button title="Remove stock" aria-label={`Remove stock for ${r.description}`} className="inline-flex min-h-11 items-center gap-1 rounded-lg p-2 text-xs font-semibold text-amber-700 hover:bg-amber-50" onClick={()=>openMove(r,'stock_out')}><ArrowUpFromLine size={17}/><span>Remove</span></button><button title="Record sale" aria-label={`Sell ${r.description}`} className="inline-flex min-h-11 items-center gap-1 rounded-lg p-2 text-xs font-semibold text-red-700 hover:bg-red-50" onClick={()=>openMove(r,'sale')}><ShoppingCart size={17}/><span>Sell</span></button></div></td></tr>)}</tbody></table></div>}
-   {!loading&&<div className="divide-y sm:hidden">{rows.map(r=><article key={r.id} className="p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold">{r.description}</p><p className="mt-1 text-xs text-slate-500">{r.part_number||'No part number'} · {r.brand||'No brand'} · {r.location||'No location'}</p></div><StatusBadge status={r.stock_status}/></div><div className="mt-3 flex items-center justify-between"><p className="text-sm"><strong className="text-xl">{Number(r.current_stock)}</strong> {r.unit||'units'} available {r.pending>0&&<span className="block text-xs text-amber-700">Includes {r.pending} unsent change(s)</span>}</p><p className="text-xs text-slate-500">Minimum: {r.minimum_stock}</p></div><div className="mt-4 grid grid-cols-3 gap-2"><button className="btn-secondary px-2" onClick={()=>openMove(r,'stock_in')}>Receive</button><button className="btn-secondary px-2" onClick={()=>openMove(r,'stock_out')}>Remove</button><button className="btn-primary px-2" onClick={()=>openMove(r,'sale')}>Sell</button></div><button className="mt-3 text-xs font-semibold text-slate-500" disabled={offline} onClick={()=>openEdit(r)}>Edit part details</button></article>)}</div>}
-   <Pagination page={page} pageSize={pageSize} count={count} onPage={setPage}/>
-  </section>
-  <Modal open={productModal} onClose={()=>setProductModal(false)} title={editingId?'Edit inventory product':'Add inventory product'} description={editingId?'Update product details, reorder threshold, safety stock, cost, and price. Use stock movements to change on-hand quantity.':'Create a product and optionally set its starting quantity.'} size="lg" footer={<><button className="btn-secondary" onClick={()=>setProductModal(false)}>Cancel</button><button className="btn-primary" disabled={saving} onClick={saveProduct}>{saving?'Saving...':editingId?'Save changes':'Save product'}</button></>}><div className="grid gap-4 sm:grid-cols-2"><label><span className="label">Part number</span><input className="input" value={product.part_number} onChange={e=>setProduct({...product,part_number:e.target.value})}/></label><label><span className="label">Sub number</span><input className="input" value={product.sub_number} onChange={e=>setProduct({...product,sub_number:e.target.value})}/></label><label className="sm:col-span-2"><span className="label">Description *</span><input className="input" required value={product.description} onChange={e=>setProduct({...product,description:e.target.value})}/></label><label><span className="label">Brand</span><input className="input" value={product.brand} onChange={e=>setProduct({...product,brand:e.target.value})}/></label><label><span className="label">Unit</span><input className="input" placeholder="pc, set, box" value={product.unit} onChange={e=>setProduct({...product,unit:e.target.value})}/></label><label><span className="label">Location</span><input className="input" value={product.location} onChange={e=>setProduct({...product,location:e.target.value})}/></label>{!editingId&&<label><span className="label">Starting quantity</span><input type="number" min="0" step="0.01" className="input" value={product.current_stock} onChange={e=>setProduct({...product,current_stock:e.target.value})}/></label>}{[['Minimum stock','minimum_stock'],['Safety stock','safety_stock'],['Unit cost','unit_cost'],['Selling price','selling_price']].map(([l,k])=><label key={k}><span className="label">{l}</span><input type="number" min="0" step="0.01" className="input" value={product[k]} onChange={e=>setProduct({...product,[k]:e.target.value})}/></label>)}</div></Modal>
-  <Modal open={moveModal} onClose={()=>setMoveModal(false)} title={move.tx_type==='sale'?'Record sale':move.tx_type==='stock_in'?'Receive stock':'Remove stock'} description={selected?`${selected.part_number||'N/A'} · ${selected.description}`:''} size="md" footer={<><button className="btn-secondary" onClick={()=>setMoveModal(false)}>Cancel</button><button className="btn-primary" disabled={saving} onClick={saveMovement}>{saving?'Saving...':'Confirm stock change'}</button></>}><div className="space-y-4">{selected&&<div className="rounded-xl bg-slate-50 p-4 text-sm"><p>Available now: <strong>{selected.current_stock} {selected.unit||'units'}</strong></p><p className="mt-1">After this change: <strong>{Number(selected.current_stock)+(move.tx_type==='stock_in'?1:-1)*Number(move.quantity||0)} {selected.unit||'units'}</strong></p>{offline&&<p className="mt-2 text-xs text-amber-800">This change will be saved on this device until you reconnect.</p>}</div>}<label><span className="label">Quantity *</span><input className="input" type="number" min="0.01" step="0.01" value={move.quantity} onChange={e=>setMove({...move,quantity:e.target.value})}/></label>{move.tx_type==='stock_in'&&<><label><span className="label">Supplier</span><select className="input" value={move.supplier_id} onChange={e=>setMove({...move,supplier_id:e.target.value})}><option value="">Select supplier</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><label><span className="label">Unit cost</span><input className="input" type="number" min="0" step="0.01" value={move.unit_cost} onChange={e=>setMove({...move,unit_cost:e.target.value})}/></label></>}{move.tx_type==='sale'&&<><label><span className="label">Customer name (optional)</span><input className="input" value={move.customer_name} onChange={e=>setMove({...move,customer_name:e.target.value})}/></label><div className="grid grid-cols-2 gap-3"><label><span className="label">Unit price</span><input className="input" type="number" min="0" step="0.01" value={move.unit_price} onChange={e=>setMove({...move,unit_price:e.target.value})}/></label><label><span className="label">Total amount</span><input className="input" type="number" min="0" step="0.01" value={move.total_amount} onChange={e=>setMove({...move,total_amount:e.target.value})}/></label></div></>}<label><span className="label">Reference number</span><input className="input" value={move.reference_no} onChange={e=>setMove({...move,reference_no:e.target.value})}/></label><label><span className="label">Notes</span><textarea className="input min-h-24" value={move.notes} onChange={e=>setMove({...move,notes:e.target.value})}/></label></div></Modal>
-  <Toast toast={toast} onClose={()=>setToast(null)}/>
- </>;
+function Field({ name, label, errors = {}, hint, children, className = '' }) {
+  return <div className={className}>
+    <label htmlFor={name} className="label">{label}</label>
+    {children}
+    {errors[name] ? <p id={`${name}-message`} className="mt-2 text-sm font-medium text-red-700">{errors[name]}</p> : hint && <p id={`${name}-message`} className="mt-2 text-sm leading-5 text-slate-500">{hint}</p>}
+  </div>;
+}
+
+export default function InventoryPage() {
+  const [params] = useSearchParams();
+  const action = params.get('action');
+  const intent = action === 'sale' ? 'sale' : action === 'stock_in' ? 'stock_in' : null;
+  const [offline, setOffline] = useState(!navigator.onLine);
+  const [rows, setRows] = useState([]), [count, setCount] = useState(0), [page, setPage] = useState(1), [q, setQ] = useState(() => params.get('q') || ''), [status, setStatus] = useState(() => stockFilters.some(filter => filter.value === params.get('status')) ? params.get('status') : 'all'), [loading, setLoading] = useState(true);
+  const [productModal, setProductModal] = useState(false), [editingId, setEditingId] = useState(null), [moveModal, setMoveModal] = useState(false);
+  const [product, setProduct] = useState(blankProduct), [move, setMove] = useState(blankMove), [suppliers, setSuppliers] = useState([]), [saving, setSaving] = useState(false), [toast, setToast] = useState(null);
+  const [productErrors, setProductErrors] = useState({}), [moveErrors, setMoveErrors] = useState({}), [formError, setFormError] = useState(''), [selectedPart, setSelectedPart] = useState(null);
+  const requestNumber = useRef(0);
+  const savingRef = useRef(false);
+  const pageSize = 25;
+
+  const load = async () => {
+    const request = ++requestNumber.current;
+    setLoading(true);
+    try {
+      const result = await api.get(`/api/products?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(q)}&status=${status}`);
+      if (request === requestNumber.current) { setRows(result.data); setCount(result.count || 0); }
+    } catch (error) {
+      if (request === requestNumber.current) setToast({ type: 'error', message: error.message });
+    } finally { if (request === requestNumber.current) setLoading(false); }
+  };
+
+  useEffect(() => {
+    const changed = () => { setOffline(!navigator.onLine); load(); };
+    const reachable = event => setOffline(!navigator.onLine || !event.detail);
+    window.addEventListener('partcast:connection', reachable);
+    window.addEventListener('online', changed);
+    window.addEventListener('offline', changed);
+    window.addEventListener('partcast:queue', changed);
+    return () => {
+      window.removeEventListener('partcast:connection', reachable);
+      window.removeEventListener('online', changed);
+      window.removeEventListener('offline', changed);
+      window.removeEventListener('partcast:queue', changed);
+    };
+  }, [page, q, status]);
+  useEffect(() => { const timer = setTimeout(load, 250); return () => clearTimeout(timer); }, [page, q, status]);
+  useEffect(() => { api.get('/api/suppliers').then(result => setSuppliers(result.data || [])).catch(() => {}); }, []);
+  useEffect(() => {
+    setQ(params.get('q') || '');
+    setStatus(stockFilters.some(filter => filter.value === params.get('status')) ? params.get('status') : 'all');
+    setPage(1);
+  }, [params]);
+
+  const selected = useMemo(() => rows.find(row => row.id === move.product_id) || selectedPart, [rows, move.product_id, selectedPart]);
+  const quantity = Number(move.quantity);
+  const quantityValid = move.quantity !== '' && validStockNumber(move.quantity) && quantity >= 0.01;
+  const stockAfter = selected && quantityValid ? Math.round((Number(selected.current_stock) + (move.tx_type === 'stock_in' ? quantity : -quantity)) * 100) / 100 : null;
+  const insufficientStock = stockAfter !== null && stockAfter < 0;
+  const fieldProps = (name, errors, hint) => ({ id: name, 'aria-invalid': !!errors[name], 'aria-describedby': errors[name] || hint ? `${name}-message` : undefined });
+
+  function openAdd() { setEditingId(null); setProduct({ ...blankProduct }); setProductErrors({}); setFormError(''); setProductModal(true); }
+  function openEdit(row) {
+    setEditingId(row.id);
+    setProduct({ part_number: row.part_number || '', sub_number: row.sub_number || '', description: row.description || '', brand: row.brand || '', unit: row.unit || 'pc', location: row.location || '', current_stock: Number(row.current_stock || 0), minimum_stock: Number(row.minimum_stock || 0), safety_stock: Number(row.safety_stock || 0), unit_cost: Number(row.unit_cost || 0), selling_price: Number(row.selling_price || 0) });
+    setProductErrors({}); setFormError(''); setProductModal(true);
+  }
+  function openMove(row, type) {
+    setSelectedPart(row);
+    setMove({ ...blankMove, product_id: row.id, tx_type: type, unit_cost: row.unit_cost || '', unit_price: row.selling_price || '' });
+    setMoveErrors({}); setFormError(''); setMoveModal(true);
+  }
+  function showValidation(errors, setErrors) {
+    setErrors(errors);
+    setFormError('Please check the highlighted fields before saving.');
+    requestAnimationFrame(() => {
+      for (const name of Object.keys(errors)) {
+        const disclosure = document.getElementById(name)?.closest('details');
+        if (disclosure) disclosure.open = true;
+      }
+      document.getElementById(Object.keys(errors)[0])?.focus();
+    });
+  }
+  function updateProduct(key, value) { setProduct(current => ({ ...current, [key]: value })); setProductErrors(current => ({ ...current, [key]: undefined })); setFormError(''); }
+  function updateMove(key, value) { setMove(current => ({ ...current, [key]: value })); setMoveErrors(current => ({ ...current, [key]: undefined })); setFormError(''); }
+
+  async function saveProduct(event) {
+    event.preventDefault();
+    if (savingRef.current) return;
+    const errors = {};
+    if (product.description.trim().length < 2) errors.description = 'Enter a part name with at least 2 characters.';
+    else if (product.description.trim().length > 500) errors.description = 'Keep the part name within 500 characters.';
+    const numberFields = ['minimum_stock', 'safety_stock', 'unit_cost', 'selling_price', ...(!editingId ? ['current_stock'] : [])];
+    for (const key of numberFields) {
+      const required = key === 'minimum_stock' || key === 'current_stock';
+      if ((required && product[key] === '') || !validStockNumber(product[key])) errors[key] = 'Enter 0 or a larger number, with up to 2 decimal places.';
+    }
+    if (Object.keys(errors).length) { showValidation(errors, setProductErrors); return; }
+    savingRef.current = true;
+    setProductErrors({}); setFormError(''); setSaving(true);
+    try {
+      const payload = { ...product, description: product.description.trim(), ...Object.fromEntries(numberFields.map(key => [key, Number(product[key])])) };
+      if (editingId) {
+        const { current_stock, ...patch } = payload;
+        await api.patch(`/api/products/${editingId}`, patch);
+        setToast({ message: 'Part details saved. Available stock has not changed.' });
+      } else {
+        await api.post('/api/products', payload);
+        setToast({ message: `${payload.description} added to your inventory.` });
+      }
+      setProduct({ ...blankProduct }); setEditingId(null); setProductModal(false); load();
+    } catch (error) { setFormError(error.message); }
+    finally { savingRef.current = false; setSaving(false); }
+  }
+
+  async function saveMovement(event) {
+    event.preventDefault();
+    if (savingRef.current) return;
+    const errors = {};
+    if (!quantityValid) errors.quantity = 'Enter a quantity of at least 0.01, with up to 2 decimal places.';
+    else if (insufficientStock) errors.quantity = `Only ${formatQuantity(selected.current_stock)} ${selected.unit || 'units'} are available. Enter a smaller quantity.`;
+    for (const key of ['unit_cost', 'unit_price', 'total_amount']) if (move[key] !== '' && !validStockNumber(move[key])) errors[key] = 'Use 0 or a larger amount with up to 2 decimal places, or leave this blank.';
+    if (Object.keys(errors).length) { showValidation(errors, setMoveErrors); return; }
+    savingRef.current = true;
+    setMoveErrors({}); setFormError(''); setSaving(true);
+    try {
+      const payload = { ...move, quantity, supplier_id: move.supplier_id || null, unit_cost: move.unit_cost === '' ? null : Number(move.unit_cost), unit_price: move.unit_price === '' ? null : Number(move.unit_price), total_amount: move.total_amount === '' ? null : Number(move.total_amount) };
+      const result = await api.post('/api/inventory/movement', payload);
+      setMoveModal(false);
+      const activity = move.tx_type === 'stock_in' ? 'received' : move.tx_type === 'sale' ? 'sold' : 'removed';
+      setToast({ message: result.queued ? 'Saved on this device. It will send automatically when your connection returns.' : `${formatQuantity(quantity)} ${selected?.unit || 'units'} ${activity}. Stock updated.` });
+      load();
+    } catch (error) { setFormError(error.message); }
+    finally { savingRef.current = false; setSaving(false); }
+  }
+
+  const partActions = row => <>
+    <div className="grid grid-cols-2 gap-2">
+      <button className={`${intent === 'stock_in' ? 'btn-primary' : 'btn-secondary'} px-3`} onClick={() => openMove(row, 'stock_in')}><ArrowDownToLine size={17} aria-hidden="true"/>Receive</button>
+      <button className={`${intent === 'stock_in' ? 'btn-secondary' : 'btn-primary'} px-3`} onClick={() => openMove(row, 'sale')}><ShoppingCart size={17} aria-hidden="true"/>Sell</button>
+    </div>
+    <details className="mt-2 text-sm text-slate-600">
+      <summary className="min-h-11 cursor-pointer rounded-lg px-2 py-3 font-medium hover:bg-slate-50">Other actions</summary>
+      <div className="mt-1 grid grid-cols-2 gap-2">
+        <button className="btn-secondary px-2" disabled={offline} onClick={() => openEdit(row)}><Pencil size={15} aria-hidden="true"/>Edit details</button>
+        <button className="btn-secondary px-2" onClick={() => openMove(row, 'stock_out')}><ArrowUpFromLine size={15} aria-hidden="true"/>Remove stock</button>
+      </div>
+    </details>
+  </>;
+
+  return <>
+    <PageHeader title="Inventory" subtitle="Find a part and keep its stock up to date." actions={<button className="btn-primary" disabled={offline} onClick={openAdd}><Plus size={18} aria-hidden="true"/>Add a new part</button>}/>
+
+    <section aria-label="How to update stock" className={`mb-6 rounded-2xl border p-4 sm:p-5 ${intent ? 'border-red-100 bg-red-50' : 'border-slate-200 bg-white'}`}>
+      <div className="flex items-start gap-3">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${intent ? 'bg-white text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+          {intent === 'sale' ? <ShoppingCart size={20} aria-hidden="true"/> : intent === 'stock_in' ? <ArrowDownToLine size={20} aria-hidden="true"/> : <Info size={20} aria-hidden="true"/>}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-semibold text-slate-900">{intent === 'sale' ? 'Record a sale' : intent === 'stock_in' ? 'Receive a delivery' : 'Update stock in 3 easy steps'}</h2>
+          <ol className="mt-3 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:flex-wrap sm:gap-x-6">
+            {['Find the part below', intent === 'sale' ? 'Choose Sell' : intent === 'stock_in' ? 'Choose Receive' : 'Choose Receive or Sell', 'Enter quantity and confirm'].map((step, index) => <li key={step} className="flex items-center gap-2"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-bold text-slate-700">{index + 1}</span>{step}</li>)}
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    {offline && <div role="status" className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><Info size={19} className="mt-1 shrink-0" aria-hidden="true"/><p><strong>You can still record stock changes.</strong> They are saved on this device and sent when your connection returns. Adding or editing part details needs a connection.</p></div>}
+
+    <section className="panel overflow-hidden" aria-label="Your inventory">
+      <div className="border-b border-slate-100 p-4 sm:p-6">
+        <label htmlFor="inventory-search" className="mb-2 block text-base font-semibold text-slate-900">Find a part</label>
+        <div className="relative max-w-2xl">
+          <Search className="pointer-events-none absolute left-4 top-3.5 text-slate-400" size={20} aria-hidden="true"/>
+          <input id="inventory-search" className="input min-h-12 pl-12 pr-12" aria-label="Search inventory" placeholder="Enter a part name, number, or brand" value={q} onChange={event => { setQ(event.target.value); setPage(1); }}/>
+          {q && <button aria-label="Clear search" className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => { setQ(''); setPage(1); }}><X size={18}/></button>}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter by stock level">
+          {stockFilters.map(filter => <button key={filter.value} aria-pressed={status === filter.value} className={`min-h-11 rounded-full border px-4 py-2 text-sm font-semibold transition ${status === filter.value ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`} onClick={() => { setStatus(filter.value); setPage(1); }}>{filter.label}</button>)}
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6"><p className="text-sm font-medium text-slate-600" aria-live="polite">{loading ? 'Finding parts…' : `${count.toLocaleString()} ${count === 1 ? 'part' : 'parts'}${q || status !== 'all' ? ' found' : ' in your inventory'}`}</p><span className="hidden text-xs text-slate-500 sm:block">Receive adds stock · Sell reduces stock</span></div>
+
+      {loading ? <Loading/> : rows.length === 0 ? <div>
+        <EmptyState title={q || status !== 'all' ? 'No parts match your search' : 'Your inventory is ready for its first part'} text={q || status !== 'all' ? 'Try a different name or part number, or show all parts.' : 'Choose “Add a new part” to start keeping track of your stock.'}/>
+        {(q || status !== 'all') && <div className="mb-8 flex justify-center"><button className="btn-secondary" onClick={() => { setQ(''); setStatus('all'); setPage(1); }}>Show all parts</button></div>}
+      </div> : <>
+        <div className="hidden overflow-x-auto xl:block">
+          <table className="min-w-full text-left text-sm">
+            <thead className="border-y border-slate-100 bg-slate-50 text-slate-600"><tr><th scope="col" className="px-6 py-4 font-medium">Part details</th><th scope="col" className="px-4 py-4 font-medium">Available stock</th><th scope="col" className="px-4 py-4 font-medium">Location</th><th scope="col" className="w-64 px-6 py-4 font-medium">What would you like to do?</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{rows.map(row => <tr key={row.id} className="align-top hover:bg-slate-50/60">
+              <td className="px-6 py-5"><p className="max-w-md text-base font-semibold text-slate-900">{row.description || 'Unnamed part'}</p><p className="mt-1 text-sm text-slate-500">{row.part_number || 'No part number'}{row.brand ? ` · ${row.brand}` : ''}</p>{row.pending > 0 && <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-800"><CheckCircle2 size={14} aria-hidden="true"/>{row.pending} {row.pending === 1 ? 'change' : 'changes'} saved on this device</p>}</td>
+              <td className="px-4 py-5"><p className="mb-2"><strong className="text-2xl font-bold text-slate-900">{formatQuantity(row.current_stock)}</strong><span className="ml-2 text-slate-500">{row.unit || 'units'}</span></p><StatusBadge status={row.stock_status}/><p className="mt-2 text-xs text-slate-500">Low-stock alert at {formatQuantity(row.minimum_stock)}</p></td>
+              <td className="px-4 py-5 text-slate-600">{row.location || 'Not set'}</td>
+              <td className="min-w-60 px-6 py-5">{partActions(row)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <div className="grid gap-4 px-4 pb-5 sm:grid-cols-2 sm:px-6 xl:hidden">{rows.map(row => <article key={row.id} className="flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500"><Package size={20} aria-hidden="true"/></span><StatusBadge status={row.stock_status}/></div>
+          <h3 className="mt-4 break-words text-base font-semibold leading-6 text-slate-900">{row.description || 'Unnamed part'}</h3>
+          <p className="mt-1 break-words text-sm text-slate-500">{row.part_number || 'No part number'}{row.brand ? ` · ${row.brand}` : ''}</p>
+          <p className="mt-4 text-sm text-slate-600"><strong className="mr-2 text-3xl font-bold tracking-tight text-slate-900">{formatQuantity(row.current_stock)}</strong>{row.unit || 'units'} available</p>
+          <dl className="mt-4 space-y-1.5 text-sm"><div className="flex justify-between gap-3"><dt className="text-slate-500">Location</dt><dd className="text-right font-medium text-slate-700">{row.location || 'Not set'}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Low-stock alert at</dt><dd className="font-medium text-slate-700">{formatQuantity(row.minimum_stock)}</dd></div></dl>
+          {row.pending > 0 && <p className="mt-3 flex items-start gap-1.5 text-xs font-medium leading-5 text-amber-800"><CheckCircle2 size={15} className="mt-0.5 shrink-0" aria-hidden="true"/>{row.pending} {row.pending === 1 ? 'change' : 'changes'} saved on this device</p>}
+          <div className="mt-auto pt-5">{partActions(row)}</div>
+        </article>)}</div>
+      </>}
+      <Pagination page={page} pageSize={pageSize} count={count} onPage={setPage}/>
+    </section>
+
+    <Modal open={productModal} onClose={() => { if (!saving) setProductModal(false); }} title={editingId ? 'Edit part details' : 'Add a new part'} description={editingId ? 'Update the name, location, and stock alert. To change quantity, use Receive or Sell.' : 'Start with the part name and quantity. You can add more details later.'} size="lg" footer={<><button className="btn-secondary" disabled={saving} onClick={() => setProductModal(false)}>Cancel</button><button type="submit" form="inventory-product-form" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : editingId ? 'Save changes' : 'Save part'}</button></>}>
+      <form id="inventory-product-form" onSubmit={saveProduct} noValidate className="space-y-5">
+        {formError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">{formError}</p>}
+        <Field name="description" label="Part name *" errors={productErrors} hint="Use a name staff will recognize, such as Toyota brake pad."><input {...fieldProps('description', productErrors, true)} className="input" required minLength={2} maxLength={500} value={product.description} onChange={event => updateProduct('description', event.target.value)}/></Field>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field name="part_number" label="Part number" hint="Use the number printed on the part or box."><input id="part_number" aria-describedby="part_number-message" className="input" maxLength={120} value={product.part_number} onChange={event => updateProduct('part_number', event.target.value)}/></Field>
+          <Field name="location" label="Where is it stored?" hint="For example, Shelf A or Drawer 3."><input id="location" aria-describedby="location-message" className="input" maxLength={80} value={product.location} onChange={event => updateProduct('location', event.target.value)}/></Field>
+          {!editingId && <Field name="current_stock" label="Starting quantity *" errors={productErrors} hint="Enter how many you have now. Use 0 if there is no stock yet."><input {...fieldProps('current_stock', productErrors, true)} className="input" type="number" inputMode="decimal" min="0" step="0.01" required value={product.current_stock} onChange={event => updateProduct('current_stock', event.target.value)}/></Field>}
+          <Field name="minimum_stock" label="Alert me when stock reaches *" errors={productErrors} hint="You will see a low-stock warning at this quantity."><input {...fieldProps('minimum_stock', productErrors, true)} className="input" type="number" inputMode="decimal" min="0" step="0.01" required value={product.minimum_stock} onChange={event => updateProduct('minimum_stock', event.target.value)}/></Field>
+        </div>
+        <details className="rounded-xl border border-slate-200 p-4">
+          <summary className="min-h-7 cursor-pointer text-sm font-semibold text-slate-700">More part details <span className="font-normal text-slate-500">(optional)</span></summary>
+          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+            {[['Brand', 'brand', 120], ['Unit (pc, set, or box)', 'unit', 40], ['Other part number', 'sub_number', 120]].map(([label, key, maxLength]) => <Field key={key} name={key} label={label}><input id={key} className="input" maxLength={maxLength} value={product[key]} onChange={event => updateProduct(key, event.target.value)}/></Field>)}
+            {[['Reserve quantity', 'safety_stock'], ['Cost per unit', 'unit_cost'], ['Selling price per unit', 'selling_price']].map(([label, key]) => <Field key={key} name={key} label={label} errors={productErrors} hint={key === 'safety_stock' ? 'Extra stock to keep as a buffer.' : undefined}><input {...fieldProps(key, productErrors, key === 'safety_stock')} className="input" type="number" inputMode="decimal" min="0" step="0.01" value={product[key]} onChange={event => updateProduct(key, event.target.value)}/></Field>)}
+          </div>
+        </details>
+        <p className="text-xs text-slate-500">* Required information</p>
+      </form>
+    </Modal>
+
+    <Modal open={moveModal} onClose={() => { if (!saving) setMoveModal(false); }} title={move.tx_type === 'sale' ? 'Record a sale' : move.tx_type === 'stock_in' ? 'Receive stock' : 'Remove stock'} description={move.tx_type === 'stock_in' ? 'Add parts received in a delivery.' : move.tx_type === 'sale' ? 'Enter how many parts the customer bought.' : 'Use this for damaged, lost, or returned stock.'} size="md" footer={<><button className="btn-secondary" disabled={saving} onClick={() => setMoveModal(false)}>Cancel</button><button type="submit" form="inventory-movement-form" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Confirm stock change'}</button></>}>
+      <form id="inventory-movement-form" onSubmit={saveMovement} noValidate className="space-y-5">
+        {formError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">{formError}</p>}
+        {selected && <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="font-semibold text-slate-900">{selected.description}</p><p className="mt-1 text-sm text-slate-500">{selected.part_number || 'No part number'}{selected.location ? ` · ${selected.location}` : ''}</p></div>}
+        <Field name="quantity" label="Quantity *" errors={moveErrors} hint={move.tx_type === 'stock_in' ? 'How many arrived in this delivery?' : move.tx_type === 'sale' ? 'How many are you selling?' : 'How many are you taking out of stock?'}><input {...fieldProps('quantity', moveErrors, true)} className="input min-h-14 text-xl font-semibold" type="number" inputMode="decimal" min="0.01" step="0.01" required value={move.quantity} onChange={event => updateMove('quantity', event.target.value)}/></Field>
+        {selected && <div className={`rounded-xl border p-4 ${insufficientStock ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'}`} aria-live="polite">
+          <div className="flex items-center justify-between gap-3"><p className="text-sm text-slate-600">Available now:<strong className="mt-1 block text-xl text-slate-900">{formatQuantity(selected.current_stock)} {selected.unit || 'units'}</strong></p><ArrowRight className="shrink-0 text-slate-400" size={22} aria-hidden="true"/><p className="text-right text-sm text-slate-600">After this change:<strong className={`mt-1 block text-xl ${insufficientStock ? 'text-red-700' : 'text-emerald-800'}`}>{stockAfter === null ? 'Enter a quantity' : `${formatQuantity(stockAfter)} ${selected.unit || 'units'}`}</strong></p></div>
+          {insufficientStock && <p className="mt-3 text-sm font-medium text-red-800">There is not enough stock. Enter a smaller quantity.</p>}
+          {offline && <p className="mt-3 border-t border-emerald-200 pt-3 text-sm leading-5 text-slate-700">Saved on this device first. It will send automatically when you reconnect.</p>}
+        </div>}
+        <details className="rounded-xl border border-slate-200 p-4">
+          <summary className="min-h-7 cursor-pointer text-sm font-semibold text-slate-700">Add a receipt, price, or note <span className="font-normal text-slate-500">(optional)</span></summary>
+          <div className="mt-5 space-y-5">
+            {move.tx_type === 'stock_in' && <>
+              <Field name="supplier_id" label="Supplier"><select id="supplier_id" className="input" value={move.supplier_id} onChange={event => updateMove('supplier_id', event.target.value)}><option value="">No supplier selected</option>{suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></Field>
+              <Field name="unit_cost" label="Cost per unit" errors={moveErrors}><input {...fieldProps('unit_cost', moveErrors)} className="input" type="number" inputMode="decimal" min="0" step="0.01" value={move.unit_cost} onChange={event => updateMove('unit_cost', event.target.value)}/></Field>
+            </>}
+            {move.tx_type === 'sale' && <>
+              <Field name="customer_name" label="Customer name"><input id="customer_name" className="input" maxLength={240} value={move.customer_name} onChange={event => updateMove('customer_name', event.target.value)}/></Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field name="unit_price" label="Price per unit" errors={moveErrors}><input {...fieldProps('unit_price', moveErrors)} className="input" type="number" inputMode="decimal" min="0" step="0.01" value={move.unit_price} onChange={event => updateMove('unit_price', event.target.value)}/></Field>
+                <Field name="total_amount" label="Receipt total" errors={moveErrors} hint="Leave blank to use quantity × price."><input {...fieldProps('total_amount', moveErrors, true)} className="input" type="number" inputMode="decimal" min="0" step="0.01" value={move.total_amount} onChange={event => updateMove('total_amount', event.target.value)}/></Field>
+              </div>
+            </>}
+            <Field name="reference_no" label="Invoice or receipt number"><input id="reference_no" className="input" maxLength={180} value={move.reference_no} onChange={event => updateMove('reference_no', event.target.value)}/></Field>
+            <Field name="notes" label="Note"><textarea id="notes" className="input min-h-24" maxLength={1000} placeholder="Anything staff should know about this change" value={move.notes} onChange={event => updateMove('notes', event.target.value)}/></Field>
+          </div>
+        </details>
+        <p className="text-xs text-slate-500">Stock changes only after you choose Confirm stock change.</p>
+      </form>
+    </Modal>
+    <Toast toast={toast} onClose={() => setToast(null)}/>
+  </>;
 }

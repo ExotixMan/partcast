@@ -31,18 +31,18 @@ export default function SyncStatus() {
   },[userId]);
   const conflict = items.find(i=>i.status==='conflict');
   return <section className={`border-b px-4 py-3 sm:px-6 lg:px-8 ${!online?'border-amber-200 bg-amber-50':'border-slate-200 bg-white'}`} aria-label="Connection and sync status">
-    <div className="flex flex-wrap items-center gap-3 text-xs">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
       {online?<CloudCheck size={17} className="text-emerald-600"/>:<CloudOff size={17} className="text-amber-700"/>}
-      <span className="font-semibold">{busy?'Saving changes…':!online?'Working offline':items.length?'Changes waiting to send':'Connected'}</span>
-      <span className="text-slate-500">{items.length?`${items.length} unsent transaction${items.length===1?'':'s'}`:saved?`Inventory saved ${new Date(saved).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:'Preparing offline inventory…'}</span>
-      <div className="ml-auto flex gap-2">
-        {items.length>0&&<button className="underline underline-offset-4" onClick={()=>setExpanded(!expanded)}>Review changes</button>}
-        <button className="inline-flex items-center gap-1 font-semibold" disabled={!navigator.onLine||busy} onClick={async()=>{setBusy(true);setError('');try{await syncOffline();}catch(e){setError(e.message);}finally{setBusy(false);}}}><RefreshCw size={14}/>Sync now</button>
-        {install&&<button className="inline-flex items-center gap-1 font-semibold text-red-700" onClick={async()=>{await install.prompt();setInstall(null);}}><Download size={14}/>Install app</button>}
+      <span role="status" className="font-semibold">{busy?'Saving changes…':!online?'Working offline':items.length?'Changes waiting to send':'Connected'}</span>
+      <span className="text-sm text-slate-600">{items.length?`${items.length} unsent transaction${items.length===1?'':'s'}`:saved?`Inventory saved ${new Date(saved).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:'Saving inventory for offline use…'}</span>
+      <div className="ml-auto flex flex-wrap gap-2">
+        {items.length>0&&<button className="min-h-11 rounded-lg px-2 font-semibold text-slate-700 underline underline-offset-4" aria-expanded={expanded} onClick={()=>setExpanded(!expanded)}>Review changes</button>}
+        <button className={`${items.length||error||!online?'inline-flex':'hidden sm:inline-flex'} min-h-11 items-center gap-2 rounded-lg px-2 font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50`} disabled={!navigator.onLine||busy} onClick={async()=>{setBusy(true);setError('');try{await syncOffline();}catch(e){setError(e.message);}finally{setBusy(false);}}}><RefreshCw size={16}/>Send changes</button>
+        {install&&<button className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 font-semibold text-red-700" onClick={async()=>{await install.prompt();setInstall(null);}}><Download size={16}/>Install app</button>}
       </div>
     </div>
-    {!online&&<p className="mt-2 text-xs text-amber-800">View saved inventory and record sales or stock changes. They will send automatically when connected. Other changes need internet. Offline access lasts up to 12 hours after verification.</p>}
-    {(error||conflict)&&<p role="alert" className="mt-2 flex items-start gap-2 text-xs text-red-700"><AlertTriangle size={14}/>{conflict?'A stock change needs review. Later changes are paused until you resolve it.':error}</p>}
-    {expanded&&<ul className="mt-3 space-y-2">{items.map(i=><li key={i.key} className="flex flex-wrap items-center gap-3 rounded-lg border p-3 text-xs"><span>{i.payload.tx_type.replace('_',' ')} · {i.payload.quantity} units · {i.payload.reference_no||'No reference'} · {new Date(i.createdAt).toLocaleString()}</span><span className="text-red-700">{i.error||'Waiting to sync'}</span>{i.status==='conflict'&&<button className="ml-auto font-semibold underline" onClick={async()=>{if(window.confirm('Remove this rejected transaction from the device? It has not been applied to the database.')){await removeQueued(i.key);setError('');syncOffline().catch(e=>setError(e.message));}}}>Remove rejected change</button>}</li>)}</ul>}
+    {!online&&<p className="mt-2 text-sm leading-6 text-amber-900">You can use saved parts and record sales or deliveries. Keep PartCast open when internet returns; waiting changes will send automatically. Other tasks need internet. Saved access lasts up to 12 hours.</p>}
+    {(error||conflict)&&<p role="alert" className="mt-2 flex items-start gap-2 text-sm text-red-700"><AlertTriangle size={17} className="mt-1 shrink-0"/>{conflict?'A stock change needs review. Open Review changes to check it before later changes can be sent.':error}</p>}
+    {expanded&&<ul className="mt-3 space-y-2">{items.map(i=><li key={i.key} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm"><span>{({sale:'Sale',stock_in:'Received stock',stock_out:'Removed stock'})[i.payload.tx_type]||i.payload.tx_type} · {i.payload.quantity} units · {i.payload.reference_no||'No reference'} · {new Date(i.createdAt).toLocaleString()}</span><span className={i.error?'text-red-700':'text-slate-600'}>{i.error||'Waiting to send'}</span>{i.status==='conflict'&&<button className="btn-danger ml-auto" onClick={async()=>{if(window.confirm('Remove this rejected transaction from the device? It has not been applied to the database.')){await removeQueued(i.key);setError('');syncOffline().catch(e=>setError(e.message));}}}>Remove rejected change</button>}</li>)}</ul>}
   </section>;
 }

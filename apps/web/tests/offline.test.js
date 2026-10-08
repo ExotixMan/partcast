@@ -41,3 +41,14 @@ test('local assistant gives saved facts with source age and no invented numbers'
  assert.match((await answerLocally('low stock','bob',false)).answer,/No inventory is saved/);
  await clearAccount('alice');assert.equal(await readCache('alice','/api/me'),null);
 });
+
+test('fractional offline sales leave the remaining quantity available without floating-point drift',async()=>{
+ const first=await enqueueMovement('fractional-staff',{product_id:'fractional-part',tx_type:'sale',quantity:0.1});
+ const products=[{id:'fractional-part',current_stock:0.3,minimum_stock:0}];
+ const remaining=projectedProducts(products,await queueItems('fractional-staff'))[0];
+ assert.equal(remaining.current_stock,0.2);
+ await enqueueMovement('fractional-staff',{product_id:'fractional-part',tx_type:'sale',quantity:0.2});
+ const soldOut=projectedProducts(products,await queueItems('fractional-staff'))[0];
+ assert.equal(soldOut.current_stock,0);assert.equal(soldOut.stock_status,'out');
+ await removeQueued(first.key);await clearAccount('fractional-staff');
+});

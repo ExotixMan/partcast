@@ -81,8 +81,9 @@ export async function clearAccount(userId) {
 export function projectedProducts(products, queue) {
   return products.map(product => {
     const movements = queue.filter(e => e.status === 'pending' && e.payload.product_id === product.id);
-    const delta = movements.reduce((sum,e) => sum + (e.payload.tx_type === 'stock_in' ? 1 : -1) * Number(e.payload.quantity), 0);
-    const stock = Number(product.current_stock) + delta;
+    // Match PostgreSQL's two-decimal stock quantities without binary subtraction drift.
+    const delta = movements.reduce((sum,e) => sum + (e.payload.tx_type === 'stock_in' ? 1 : -1) * Math.round(Number(e.payload.quantity) * 100), 0);
+    const stock = (Math.round(Number(product.current_stock) * 100) + delta) / 100;
     return { ...product, current_stock: stock, pending: movements.length, stock_status: stock <= 0 ? 'out' : stock <= Number(product.minimum_stock) ? 'low' : 'ok' };
   });
 }

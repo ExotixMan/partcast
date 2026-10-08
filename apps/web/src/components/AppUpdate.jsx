@@ -5,5 +5,5 @@ export default function AppUpdate(){
  const {session}=useAuth();
  const {needRefresh:[needed,setNeeded],updateServiceWorker}=useRegisterSW();
  if(!needed)return null;
- return <div role="status" className="fixed bottom-20 left-4 right-4 z-40 mx-auto flex max-w-md items-center gap-3 rounded-xl bg-slate-900 p-4 text-sm text-white shadow-xl"><span>A new version is available.</span><button className="font-semibold underline" onClick={async()=>{if(session&&(await queueItems(session.user.id)).length){window.alert('Sync your waiting stock changes before updating the app.');return;}updateServiceWorker(true);}}>Update</button><button className="text-xs" onClick={()=>setNeeded(false)}>Later</button></div>;
+ return <div role="status" className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-4 right-4 z-40 mx-auto flex max-w-lg flex-wrap items-center gap-3 rounded-2xl border border-red-200 bg-white p-4 text-sm text-slate-800 shadow-xl"><span className="flex-1">A new version of PartCast is ready.</span><button className="btn-primary" onClick={async()=>{if(session&&(await queueItems(session.user.id)).length){window.alert('Send your waiting stock changes before updating the app.');return;}updateServiceWorker(true);}}>Update app</button><button className="btn-secondary" onClick={()=>setNeeded(false)}>Later</button></div>;
 }
