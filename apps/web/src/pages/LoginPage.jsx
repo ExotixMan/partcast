@@ -1,24 +1,35 @@
 import { useEffect, useState } from 'react';
 import { LockKeyhole, Mail, ShieldCheck, Wrench } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { storeConfigured } from '../lib/supabase.js';
-import { publicApi } from '../lib/api.js';
+import { storeConfigured, storeConnectionIssue } from '../lib/supabase.js';
+import { publicApi, apiConnectionIssue } from '../lib/api.js';
+import { connectionMessage } from '../lib/connection.js';
 
 export default function LoginPage() {
   const { signIn } = useAuth();
   const [needsSetup,setNeedsSetup]=useState(false);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
+  const [serverError,setServerError]=useState('');
+  const [checkingServer,setCheckingServer]=useState(false);
   const [login,setLogin]=useState({email:'',password:''});
   const [setup,setSetup]=useState({setupSecret:'',fullName:'',email:'',password:''});
 
-  useEffect(()=>{ publicApi('/setup/status').then(r=>setNeedsSetup(r.needsSetup)).catch(()=>{}); },[]);
+  async function checkServer(){
+    setCheckingServer(true);setServerError('');
+    try { const result=await publicApi('/setup/status');setNeedsSetup(Boolean(result.needsSetup)); }
+    catch(e){setServerError(connectionMessage(e));}
+    finally {setCheckingServer(false);}
+  }
+  useEffect(()=>{checkServer();},[]);
 
   async function submitLogin(e){
     e.preventDefault();setLoading(true);setError('');
-    const {error}=await signIn(login.email,login.password);
-    if(error)setError(error.message);
-    setLoading(false);
+    try {
+      const {error}=await signIn(login.email,login.password);
+      if(error)setError(connectionMessage(error,'sign-in service'));
+    } catch(e){setError(connectionMessage(e,'sign-in service'));}
+    finally {setLoading(false);}
   }
   async function submitSetup(e){
     e.preventDefault();setLoading(true);setError('');
@@ -49,18 +60,19 @@ Plan your next order.</h1>
           <p className="text-sm font-semibold uppercase tracking-[.18em] text-red-600">{needsSetup?'First-time setup':'Authorized staff'}</p>
           <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">{needsSetup?'Create the owner account':'Sign in to PartCast'}</h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">{needsSetup?'Use the setup secret configured on the server. This setup can only run once.':'Enter the email and password given to you by your store owner.'}</p>
-          {!storeConfigured&&<p className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">The store connection has not been set up yet. Ask the store owner to complete setup before signing in.</p>}
+          {!storeConfigured&&<p role="alert" className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{storeConnectionIssue}</p>}
+          {serverError&&<div role="alert" className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><p>{serverError}</p><button type="button" className="mt-3 font-semibold underline" disabled={checkingServer} onClick={checkServer}>{checkingServer?'Checking connection…':'Check connection again'}</button></div>}
           {error&&<div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
           {needsSetup ? <form onSubmit={submitSetup} className="mt-7 space-y-4">
             <label><span className="label">Setup secret</span><div className="relative"><LockKeyhole className="absolute left-3 top-3 text-slate-400" size={18}/><input type="password" className="input pl-10" required value={setup.setupSecret} onChange={e=>setSetup({...setup,setupSecret:e.target.value})}/></div></label>
             <label><span className="label">Owner full name</span><input className="input" required value={setup.fullName} onChange={e=>setSetup({...setup,fullName:e.target.value})}/></label>
             <label><span className="label">Email address</span><input type="email" className="input" required value={setup.email} onChange={e=>setSetup({...setup,email:e.target.value})}/></label>
             <label><span className="label">Password</span><input type="password" minLength={10} className="input" required value={setup.password} onChange={e=>setSetup({...setup,password:e.target.value})}/><span className="mt-1 block text-xs text-slate-400">Use at least 10 characters.</span></label>
-            <button disabled={loading||!storeConfigured} className="btn-primary w-full">{loading?'Creating account...':'Create owner account'}</button>
+            <button disabled={loading||!storeConfigured||Boolean(apiConnectionIssue)} className="btn-primary w-full">{loading?'Creating account...':'Create owner account'}</button>
           </form> : <form onSubmit={submitLogin} className="mt-7 space-y-4">
             <label><span className="label">Email address</span><div className="relative"><Mail className="absolute left-3 top-3 text-slate-400" size={18}/><input type="email" autoComplete="email" className="input pl-10" required value={login.email} onChange={e=>setLogin({...login,email:e.target.value})}/></div></label>
             <label><span className="label">Password</span><div className="relative"><LockKeyhole className="absolute left-3 top-3 text-slate-400" size={18}/><input type="password" autoComplete="current-password" className="input pl-10" required value={login.password} onChange={e=>setLogin({...login,password:e.target.value})}/></div></label>
-            <button disabled={loading||!storeConfigured} className="btn-primary w-full">{loading?'Signing in...':'Sign in securely'}</button>
+            <button disabled={loading||!storeConfigured||Boolean(apiConnectionIssue)} className="btn-primary w-full">{loading?'Signing in...':'Sign in securely'}</button>
           </form>}
           <div className="mt-7 flex items-start gap-3 rounded-xl bg-slate-50 p-4"><ShieldCheck className="mt-0.5 shrink-0 text-slate-500" size={18}/><p className="text-xs leading-5 text-slate-500">Only authorized staff can sign in. New staff? Ask your store owner to create your account.</p></div>
         </div>

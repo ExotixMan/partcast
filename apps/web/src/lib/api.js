@@ -1,28 +1,48 @@
 import { readCache, saveCache, queueItems, projectedProducts, enqueueMovement, drainQueue } from './offline.js';
+import { resolveApiConnection, connectionMessage } from './connection.js';
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:10000').replace(/\/$/, '');
+const connection = resolveApiConnection(import.meta.env.VITE_API_URL, window.location.href, import.meta.env.PROD);
+const API_URL = connection.url;
+export const apiConnectionIssue = connection.error || null;
 let currentSession = null;
 let syncing = null;
 export function setApiSession(session) { currentSession = session; }
 const cacheable = path => /^\/api\/(me|dashboard|products(?:\?|\/|$)|suppliers$|reorder|forecast\/|data-quality|notifications$)/.test(path);
 export class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
 
+function checkConnection() {
+  if (apiConnectionIssue) throw Object.assign(new ApiError(apiConnectionIssue, 0), { code: 'configuration' });
+}
+async function fetchApi(path, options) {
+  checkConnection();
+  try {
+    const result = await fetch(`${API_URL}${path}`, options);
+    window.dispatchEvent(new CustomEvent('partcast:connection', { detail: true }));
+    return result;
+  } catch (error) {
+    window.dispatchEvent(new CustomEvent('partcast:connection', { detail: false }));
+    if (error.name === 'AbortError') throw error;
+    throw new ApiError(connectionMessage(error), 0);
+  }
+}
+
 async function networkRequest(path, options = {}) {
+  const { responseType, ...fetchOptions } = options;
   const session = currentSession;
   if (!session?.access_token) throw new ApiError('Please sign in to continue.', 401);
   const headers = { ...(options.headers || {}), Authorization: `Bearer ${session.access_token}` };
   if (!(options.body instanceof FormData) && options.body !== undefined) headers['Content-Type'] = 'application/json';
   let res;
-  try { res = await fetch(`${API_URL}${path}`, { ...options, headers, signal: options.signal || AbortSignal.timeout(path.includes('/forecast/train') ? 180000 : 20000) });
-  } catch(error) {window.dispatchEvent(new CustomEvent('partcast:connection',{detail:false}));throw error;}
-  window.dispatchEvent(new CustomEvent('partcast:connection',{detail:true}));
+  res = await fetchApi(path, { ...fetchOptions, headers, signal: options.signal || AbortSignal.timeout(path.includes('/forecast/train') ? 180000 : 20000) });
   const json = (res.headers.get('content-type') || '').includes('application/json');
   if (!res.ok) {
     const body = json ? await res.json().catch(() => ({})) : {};
     throw new ApiError(body.error || `Request failed (${res.status})`, res.status);
   }
   if (res.status === 204) return null;
-  return json ? res.json() : res.blob();
+  if (responseType === 'blob' && /application\/(vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|octet-stream)/.test(res.headers.get('content-type') || '')) return res.blob();
+  if (!json || responseType === 'blob') throw new ApiError('The store server returned unexpected information. Ask the store owner to check the server address.', 502);
+  return res.json();
 }
 
 async function localRead(path) {
@@ -59,7 +79,9 @@ async function request(path, options = {}) {
     if (read && cacheable(path) && userId === currentSession?.user?.id) await saveCache(userId, path, result).catch(() => {});
     return result;
   } catch (error) {
-    if (read && !error.status) return localRead(path);
+    if (read && !error.status && error.code !== 'configuration' && error.name !== 'AbortError') {
+      try { return await localRead(path); } catch (cachedError) { if (!cachedError.status) throw error; throw cachedError; }
+    }
     throw error;
   }
 }
@@ -106,13 +128,14 @@ export const api = {
   post: (path, body) => path === '/api/inventory/movement' ? movement(body) : request(path, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body ?? {}) }),
   patch: (path, body) => request(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) }),
   download: async path => {
-    const blob = await request(path), url = URL.createObjectURL(blob), a = document.createElement('a');
+    const blob = await request(path, { responseType: 'blob' }), url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = path.split('/').pop() || 'partcast-report.xlsx';
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   }
 };
 export async function publicApi(path, options = {}) {
-  const res = await fetch(`${API_URL}${path}`, { ...options, signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
+  const res = await fetchApi(path, { ...options, signal: options.signal || AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
+  if (!(res.headers.get('content-type') || '').includes('application/json')) throw new ApiError('The store server returned a web page instead of store data. Ask the store owner to check the server address.', 502);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(body.error || `Request failed (${res.status})`, res.status);
   return body;

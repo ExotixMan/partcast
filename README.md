@@ -91,3 +91,5 @@ See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure 
 This version adds an installable PWA, saved inventory and duplicate-safe stock movement sync, readable mobile stock controls, in-app stock notifications and automatic supplier checks. The assistant uses local help, then live store records, then optional AI. Forecast evaluation now excludes same-day demand leakage and compares against a simple baseline; the supplied data does not establish reliable forecast accuracy.
 
 See [Preparing actual forecasting data](docs/FORECASTING_DATA.md) for joining raw inventory quantities to sales invoices, producing cleaned workbooks with row provenance, and comparing historical 30-day forecasts. Current forecasting rejects future dates and stale eligible history rather than assuming unrecorded days had zero sales.
+
+For a Render “Failed to fetch” error, see [Render connection settings](docs/RENDER_CONNECTION.md) for the exact website/API addresses, matching Supabase keys, and rebuild checks.

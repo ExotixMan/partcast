@@ -87,3 +87,38 @@ test('sign out deletes account cache; next account cannot read it',async({page,c
  const entries=await page.evaluate(()=>new Promise(resolve=>{const r=indexedDB.open('partcast-offline-v1');r.onsuccess=()=>{const req=r.result.transaction('cache').objectStore('cache').getAll();req.onsuccess=()=>resolve(req.result);};}));
  expect(entries).toEqual([]);
 });
+
+test('sign-in connection failures show a retry action and release the submit button',async({page,context})=>{
+ let serverAvailable=false;
+ await context.route('http://localhost:10000/**',async route=>{
+  if(!serverAvailable){await route.abort('failed');return;}
+  await route.fulfill({json:{needsSetup:false},headers:{'access-control-allow-origin':'*'}});
+ });
+ await context.route(`https://${project}.supabase.co/**`,route=>route.abort('failed'));
+ await page.goto('/');
+ await expect(page.getByText(/Cannot reach the store server/)).toBeVisible();
+ serverAvailable=true;
+ await page.getByRole('button',{name:'Check connection again'}).click();
+ await expect(page.getByText(/Cannot reach the store server/)).toHaveCount(0);
+ await page.getByLabel('Email address').fill('staff@example.test');
+ await page.getByLabel('Password',{exact:true}).fill('test-only-password');
+ await page.getByRole('button',{name:'Sign in securely'}).click();
+ await expect(page.getByText(/Cannot reach the sign-in service/)).toBeVisible({timeout:20000});
+ await expect(page.getByRole('button',{name:'Sign in securely'})).toBeEnabled();
+});
+
+test('reports download Excel and reject an HTML page returned by a misconfigured API',async({page,context})=>{
+ await setup(context);
+ let wrongServer=false;
+ await context.route('http://localhost:10000/api/reports/inventory.xlsx',async route=>{
+  await route.fulfill({contentType:wrongServer?'text/html':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body:wrongServer?'<html>Website page</html>':'test-only-report',headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/reports');
+ const inventory=page.getByRole('article').filter({has:page.getByRole('heading',{name:'Inventory report'})});
+ const downloading=page.waitForEvent('download');
+ await inventory.getByRole('button',{name:'Download Excel'}).click();
+ expect((await downloading).suggestedFilename()).toBe('inventory.xlsx');
+ wrongServer=true;
+ await inventory.getByRole('button',{name:'Download Excel'}).click();
+ await expect(page.getByText(/unexpected information/i)).toBeVisible();
+});

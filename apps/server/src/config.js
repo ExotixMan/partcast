@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { supabaseKeyIssue, frontendOrigins } from './utils/connection-config.js';
 
 const schema = z.object({
   NODE_ENV: z.string().default('development'),
@@ -19,6 +20,13 @@ const schema = z.object({
   PYTHON_BIN: z.string().default('python3'),
   ML_SCRIPT_PATH: z.string().default('../../ml/train_forecast.py'),
   BACKUP_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30)
+}).superRefine((values, ctx) => {
+  for (const [field, role] of [['SUPABASE_ANON_KEY', 'anon'], ['SUPABASE_SERVICE_ROLE_KEY', 'service_role']]) {
+    const issue = supabaseKeyIssue(values.SUPABASE_URL, values[field], role);
+    if (issue) ctx.addIssue({ code: 'custom', path: [field], message: issue });
+  }
+  try { frontendOrigins(values.FRONTEND_ORIGINS); }
+  catch { ctx.addIssue({ code: 'custom', path: ['FRONTEND_ORIGINS'], message: 'Use comma-separated HTTP or HTTPS website addresses.' }); }
 });
 
 const parsed = schema.safeParse(process.env);
@@ -29,5 +37,5 @@ if (!parsed.success) {
 
 export const config = {
   ...parsed.data,
-  frontendOrigins: parsed.data.FRONTEND_ORIGINS.split(',').map(v => v.trim()).filter(Boolean)
+  frontendOrigins: frontendOrigins(parsed.data.FRONTEND_ORIGINS)
 };
