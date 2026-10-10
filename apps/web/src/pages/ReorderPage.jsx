@@ -1,5 +1,5 @@
 import { t, useLocale } from "../context/LocaleContext.jsx";
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { ArrowRight, CheckCircle2, Mail, Package, Plus, RefreshCw, Send, Truck, UserRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
@@ -16,7 +16,7 @@ const peso = value => new Intl.NumberFormat('en-PH', {
   currency: 'PHP'
 }).format(Number(value || 0));
 const units = value => Number(value || 0).toLocaleString(undefined, {
-  maximumFractionDigits: 1
+  maximumFractionDigits: 2
 });
 const suggested = row => Math.ceil(Number(row.recommended_quantity || 0));
 const blankSupplier = {
@@ -47,25 +47,43 @@ export default function ReorderPage() {
   const [unitCost, setUnitCost] = useState(0);
   const [leadTime, setLeadTime] = useState(7);
   const [emailGroup, setEmailGroup] = useState(null);
+  const [emailChoices,setEmailChoices]=useState([]),[choiceId,setChoiceId]=useState(''),[columnName,setColumnName]=useState('');
+  const loadNumber=useRef(0),emailNumber=useRef(0);
   const [draft, setDraft] = useState({
       subject: '',
       message: '',
-      items: []
+      items: [],extra_columns:[]
     }),
     [emailError, setEmailError] = useState('');
-  function reviewEmail(group) {
+  async function reviewEmail(group) {
+    const request=++emailNumber.current;
     setEmailGroup(group);
     setEmailError('');
+    setColumnName('');setChoiceId('');setEmailChoices(group.items);
     setDraft({
       subject: 'NPG Autoparts - Parts order request',
       message: 'Hello, please confirm availability, prices, and delivery time for the parts below. Thank you.',
+      extra_columns:[],
       items: group.items.map(r => ({
         product_id: r.product_id,
         part_number: r.part_number || '',
         description: r.description,
-        quantity: String(suggested(r))
+        quantity: String(suggested(r)),unit:r.unit||'units',extra_values:{}
       }))
     });
+    try{const result=await api.get(`/api/reorder?onlyNeeded=false&supplierId=${group.supplierId}`);if(request===emailNumber.current)setEmailChoices(result.data||[]);}catch(e){if(request===emailNumber.current)setEmailError(e.message);}
+  }
+  function addColumn(){
+    const label=columnName.trim();
+    const reserved=['Part number','Description','In stock','Unit','Quantity'].flatMap(x=>[x.toLowerCase(),t(x).toLowerCase()]);
+    if(!label||label.length>50||/[\r\n]/.test(label)||reserved.includes(label.toLowerCase())||draft.extra_columns.some(c=>c.label.toLowerCase()===label.toLowerCase())||draft.extra_columns.length>=5){setEmailError('Use a unique column name. You can add up to 5 columns.');return;}
+    setDraft(d=>({...d,extra_columns:[...d.extra_columns,{id:crypto.randomUUID(),label}]}));setColumnName('');setEmailError('');
+  }
+  function removeColumn(id){setDraft(d=>({...d,extra_columns:d.extra_columns.filter(c=>c.id!==id),items:d.items.map(i=>({...i,extra_values:Object.fromEntries(Object.entries(i.extra_values||{}).filter(([key])=>key!==id))}))}));}
+  function addPart(){
+    const row=emailChoices.find(r=>r.product_id===choiceId);
+    if(!row||draft.items.some(i=>i.product_id===choiceId)||draft.items.length>=100)return;
+    setDraft(d=>({...d,items:[...d.items,{product_id:row.product_id,part_number:row.part_number||'',description:row.description,unit:row.unit||'units',quantity:String(Math.max(1,suggested(row))),extra_values:{}}]}));setChoiceId('');setEmailError('');
   }
   function editItem(id, key, value) {
     setDraft(d => ({
@@ -77,21 +95,25 @@ export default function ReorderPage() {
     }));
     setEmailError('');
   }
-  async function load() {
-    setLoading(true);
+  async function load(quiet=false) {
+    const request=++loadNumber.current;
+    if(!quiet)setLoading(true);
     setLoadError('');
     try {
       const [r, s] = await Promise.all([api.get('/api/reorder?onlyNeeded=true'), api.get('/api/suppliers')]);
+      if(request!==loadNumber.current)return;
       setRows(r.data || []);
       setSuppliers(s.data || []);
     } catch (error) {
-      setLoadError(error.message);
+      if(request===loadNumber.current)setLoadError(error.message);
     } finally {
-      setLoading(false);
+      if(request===loadNumber.current)setLoading(false);
     }
   }
   useEffect(() => {
-    load();
+    load();const refresh=()=>{if(navigator.onLine)load(true);};const timer=setInterval(refresh,60000);
+    window.addEventListener('partcast:queue',refresh);window.addEventListener('online',refresh);window.addEventListener('focus',refresh);
+    return()=>{loadNumber.current++;emailNumber.current++;clearInterval(timer);window.removeEventListener('partcast:queue',refresh);window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
   }, []);
   const groups = useMemo(() => {
     const result = new Map();
@@ -207,11 +229,12 @@ export default function ReorderPage() {
     }
   }
   return <>
-    <PageHeader title={t("Restock & suppliers")} subtitle={t("See what is running low, check the suggested amounts, and contact your supplier.")} actions={<><button className="btn-secondary" onClick={load} disabled={loading}><RefreshCw size={17} />{loading ? t('Checking stock…') : t('Refresh list')}</button>{admin && <button className="btn-primary" onClick={() => openSupplier()}><Plus size={17} />{t("Add supplier")}</button>}</>} />
+    <PageHeader title={t("Restock & suppliers")} subtitle={t("See what is running low, check the suggested amounts, and contact your supplier.")} actions={<><button className="btn-secondary" onClick={()=>load()} disabled={loading}><RefreshCw size={17} />{loading ? t('Checking stock…') : t('Refresh list')}</button>{admin && <button className="btn-primary" onClick={() => openSupplier()}><Plus size={17} />{t("Add supplier")}</button>}</>} />
+    <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6"><p className="font-semibold">{t("How stock alerts work")}</p><p className="mt-1 text-slate-600">{t("Parts at or below their low-stock level appear here, including parts with no stock. Set the low-stock level and reserve quantity in Inventory, then choose a supplier here.")}</p><Link className="mt-2 inline-block font-semibold text-red-700" to="/inventory">{t("Check stock limits in Inventory")}</Link></div>
 
     <div className="mb-5 flex w-full gap-1 rounded-xl border border-slate-200 bg-white p-1 sm:w-fit" role="group" aria-label={t("Restock pages")}><button className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold ${tab === 'reorder' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`} onClick={() => setTab('reorder')} aria-pressed={tab === 'reorder'}><Package size={17} />{t("Parts to restock")}</button><button className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold ${tab === 'suppliers' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`} onClick={() => setTab('suppliers')} aria-pressed={tab === 'suppliers'}><Truck size={17} />{t("Suppliers")}</button></div>
 
-    {loading ? <Loading label={t("Checking parts and suppliers…")} /> : loadError ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5"><h2 className="font-bold text-amber-950">{t("We could not load your restock list.")}</h2><p className="mt-2 text-sm text-amber-900">{t(loadError)}</p><button className="btn-secondary mt-4" onClick={load}>{t("Try again")}</button></div> : tab === 'reorder' ? <>
+    {loading ? <Loading label={t("Checking parts and suppliers…")} /> : loadError ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5"><h2 className="font-bold text-amber-950">{t("We could not load your restock list.")}</h2><p className="mt-2 text-sm text-amber-900">{t(loadError)}</p><button className="btn-secondary mt-4" onClick={()=>load()}>{t("Try again")}</button></div> : tab === 'reorder' ? <>
       <div className="mb-5 grid gap-3 sm:grid-cols-3"><div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Parts to review")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{rows.length}</p><p className="mt-1 text-sm text-slate-500">{t("Suggested for your next order")}</p></div><div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Out of stock")}</p><p className={`mt-2 text-3xl font-bold ${outOfStock ? 'text-red-700' : 'text-slate-950'}`}>{outOfStock}</p><p className="mt-1 text-sm text-slate-500">{t("Check these parts first")}</p></div><div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Need a supplier")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{unassigned}</p><p className="mt-1 text-sm text-slate-500">{t("Choose who supplies each part")}</p></div></div>
       {groups.length > 0 ? <div className="space-y-5"><section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5"><h2 className="font-bold text-slate-950">{t("Before you order")}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t("1. Check the quantity on your shelves. \xA0 2. Review the suggested amount. \xA0 3. Contact your supplier to confirm price and availability.")}</p><p className="mt-2 text-sm leading-6 text-slate-500">{t("Suggestions use your stock limits and available demand estimates. Emailing a supplier does not add stock to PartCast.")}</p></section>{groups.map(group => <section key={group.supplierId || 'unassigned'} className="panel overflow-hidden"><div className="panel-header"><div className="flex min-w-0 items-start gap-3"><div className="shrink-0 rounded-xl bg-red-50 p-3 text-red-700"><Truck size={21} /></div><div className="min-w-0"><h2 className="font-bold text-slate-950">{group.name}</h2><p className="mt-1 break-words text-sm text-slate-600">{group.supplierId ? group.email || t('An email address is needed to email this supplier.') : admin ? t('Choose a supplier below before sending an email.') : t('Ask your store manager to choose a supplier.')}</p><p className="mt-1 text-sm text-slate-500">{group.items.length}{t(" part")}{group.items.length === 1 ? '' : t('s')}{t(" to review")}</p></div></div>{admin && group.supplierId && (group.email ? <button className="btn-primary shrink-0" disabled={Boolean(busy)} onClick={() => reviewEmail(group)}><Mail size={17} />{t("Review supplier email")}</button> : <button className="btn-secondary shrink-0" disabled={!suppliers.some(item => item.id === group.supplierId)} onClick={() => openSupplier(suppliers.find(item => item.id === group.supplierId))}><Plus size={17} />{t("Add email address")}</button>)}</div>
         <div className="divide-y divide-slate-100 lg:hidden">{group.items.map(row => <article key={row.product_id} className="p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-red-700">{row.part_number || t('No part number')}</p><StatusBadge status={row.status} /></div><h3 className="mt-2 font-bold leading-6 text-slate-950">{t(row.description)}</h3><dl className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-50 p-3"><dt className="text-sm text-slate-600">{t("In stock now")}</dt><dd className="mt-1 text-lg font-semibold">{units(row.current_stock)}{t(" units")}</dd></div><div className="rounded-xl bg-red-50 p-3"><dt className="text-sm text-red-700">{t("Suggested order")}</dt><dd className="mt-1 text-lg font-bold text-red-800">{suggested(row)}{t(" units")}</dd></div><div><dt className="text-sm text-slate-500">{t("Estimated sales ahead")}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{units(row.predicted_quantity)}{t(" units")}</dd></div><div><dt className="text-sm text-slate-500">{t("Estimated order cost")}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{peso(row.estimated_order_cost)}</dd></div></dl>{admin && !row.supplier_id && <button className="btn-secondary mt-4 w-full" onClick={() => openAssign(row)}><Plus size={16} />{t("Choose supplier")}</button>}</article>)}</div>
@@ -257,11 +280,13 @@ export default function ReorderPage() {
               ...draft,
               message: e.target.value
             })} /></label>
-    <h3 className="font-semibold">{t("Parts to request")}</h3>{draft.items.map(i => <div key={i.product_id} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-[1fr_100px]"><div className="space-y-3"><label className="block"><span className="label">{t("Part number")}</span><input className="input" maxLength={120} value={i.part_number} onChange={e => editItem(i.product_id, 'part_number', e.target.value)} /></label><label className="block"><span className="label">{t("Description *")}</span><input className="input" required minLength={2} maxLength={500} value={i.description} onChange={e => editItem(i.product_id, 'description', e.target.value)} /></label></div><div><label className="block"><span className="label">{t("Quantity *")}</span><input className="input" required type="number" min="0.01" max="999999999999.99" step="0.01" value={i.quantity} onChange={e => editItem(i.product_id, 'quantity', e.target.value)} /></label><button type="button" className="btn-secondary mt-3 w-full" onClick={() => setDraft(d => ({
+    <section className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">{t("Customize the email table")}</h3><p className="mt-1 text-sm text-slate-600">{t("Add up to 5 columns, such as Brand, Delivery date, or Notes. These fields are included in this email only.")}</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><label className="flex-1"><span className="label">{t("Column name")}</span><input className="input" maxLength={50} value={columnName} onChange={e=>setColumnName(e.target.value)} placeholder={t("For example: Delivery date")} /></label><button type="button" className="btn-secondary sm:self-end" disabled={!columnName.trim()||draft.extra_columns.length>=5} onClick={addColumn}><Plus size={16}/>{t("Add column")}</button></div><div className="mt-3 flex flex-wrap gap-2">{draft.extra_columns.map(c=><button key={c.id} type="button" className="btn-secondary" onClick={()=>removeColumn(c.id)} aria-label={t('Remove column {v0}',{v0:c.label})}>{c.label} ×</button>)}</div></section>
+    <div className="flex flex-col gap-2 sm:flex-row"><label className="flex-1"><span className="label">{t("Add another part from this supplier")}</span><select className="input" value={choiceId} onChange={e=>setChoiceId(e.target.value)}><option value="">{t("Choose a part")}</option>{emailChoices.filter(r=>!draft.items.some(i=>i.product_id===r.product_id)).map(r=><option key={r.product_id} value={r.product_id}>{r.part_number||r.description} · {r.description}</option>)}</select></label><button type="button" className="btn-secondary sm:self-end" disabled={!choiceId||draft.items.length>=100} onClick={addPart}><Plus size={16}/>{t("Add part to request")}</button></div>
+    <h3 className="font-semibold">{t("Parts to request")}</h3>{draft.items.map(i => <div key={i.product_id} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-[1fr_100px]"><div className="space-y-3"><label className="block"><span className="label">{t("Part number")}</span><input className="input" maxLength={120} value={i.part_number} onChange={e => editItem(i.product_id, 'part_number', e.target.value)} /></label><label className="block"><span className="label">{t("Description *")}</span><input className="input" required minLength={2} maxLength={500} value={i.description} onChange={e => editItem(i.product_id, 'description', e.target.value)} /></label><label className="block"><span className="label">{t("Unit")}</span><input className="input" maxLength={40} value={i.unit||''} onChange={e=>editItem(i.product_id,'unit',e.target.value)} /></label>{draft.extra_columns.map(c=><label key={c.id} className="block"><span className="label">{c.label}</span><input className="input" maxLength={300} value={i.extra_values?.[c.id]||''} onChange={e=>editItem(i.product_id,'extra_values',{...i.extra_values,[c.id]:e.target.value})}/></label>)}</div><div><label className="block"><span className="label">{t("Quantity *")}</span><input className="input" required type="number" min="0.01" max="999999999999.99" step="0.01" value={i.quantity} onChange={e => editItem(i.product_id, 'quantity', e.target.value)} /></label><button type="button" className="btn-secondary mt-3 w-full" onClick={() => setDraft(d => ({
                 ...d,
                 items: d.items.filter(x => x.product_id !== i.product_id)
               }))}>{t("Remove")}</button></div></div>)}
-    </fieldset><p className="text-sm text-slate-500">{t("Confirm prices with your supplier. This email does not change stock. Record a delivery when the parts arrive.")}</p>
+    </fieldset><section><h3 className="mb-3 font-semibold">{t("Email table preview")}</h3><div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr>{['Part number','Description','In stock','Unit','Quantity'].map(label=><th key={label} className="whitespace-nowrap px-3 py-3">{t(label)}</th>)}{draft.extra_columns.map(c=><th key={c.id} className="whitespace-nowrap px-3 py-3">{c.label}</th>)}</tr></thead><tbody>{draft.items.map(i=><tr key={i.product_id} className="border-t border-slate-200"><td className="px-3 py-3">{i.part_number}</td><td className="min-w-48 px-3 py-3">{i.description}</td><td className="px-3 py-3">{units(emailChoices.find(r=>r.product_id===i.product_id)?.current_stock)}</td><td className="px-3 py-3">{i.unit||'units'}</td><td className="px-3 py-3">{i.quantity}</td>{draft.extra_columns.map(c=><td key={c.id} className="min-w-32 px-3 py-3">{i.extra_values?.[c.id]||''}</td>)}</tr>)}</tbody></table></div></section><p className="text-sm text-slate-500">{t("Confirm prices with your supplier. This email does not change stock. Record a delivery when the parts arrive.")}</p>
     </form>}
     </Modal>
     <Toast toast={toast} onClose={() => setToast(null)} />

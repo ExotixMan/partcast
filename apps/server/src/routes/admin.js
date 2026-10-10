@@ -1,4 +1,5 @@
-import {integrationStatuses,saveIntegration,getIntegration} from '../utils/integrations.js';
+import {integrationStatuses,saveIntegration,getIntegration,integrationReady} from '../utils/integrations.js';
+import {neededRestock,normalizeRestock} from '../utils/restock.js';
 import {gmailAccessToken} from '../utils/gmail.js';
 import {forecastingStatus} from '../utils/ml.js';
 import {supplierEmailSchema} from '../utils/storeValidation.js';
@@ -63,16 +64,16 @@ router.patch('/users/:id', requireRole('owner'), async(req,res,next)=>{
 });
 
 
-router.get('/system-status', requireRole('super_admin'),async(req,res)=>{
-  res.json({
-    emailConfigured:Boolean(process.env.BREVO_API_KEY && process.env.BREVO_SENDER_EMAIL),
+router.get('/system-status', requireRole('super_admin'),async(req,res,next)=>{
+ try{res.json({
+    emailConfigured:Boolean(integrationReady('gmail',await getIntegration('gmail'))),emailProvider:'gmail',
     backupBucket:'partcast-backups',
     modelBucket:'partcast-models',
     environment:process.env.NODE_ENV||'development'
-  });
+  });}catch(e){next(e);}
 });
 
-router.get('/store-status',(req,res)=>res.json({emailConfigured:Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL)}));
+router.get('/store-status',async(req,res,next)=>{try{res.json({emailConfigured:Boolean(integrationReady('gmail',await getIntegration('gmail'))),emailProvider:'gmail'});}catch(e){next(e);}});
 router.get('/integrations',requireRole('super_admin'),async(req,res,next)=>{try{res.json({data:await integrationStatuses(),forecasting:await forecastingStatus()});}catch(e){next(e);}});
 router.patch('/integrations/:provider',requireRole('super_admin'),async(req,res,next)=>{try{
  const provider=z.enum(['gmail','gemini']).parse(req.params.provider);
@@ -110,15 +111,19 @@ router.patch('/settings/:key', requireRole('owner'), async(req,res,next)=>{
 router.post('/supplier-email/:supplierId', async(req,res,next)=>{
   try{
     const draft=Object.keys(req.body||{}).length?supplierEmailSchema.parse(req.body):null;
-    const {data:recommendations,error}=await adminDb.from('reorder_recommendations').select('*').eq('supplier_id',req.params.supplierId).gt('recommended_quantity',0);
+    const supplierId=z.string().uuid().parse(req.params.supplierId);
+    let query=adminDb.from('reorder_recommendations').select('*').eq('supplier_id',supplierId);
+    query=draft?query.in('product_id',draft.items.map(i=>i.product_id)):neededRestock(query);
+    const {data:rawRecommendations,error}=await query;
     if(error)throw error;
+    const recommendations=(rawRecommendations||[]).map(normalizeRestock);
     if(!recommendations?.length)return res.status(422).json({error:'No replenishment items for this supplier.'});
     const supplier={id:req.params.supplierId,name:recommendations[0].supplier_name,email:recommendations[0].supplier_email};
     if(!supplier.email)return res.status(422).json({error:'This supplier has no email address.'});
     const available=new Map(recommendations.map(i=>[i.product_id,i]));
-    if(draft&&draft.items.some(i=>!available.has(i.product_id)))return res.status(422).json({error:'Choose parts from this supplier’s saved restock list.'});
+    if(draft&&draft.items.some(i=>!available.has(i.product_id)))return res.status(422).json({error:'Choose active parts assigned to this supplier.'});
     const items=draft?draft.items.map(i=>({...available.get(i.product_id),...i,recommended_quantity:i.quantity})):recommendations;
-    const provider=await sendSupplierEmail({supplier,items,subject:draft?.subject,message:draft?.message});
+    const provider=await sendSupplierEmail({supplier,items,subject:draft?.subject,message:draft?.message,extra_columns:draft?.extra_columns});
     const hash=recommendationHash(items);
     await adminDb.from('supplier_email_logs').insert({supplier_id:supplier.id,recipient_email:supplier.email,subject:draft?.subject||'NPG Autoparts replenishment request',request_payload:draft,recommendation_hash:hash,item_count:items.length,status:'sent',provider_message_id:provider.messageId||null,sent_by:req.user.id});
     await audit(req,'send_email','supplier',supplier.id,{items:items.length});

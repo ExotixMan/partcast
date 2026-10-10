@@ -10,7 +10,7 @@ Migration 0005 adds categories, barcodes, alternate names, private part photos, 
 
 ## 2. Required password and Gmail email code
 
-Follow [Required login, roles and forecasting upgrade](LOGIN_ROLES_FORECASTING.md). Apply missing migrations through 0005, then **0006 by itself** and **0007 separately**. Configure Gmail OAuth credentials on the API before deploying this release. Staff must enter a password and then a six-digit code; the old alternative Supabase OTP method is no longer accepted. Gmail delivery uses Google OAuth, and Gemini uses its separate API key. Owners do not see IT settings; only Super Admin can change saved Google connections.
+Follow [Required login, roles and forecasting upgrade](LOGIN_ROLES_FORECASTING.md). Apply missing migrations through 0005, then **0006 by itself**, **0007 separately** and **0008** for the latest Restock fix. Stores already running 0001–0007 need only 0008 for this update. Configure Gmail OAuth credentials on the API before deploying this release. Staff must enter a password and then a six-digit code; the old alternative Supabase OTP method is no longer accepted. Gmail delivery uses Google OAuth, and Gemini uses its separate API key. Owners do not see IT settings; only Super Admin can change saved Google connections.
 
 ## 3. Deploy both Render services
 
@@ -62,9 +62,9 @@ Select **English / Tagalog** in the header or login screen to translate the inte
 
 ### Edit the supplier email
 
-In **Restock → Review supplier email**, edit the subject, message, part number, description, and requested quantities. Remove unneeded rows, then send the reviewed table. The recipient stays the saved supplier email, and selected products must belong to that supplier's saved recommendations. Inputs are validated and escaped in the HTML email.
+In **Restock → Review supplier email**, edit the subject, message, part number, description, unit and requested quantities. Use **Customize the email table** to add up to five uniquely named text columns, then fill values for each part. Add another active part assigned to that supplier when needed, remove unneeded rows/columns, and check the table preview before sending. The recipient stays the saved supplier email. Inputs are validated and escaped in the HTML email. See [Restock and stock-field setup](RESTOCK_GMAIL.md) for limits and examples.
 
-This manual draft does not change product descriptions or automatic restock email settings. Automatic email continues using the store's saved recommendations and cooldown. Actual delivery requires a verified Brevo sender and API key. Email acceptance and logging cannot guarantee exactly one delivery across every server/provider crash.
+This manual draft does not change product descriptions, stock or automatic restock email settings. Automatic email continues using the store's saved recommendations and cooldown. Both manual and automatic requests use the same Gmail connection as login codes. Actual delivery requires valid Gmail OAuth authorization and sending capacity. Email acceptance and logging cannot guarantee exactly one delivery across every server/provider crash.
 
 ### Download Excel reports
 
@@ -80,6 +80,6 @@ Reports need internet and download directly to the browser's Downloads folder. E
 
 ## Verification and remaining live checks
 
-See [verification](VERIFICATION.md) for the latest suite results and production-build checks. Production dependency audits reported no known vulnerabilities in both packages at the time of testing. Tests use synthetic store/customer records. Database tests execute migrations 0001–0007 in PostgreSQL through PGlite and exercise atomic baskets, credit, idempotent retries, overpayment/precision checks, active-account access, notifications, and direct-write restrictions. Server tests build and reopen real Excel workbooks and decode real image bytes. Chromium tests exercise responsive screens, offline reload/reconnect, edited mail payloads, photo gallery caching, camera denial/manual entry, bilingual/dark preferences, and mocked password-then-Gmail-code success/denial.
+See [verification](VERIFICATION.md) for the latest suite results and production-build checks. Production dependency audits reported no known vulnerabilities in both packages at the time of testing. Tests use synthetic store/customer records. Database tests execute migrations 0001–0008 in PostgreSQL through PGlite and exercise atomic baskets, credit, idempotent retries, overpayment/precision checks, active-account access, notifications, Restock thresholds and direct-write restrictions. Server tests build and reopen real Excel workbooks and decode real image bytes. Chromium tests exercise responsive screens, offline reload/reconnect, edited mail payloads, photo gallery caching, camera denial/manual entry, bilingual/dark preferences, and mocked password-then-Gmail-code success/denial.
 
 These checks do not send real staff/supplier emails, apply changes to hosted Supabase, deploy Render, or establish physical-camera accuracy. Complete those live checks after the activation steps. Existing forecasting data-quality requirements still apply; see [Forecasting data](FORECASTING_DATA.md).

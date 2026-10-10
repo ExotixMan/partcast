@@ -4,6 +4,7 @@ import { adminDb } from '../supabase.js';
 import { buildBackupWorkbook } from '../utils/excel.js';
 import { fetchAll } from '../utils/helpers.js';
 import { recommendationHash, sendSupplierEmail } from '../utils/email.js';
+import {neededRestock,normalizeRestock} from '../utils/restock.js';
 import { runForecastPython } from '../utils/ml.js';
 import { config } from '../config.js';
 
@@ -98,8 +99,9 @@ async function sendAutomaticSuppliers(actorId = null) {
   if (setting?.value !== true) return { skipped:true, reason:'Automatic supplier email is disabled.' };
   const { data: cooldownSetting } = await adminDb.from('system_settings').select('value').eq('key','supplier_email_cooldown_days').maybeSingle();
   const cooldownDays = Number(cooldownSetting?.value || 3);
-  const { data: rows, error } = await adminDb.from('reorder_recommendations').select('*').gt('recommended_quantity',0).not('supplier_id','is',null).not('supplier_email','is',null).order('supplier_name');
+  const { data: rawRows, error } = await neededRestock(adminDb.from('reorder_recommendations').select('*')).not('supplier_id','is',null).not('supplier_email','is',null).order('supplier_name');
   if(error) throw error;
+  const rows=(rawRows||[]).map(normalizeRestock);
 
   const grouped = new Map();
   for(const row of rows || []){

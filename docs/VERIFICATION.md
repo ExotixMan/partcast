@@ -1,8 +1,20 @@
 # PartCast verification
 
-This report describes local checks for required Gmail login codes, store roles, simpler inventory/sales workflows, and the forecasting runtime repair. Test records use synthetic products, suppliers, and customers; no customer sales workbook was newly published.
+This report describes local checks for required Gmail login codes, store roles, simpler inventory/sales workflows, the forecasting runtime repair and the subsequent Restock/Gmail supplier-table update. Test records use synthetic products, suppliers, and customers; no customer sales workbook was newly published.
 
-## Application and database checks
+## Latest Restock and Gmail update
+
+- Full server suite: **45 passed**, including the complete SQL installer checks, real PostgreSQL migration 0008 execution and the existing Node-to-Python forecasting checks.
+- Frontend unit suite: **17 passed**; production Vite/PWA build completed.
+- Targeted Chromium suite: **5 passed**, covering planning/email review, edited supplier quantities/messages, mobile custom columns and extra supplier parts, column removal, Restock refresh after stock changes, and stock-notification retries. The full browser and standalone Python suites below belong to the earlier release and were not rerun for this supplier-table update.
+
+The database checks verify that stock exactly at its minimum and zero stock with a zero minimum both remain visible for restocking, healthy stock has no forced suggestion, and repeating migration 0008 preserves stock. Gmail provider tests mock Google OAuth/message APIs, check the HTML and plain-text alternatives, custom-field escaping, authorized recipient, and Gmail message IDs. No real email was sent. Tests use an isolated fake encryption key because the cloud's currently injected dedicated key is shorter than the required 32 characters; application startup retains that validation. Repair the private cloud setting before using its live API, preserving the key previously used for saved encrypted connections.
+
+An isolated startup check launches the actual Express server, checks `/health`, invokes its registered automatic email timer with provider/database mocks, verifies Gmail delivery of an exact-threshold request and lease release, then verifies that disabling the store setting prevents another send. No old email-provider variables are present in that check.
+
+See [upgrade instructions and stock-field guidance](RESTOCK_GMAIL.md). Existing stores with 0001–0007 need only migration 0008; the regenerated complete SQL bundle includes it for full installation.
+
+## Earlier application and database checks
 
 - Production Vite build completed and generated the installable PWA/service worker.
 - Server suite: **33 tests passed**, including actual PostgreSQL execution through PGlite with Supabase Auth/Storage scaffolding and real Node-to-Python model training.
@@ -20,7 +32,7 @@ Server tests generate/reopen real Excel reports to check date boundaries, exact 
 
 Chromium tests run against the production build with mocked Supabase/Auth/API services. They cover phone, tablet and desktop layouts; dedicated sale/receive baskets and inventory corrections; required password followed by email code; wrong passwords/codes; Owner/Cashier/Super Admin navigation; labels and keyboard focus; offline reload/reconnect and account cleanup; an offline sale surviving expired verification and sending exactly once after a new code; multi-item credit sales; partial payments and overpayment refusal; category filters; known/unknown barcode entry; camera permission failure/manual fallback; uncropped photos and sale-page galleries; private-photo upload/gallery/cache/removal; bilingual/dark preferences; supplier draft edits; stock-alert refresh/read failures; and actual Excel download handling.
 
-The final browser suite completed with **35 tests passed**. Together with the server, frontend and Python suites, **102 local tests passed for the application release**. API mocks do not establish that the hosted database, Render service, Gmail/Brevo provider or a physical barcode camera is configured.
+The earlier full browser suite completed with **35 tests passed**. Together with the server, frontend and Python suites, **102 local tests passed for that application release**. API mocks do not establish that the hosted database, Render service, Gmail provider or a physical barcode camera is configured.
 
 ## Complete paste-ready SQL follow-up
 
@@ -36,7 +48,7 @@ See [Forecasting data](FORECASTING_DATA.md) for provenance, eligibility and hist
 
 ## Live activation checks
 
-Configure Gmail OAuth on the API before deploying required codes. Use matching Supabase project keys, apply only unapplied migrations through 0007 (0006 and 0007 in separate committed executions), promote the intended IT account to Super Admin, and deploy both Render services from the saved branch. Follow [Required login, access roles, and forecasting upgrade](LOGIN_ROLES_FORECASTING.md). The workspace had mismatched frontend public/server service-role keys and no supplied Gmail OAuth credentials, so live activation remains incomplete.
+Configure Gmail OAuth on the API before deploying required codes and supplier email. Use matching Supabase project keys, apply only unapplied migrations through 0008 (0006 and 0007 in separate committed executions), promote the intended IT account to Super Admin, and deploy both Render services from the saved branch. Follow [Required login, access roles, and forecasting upgrade](LOGIN_ROLES_FORECASTING.md). Hosted credentials, encryption-key continuity and actual Gmail delivery still require private configuration and live verification; local test credentials do not establish hosted activation.
 
 After activation:
 

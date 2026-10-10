@@ -9,7 +9,8 @@ Full-stack capstone system using React + Tailwind CSS, Node.js/Express, Supabase
 - Guided multi-part sales/deliveries and customer-only utang with partial payments.
 - Categories, alternate names, private product photos, and camera/manual barcode search.
 - English/Tagalog interface, Tagalog part terminology, light default and optional dark mode.
-- Editable supplier email drafts and date/category-filtered Excel inventory and sales reports.
+- Gmail supplier email drafts with editable rows, units and custom columns; date/category-filtered Excel inventory and sales reports.
+- Restock includes every low/out-of-stock part, including stock exactly at its minimum level.
 - Required password followed by a Gmail email code, Super Admin/Owner/Cashier permissions, and encrypted Google API settings.
 - Header/mobile-help PartCast chatbot that keeps pagination clear.
 - Works immediately in **Smart Local** mode using live PartCast database facts.
@@ -25,7 +26,7 @@ Full-stack capstone system using React + Tailwind CSS, Node.js/Express, Supabase
 
 ## Required database upgrade for an existing Supabase project
 
-Apply only unapplied migrations. Existing installations with 0001–0005 need `0006_access_roles.sql` followed by `0007_verified_login_and_access.sql` in separate executions. Fresh projects need all seven in order:
+Apply only unapplied migrations. Existing installations with 0001–0007 need only `0008_restock_threshold.sql` for this update. Installations with 0001–0005 first need `0006_access_roles.sql` followed by `0007_verified_login_and_access.sql` in separate executions. Fresh projects need all eight in order:
 
 1. `0001_schema.sql`
 2. `0002_rls.sql`
@@ -34,8 +35,11 @@ Apply only unapplied migrations. Existing installations with 0001–0005 need `0
 5. `0005_store_workflows.sql`
 6. `0006_access_roles.sql` (separate execution; commit before step 7)
 7. `0007_verified_login_and_access.sql`
+8. `0008_restock_threshold.sql`
 
 See [Activate and use the new features](docs/STORE_WORKFLOWS.md) for everyday sales/utang workflows and validation limits. See [Required login, roles, Google API setup and Python repair](docs/LOGIN_ROLES_FORECASTING.md) before deploying; configure Gmail first and apply 0006 separately before 0007.
+
+See [Restock, Gmail and supplier table setup](docs/RESTOCK_GMAIL.md) for the latest upgrade, required stock fields and custom email columns. Login codes and all supplier messages share the same secured Gmail connection.
 
 For complete files to copy into Supabase SQL Editor, use [Paste-ready SQL and API settings](supabase/paste-ready/README.md). Run the two main files separately, in order. They support fresh and recognized existing PartCast databases and preserve store records; business-table access pauses between the two executions.
 
@@ -97,7 +101,7 @@ Never put `GEMINI_API_KEY` in the React/Vite environment.
 
 ## Offline-first update
 
-See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply unapplied migrations through `0007_verified_login_and_access.sql` before starting this version.
+See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply unapplied migrations through `0008_restock_threshold.sql` before starting this version.
 
 See [Light interface and everyday workflows](docs/USABILITY_REDESIGN.md) for the responsive redesign, guided stock forms, accessible navigation, and usability checks.
 

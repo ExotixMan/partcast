@@ -29,6 +29,7 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
  // Match Supabase default grants, then reapply the migration's deliberate revocations.
  await db.exec('grant select on all tables in schema public to authenticated;');
  await db.exec(await readFile(new URL('../../../supabase/migrations/0007_verified_login_and_access.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../../../supabase/migrations/0008_restock_threshold.sql',import.meta.url),'utf8'));
  await db.exec(`insert into auth.users(id) values('${staff}'),('${inactive}');update public.profiles set active=true where id='${staff}';insert into products(id,description,current_stock,minimum_stock)values('${product}','Brake pad',5,2);`);
  await db.exec(`insert into login_verifications(session_id,user_id,expires_at) values('${staff}','${staff}',now()+interval '12 hours'),('${inactive}','${inactive}',now()+interval '12 hours');`);
  const claims=async id=>{await db.exec(`reset role;select set_config('request.jwt.claim.sub','${id}',false);select set_config('request.jwt.claim.role','authenticated',false);select set_config('request.jwt.claims','{"session_id":"${id}","amr":[{"method":"password"}]}',false);set role authenticated;`);};
@@ -171,6 +172,19 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
   assert.deepEqual((await db.query('select unit_cost,selling_price from products where id=$1',[product])).rows[0],catalog,'Sale parameters cannot bypass read-only product metadata');
   await db.exec(`reset role;update login_verifications set expires_at=now()-interval '1 minute' where user_id='${cashier}';`);
   await claims(cashier);assert.equal((await db.query('select * from products')).rows.length,0);
+ });
+ await t.test('every low/out-of-stock alert has a positive restock suggestion, including the exact limit and zero limit',async()=>{
+  await db.exec(`reset role;insert into products(id,description,current_stock,minimum_stock,unit_cost,unit)values
+   ('12345678-1234-4234-8234-123456789001','Exactly at alert level',2,2,50,'pcs'),
+   ('12345678-1234-4234-8234-123456789002','Empty with zero limit',0,0,10,'litres'),
+   ('12345678-1234-4234-8234-123456789003','Healthy stock',5,2,10,'pcs');`);
+  const rows=(await db.query("select product_id,recommended_quantity,estimated_order_cost,unit,status from reorder_recommendations where product_id::text like '12345678%' order by product_id")).rows;
+  assert.deepEqual(rows.map(r=>Number(r.recommended_quantity)),[1,1,0]);
+  assert.deepEqual(rows.map(r=>Number(r.estimated_order_cost)),[50,10,0]);
+  assert.deepEqual(rows.map(r=>r.unit),['pcs','litres','pcs']);
+  assert.equal((await db.query('select n.id from stock_notifications n join reorder_recommendations r on r.product_id=n.product_id where n.resolved_at is null and r.recommended_quantity<=0')).rows.length,0);
+  await db.exec(await readFile(new URL('../../../supabase/migrations/0008_restock_threshold.sql',import.meta.url),'utf8'));
+  assert.equal(Number((await db.query('select current_stock from products where id=$1',['12345678-1234-4234-8234-123456789001'])).rows[0].current_stock),2);
  });
  await db.close();
 });

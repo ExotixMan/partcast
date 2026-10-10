@@ -11,7 +11,8 @@ Keep the existing database. These migrations add tables, roles, and policies; th
 1. Install any missing migrations 0001–0005 in order.
 2. Run **0006_access_roles.sql by itself** and let it finish. PostgreSQL must commit the new enum values before another migration uses them.
 3. Run **0007_verified_login_and_access.sql** in a separate SQL Editor execution.
-4. Promote one trusted IT account to Super Admin. Existing Owners are deliberately not promoted automatically. Replace the email in this exact-account query:
+4. Run **0008_restock_threshold.sql** to align low-stock alerts with Restock suggestions. If 0001–0007 are already installed, only this file is needed for the latest Restock update.
+5. Promote one trusted IT account to Super Admin. Existing Owners are deliberately not promoted automatically. Replace the email in this exact-account query:
 
 ```sql
 update public.profiles p
@@ -28,6 +29,8 @@ Deploy the API and website together after the migration and Gmail configuration.
 ## Configure Gmail before releasing required codes
 
 First add these variables to **Render → PartCast API → Environment**. They are server variables, never `VITE_` variables:
+
+The same Gmail connection sends required login codes and both manual/automatic supplier requests. See [stock limits and editable supplier tables](RESTOCK_GMAIL.md) for the Restock workflow.
 
 | Variable | Value to supply |
 | --- | --- |

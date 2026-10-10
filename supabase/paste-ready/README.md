@@ -4,12 +4,14 @@ Use the SQL Editor in the intended project: **`ragdjkdcrvexqfadlqbf`**, whose AP
 
 These files install the complete PartCast schema on a fresh project, or upgrade a recognized existing PartCast schema. They replace application access policies/functions and preserve Auth accounts, inventory, sales, customer debts/payments, photos, saved encrypted connections and synchronization receipts. They do not reset or delete the database. Unrecognized/partial schemas stop with an error rather than guessing how to change your records.
 
+**For an existing store already running migrations 0001–0007, this Restock update needs only [0008_restock_threshold.sql](../migrations/0008_restock_threshold.sql).** Run that entire file once; the complete two-part installation is unnecessary for this upgrade. It preserves store records and includes stock exactly at the low-stock limit in restocking suggestions. See [Restock and Gmail setup](../../docs/RESTOCK_GMAIL.md).
+
 ## Run the full scripts in order
 
 Back up existing store records first. Run during a store update: business-table access pauses after Part 1 until Part 2 succeeds. Each file is transactional. Do not deploy the new required-code login until Gmail is configured.
 
 1. Open [01_schema_and_roles.sql](01_schema_and_roles.sql), click **Raw**, select/copy the entire file, paste it into a new Supabase SQL Editor query, and click **Run** using the `postgres` role. Wait for success. This includes all baseline tables, forecasting, offline sync, notifications, customer utang, categories, barcodes, photo metadata and the new roles.
-2. Open [02_login_and_permissions.sql](02_login_and_permissions.sql) and run its entire contents in a **separate** SQL Editor execution after Part 1 commits. It installs password-session email verification, encrypted Google connection settings, final role policies and the current stock-operation functions. Do not run only highlighted fragments. PostgreSQL requires this separate commit before the new enum roles are used.
+2. Open [02_login_and_permissions.sql](02_login_and_permissions.sql) and run its entire contents in a **separate** SQL Editor execution after Part 1 commits. It installs password-session email verification, encrypted Google connection settings, final role policies, the current stock-operation functions and migration 0008's Restock threshold fix. Do not run only highlighted fragments. PostgreSQL requires this separate commit before the new enum roles are used.
 3. For an existing store, open [03_activate_super_admin.sql](03_activate_super_admin.sql). Replace `REPLACE_WITH_YOUR_LOGIN_EMAIL` with the **exact email of the existing account** that will administer IT settings, then run it separately. It promotes only that account. It stops if the email is unchanged or the account is absent. Other store Owners remain Owners. For a fresh project with no Auth accounts, use PartCast's initial-account setup and your `SETUP_SECRET` to create the first Super Admin instead.
 
 If you already have Auth accounts on a fresh schema, Part 1 adds any missing inactive profiles. Use Part 3 to activate the intended IT account. Accounts created manually in Supabase need a password and confirmed email for password login; other staff can then be added through PartCast Staff access. Keep public Auth signup disabled.
@@ -21,11 +23,10 @@ Both main scripts can be repeated after a successful installation. If a query fa
 | Provider | Purpose | Values needed | Where to obtain them |
 | --- | --- | --- | --- |
 | Supabase | Database, accounts and private image/model storage | Project URL, public `anon` key, server-only `service_role` key | [This project's API settings](https://supabase.com/dashboard/project/ragdjkdcrvexqfadlqbf/settings/api); use keys from this project |
-| Gmail API | Required email login code after the password | OAuth client ID, client secret, authorized refresh token, sending account email | [Google Cloud Console](https://console.cloud.google.com/); enable Gmail API and authorize the sender with `https://www.googleapis.com/auth/gmail.send` and offline access |
+| Gmail API | Required login code after the password; manual and automatic supplier requests | OAuth client ID, client secret, authorized refresh token, sending account email | [Google Cloud Console](https://console.cloud.google.com/); enable Gmail API and authorize the sender with `https://www.googleapis.com/auth/gmail.send` and offline access |
 | Gemini API | Chatbot's final AI fallback after local help and database answers | Gemini API key and enabled model | [Google AI Studio](https://aistudio.google.com/apikey) |
-| Brevo | Supplier/low-stock emails | API key and verified sender email | [Brevo](https://app.brevo.com/); supplier email addresses are entered in PartCast |
 
-Gmail needs the OAuth credentials and refresh token; a single API key is insufficient. External Google consent apps in Testing may issue refresh tokens that expire after seven days. Follow [Google's server OAuth instructions](https://developers.google.com/identity/protocols/oauth2/web-server) and the [PartCast activation guide](../../docs/LOGIN_ROLES_FORECASTING.md). Gmail and Supabase are required for staff login. Gemini is required for AI fallback; local/database answers work without it. Brevo is required for email alerts and supplier messages. Python/XGBoost forecasting runs on the API server and needs **no external forecasting API key**.
+Gmail needs the OAuth credentials and refresh token; a single API key is insufficient. External Google consent apps in Testing may issue refresh tokens that expire after seven days. Follow [Google's server OAuth instructions](https://developers.google.com/identity/protocols/oauth2/web-server) and the [PartCast activation guide](../../docs/LOGIN_ROLES_FORECASTING.md). Gmail and Supabase are required for staff login. The same Gmail connection sends supplier requests; enter recipient addresses in PartCast's supplier records. Gemini is required for AI fallback; local/database answers work without it. Python/XGBoost forecasting runs on the API server and needs **no external forecasting API key**.
 
 Enter credentials directly in Render or cloud environment settings. Do not put secret keys/tokens into SQL, chat, GitHub or `VITE_` settings.
 
@@ -58,9 +59,6 @@ GMAIL_SENDER_EMAIL=REPLACE_WITH_SENDING_GOOGLE_ACCOUNT_EMAIL
 
 GEMINI_API_KEY=REPLACE_WITH_GEMINI_API_KEY
 GEMINI_MODEL=gemini-2.5-flash
-BREVO_API_KEY=REPLACE_WITH_BREVO_API_KEY
-BREVO_SENDER_EMAIL=REPLACE_WITH_VERIFIED_BREVO_SENDER_EMAIL
-BREVO_SENDER_NAME=NPG Autoparts - PartCast
 
 SETUP_SECRET=REPLACE_WITH_STABLE_RANDOM_SETUP_SECRET_AT_LEAST_16_CHARACTERS
 CRON_SECRET=REPLACE_WITH_STABLE_RANDOM_CRON_SECRET_AT_LEAST_24_CHARACTERS
@@ -72,7 +70,7 @@ PYTHON_BIN=/opt/partcast-venv/bin/python
 ML_SCRIPT_PATH=/app/ml/train_forecast.py
 ```
 
-The Python paths above apply to the repository's **Docker** deployment on Render. Use the root Dockerfile so Python and analytics packages are installed. Set both services to the saved branch and redeploy. Configure Gmail before deploying required-code login. If Gemini or Brevo is intentionally unused, omit its variables instead of entering placeholders.
+The Python paths above apply to the repository's **Docker** deployment on Render. Use the root Dockerfile so Python and analytics packages are installed. Set both services to the saved branch and redeploy. Configure Gmail before deploying required-code login and supplier email. If Gemini is intentionally unused, omit its variables instead of entering placeholders.
 
 The application also accepts the newer Supabase public/secret key format, but use this project's legacy `anon` and `service_role` keys when following the labels above. Never put a service-role/secret key on the website. The frontend public key and backend public key should match, and all Supabase values must belong to the same project.
 

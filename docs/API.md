@@ -41,8 +41,10 @@ Basket writes allow verified Super Admin/Owner/Admin/Inventory staff/Cashier acc
 - `POST /api/suppliers`
 - `PATCH /api/suppliers/:id`
 - `POST /api/products/:productId/suppliers/:supplierId`
-- `GET /api/reorder`
-- `POST /api/admin/supplier-email/:supplierId`
+- `GET /api/reorder` (`onlyNeeded=true` includes low/out-of-stock parts and forecast suggestions; `onlyNeeded=false&supplierId=<uuid>` lists all active parts assigned to that supplier)
+- `POST /api/admin/supplier-email/:supplierId` (Gmail; optional reviewed draft with subject, message, 1–100 distinct assigned parts and up to 5 custom text columns)
+
+Draft `extra_columns` contains `{id: <uuid>, label: <1–50 characters>}` entries. Each item includes `product_id`, `part_number`, `description`, positive two-decimal `quantity`, optional `unit`, and `extra_values: {<column uuid>: <text up to 300 characters>}`. Column IDs/names must be unique; unknown column values and core-column duplicates are rejected. The recipient remains the saved supplier email; sending does not change stock. Omit the draft to send the saved recommendations. See [Restock/Gmail workflow](RESTOCK_GMAIL.md).
 
 ## Forecasting
 

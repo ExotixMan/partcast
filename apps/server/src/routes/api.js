@@ -15,6 +15,7 @@ import { answerAssistant, assistantMode } from '../services/assistant.js';
 import storeRoutes from './store.js';
 import {storeReport} from '../utils/storeReports.js';
 import {amount,positiveAmount,category,barcode,reportDates,dateQuery} from '../utils/storeValidation.js';
+import {neededRestock,normalizeRestock} from '../utils/restock.js';
 const storeDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const router = Router();
 router.use(authorizeApi);
@@ -78,7 +79,7 @@ router.get('/dashboard', async (req, res, next) => {
       adminDb.rpc('get_top_moving_products', { p_days: 90, p_limit: 8, p_direction: 'desc' }),
       adminDb.rpc('get_top_moving_products', { p_days: 90, p_limit: 8, p_direction: 'asc' }),
       adminDb.from('latest_completed_forecast_run').select('*').maybeSingle(),
-      adminDb.from('reorder_recommendations').select('*').gt('recommended_quantity', 0).order('recommended_quantity', { ascending: false }).limit(8)
+      neededRestock(adminDb.from('reorder_recommendations').select('*')).order('recommended_quantity', { ascending: false }).limit(8)
     ]);
     for (const r of [metrics, trend, fast, slow, latestRun, reorder]) if (r.error) throw r.error;
     res.json({
@@ -87,7 +88,7 @@ router.get('/dashboard', async (req, res, next) => {
       fastMoving: fast.data || [],
       slowMoving: slow.data || [],
       latestForecastRun: latestRun.data || null,
-      reorder: reorder.data || []
+      reorder: (reorder.data || []).map(normalizeRestock)
     });
   } catch (e) { next(e); }
 });
@@ -279,10 +280,11 @@ router.post('/products/:productId/suppliers/:supplierId', rolesAdmin, async (req
 router.get('/reorder', async (req, res, next) => {
   try {
     let q = adminDb.from('reorder_recommendations').select('*');
-    if (String(req.query.onlyNeeded ?? 'true') !== 'false') q = q.gt('recommended_quantity',0);
+    if (req.query.supplierId) q=q.eq('supplier_id',z.string().uuid().parse(req.query.supplierId));
+    if (String(req.query.onlyNeeded ?? 'true') !== 'false') q = neededRestock(q);
     const { data, error } = await q.order('recommended_quantity',{ascending:false});
     if (error) throw error;
-    res.json({ data });
+    res.json({ data: (data||[]).map(normalizeRestock) });
   } catch (e) { next(e); }
 });
 

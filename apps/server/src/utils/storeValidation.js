@@ -20,7 +20,17 @@ export const batchSchema=z.object({...common,kind:z.literal('batch').default('ba
 });
 export const debtSchema=z.object({...common,kind:z.literal('debt').default('debt'),customer_name:z.string().trim().min(2).max(240),phone:text(80),principal:positiveAmount,due_date:dated,reference_no:text(180)});
 export const paymentSchema=z.object({...common,kind:z.literal('payment').default('payment'),debt_id:z.string().uuid(),amount:positiveAmount});
-export const supplierEmailSchema=z.object({subject:z.string().trim().min(2).max(180).refine(s=>!/[\r\n]/.test(s),'Use a single line for the subject.'),message:z.string().trim().min(2).max(2000),items:z.array(z.object({product_id:z.string().uuid(),part_number:z.string().trim().max(120),description:z.string().trim().min(2).max(500),quantity:positiveAmount})).min(1).max(100).refine(a=>new Set(a.map(x=>x.product_id)).size===a.length,'Each part must appear once.')});
+export const supplierEmailSchema=z.object({
+ subject:z.string().trim().min(2).max(180).refine(s=>!/[\r\n]/.test(s),'Use a single line for the subject.'),message:z.string().trim().min(2).max(2000),
+ extra_columns:z.array(z.object({id:z.string().uuid(),label:z.string().trim().min(1).max(50).refine(s=>!/[\r\n]/.test(s),'Use a single line for a column name.')})).max(5).default([]),
+ items:z.array(z.object({product_id:z.string().uuid(),part_number:z.string().trim().max(120),description:z.string().trim().min(2).max(500),unit:z.string().trim().max(40).optional(),quantity:positiveAmount,extra_values:z.record(z.string().uuid(),z.string().trim().max(300)).default({})})).min(1).max(100).refine(a=>new Set(a.map(x=>x.product_id)).size===a.length,'Each part must appear once.')
+}).superRefine((draft,c)=>{
+ const ids=new Set(draft.extra_columns.map(x=>x.id));
+ const reserved=['part number','description','in stock','unit','quantity','numero ng piyesa','paglalarawan','nasa stock','yunit','dami'];
+ if(draft.extra_columns.some(x=>reserved.includes(x.label.toLowerCase())))c.addIssue({code:'custom',path:['extra_columns'],message:'This column already exists in the email table.'});
+ if(ids.size!==draft.extra_columns.length||new Set(draft.extra_columns.map(x=>x.label.toLowerCase())).size!==draft.extra_columns.length)c.addIssue({code:'custom',path:['extra_columns'],message:'Each column needs a unique name.'});
+ if(draft.items.some(item=>Object.keys(item.extra_values).some(id=>!ids.has(id))))c.addIssue({code:'custom',path:['items'],message:'Use values only for the columns in this request.'});
+});
 export function reportDates(query){
  const from=query.from?z.string().date().parse(query.from):null,to=query.to?z.string().date().parse(query.to):null;
  if(from&&to&&from>to)throw Object.assign(new Error('Start date must be on or before end date.'),{status:422});

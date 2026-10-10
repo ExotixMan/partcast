@@ -25,12 +25,6 @@ services:
         generateValue: true
       - key: IP_HASH_SECRET
         generateValue: true
-      - key: BREVO_API_KEY
-        sync: false
-      - key: BREVO_SENDER_EMAIL
-        sync: false
-      - key: BREVO_SENDER_NAME
-        value: NPG Autoparts - PartCast
       - key: GMAIL_CLIENT_ID
         sync: false
       - key: GMAIL_CLIENT_SECRET

@@ -18,6 +18,10 @@ test('email drafts require real quantities and block subject header injection',(
  const d={subject:'Please order',message:'Please confirm these parts.',items:[{product_id:id,part_number:'BP-001',description:'Brake pad',quantity:2.5}]};
  assert.equal(supplierEmailSchema.parse(d).items[0].quantity,2.5);
  for(const patch of [{subject:'Hello\nBcc: victim@example.test'},{items:[]},{items:[{...d.items[0],quantity:0}]}])assert.equal(supplierEmailSchema.safeParse({...d,...patch}).success,false);
+ const col={id:op,label:'Delivery date'};
+ assert.equal(supplierEmailSchema.parse({...d,extra_columns:[col],items:[{...d.items[0],unit:'pcs',extra_values:{[op]:'Monday'}}]}).items[0].extra_values[op],'Monday');
+ for(const columns of [[col,col],[{...col,label:'Quantity'}],Array.from({length:6},()=>col)])assert.equal(supplierEmailSchema.safeParse({...d,extra_columns:columns}).success,false);
+ assert.equal(supplierEmailSchema.safeParse({...d,items:[{...d.items[0],extra_values:{[op]:'Unknown column'}}]}).success,false);
 });
 
 test('local and database assistant use the same terminology without confusing fluids and components',async()=>{

@@ -9,7 +9,7 @@ Browser (React + Tailwind)
 Render Docker Web Service
 Node.js / Express API
   |       |          |
-  |       |          +--> Brevo REST API -> supplier email
+  |       |          +--> Gmail API -> login codes + supplier email
   |       |
   |       +--> Python child process -> XGBoost training / forecasting
   |                       |

@@ -5,7 +5,7 @@ This deployment uses:
 - **Supabase Free**: PostgreSQL, Auth, and private Storage
 - **Render Free Static Site**: React frontend
 - **Render Free Web Service**: one Docker service containing Node.js + Python/XGBoost
-- **Brevo Free**: supplier transactional email through HTTPS API
+- **Gmail API**: required login codes and supplier email through Google OAuth and HTTPS
 - **GitHub Actions**: scheduled job calls
 
 Using one dynamic Render service is deliberate: Node.js is the API process and invokes Python locally for ML, so the project does not need a second ML web service.
@@ -22,26 +22,27 @@ Using one dynamic Render service is deliberate: Node.js is the API process and i
 7. Run `supabase/migrations/0005_store_workflows.sql` completely.
 8. Run `supabase/migrations/0006_access_roles.sql` by itself and let it commit.
 9. Run `supabase/migrations/0007_verified_login_and_access.sql` separately.
+10. Run `supabase/migrations/0008_restock_threshold.sql`.
 
 For an existing database, apply only unapplied migrations. See [feature activation](STORE_WORKFLOWS.md) and [required Gmail login/roles](LOGIN_ROLES_FORECASTING.md). Configure Gmail OAuth on the API before deploying, and promote a trusted IT account to Super Admin for an existing installation.
 
-8. In **Authentication settings**, disable public user signups. PartCast creates users through the server admin API.
-9. Copy:
+11. In **Authentication settings**, disable public user signups. PartCast creates users through the server admin API.
+12. Copy:
    - Project URL
    - anon/public key
    - service role key
 
 The service role key is a server secret. Never put it in a `VITE_` variable.
 
-## 2. Configure Brevo for supplier email
+## 2. Configure Gmail for login and supplier email
 
-1. Create a Brevo account.
-2. Add and verify a sender email/domain.
-3. Create an API key.
-4. Save the API key for Render as `BREVO_API_KEY`.
-5. Save the verified sender as `BREVO_SENDER_EMAIL`.
+1. Enable Gmail API in your Google Cloud project and configure OAuth consent.
+2. Create an OAuth client and authorize the sending Google account with `https://www.googleapis.com/auth/gmail.send` and offline access.
+3. Enter `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` and `GMAIL_SENDER_EMAIL` privately on the API service.
+4. Keep the store's existing integration encryption key stable. A new dedicated `INTEGRATION_ENCRYPTION_KEY` must be at least 32 characters; do not replace the key used to encrypt saved connections.
+5. Test login-code delivery, then a reviewed supplier email to a controlled address.
 
-PartCast uses the Brevo HTTPS endpoint instead of SMTP. This works with Render free services even though common outbound SMTP ports are restricted.
+Follow [Google setup and connection recovery](LOGIN_ROLES_FORECASTING.md) and the [step-by-step OAuth instructions](../supabase/paste-ready/README.md). Login codes and both manual/automatic supplier requests use the same Gmail connection. HTTPS avoids Render's SMTP port restrictions. Google account quotas and OAuth token validity still apply.
 
 ## 3. Push the repository
 
@@ -57,8 +58,10 @@ Create a private GitHub repository and push the `partcast` folder contents. Do n
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
-   - `BREVO_API_KEY`
-   - `BREVO_SENDER_EMAIL`
+   - `GMAIL_CLIENT_ID`
+   - `GMAIL_CLIENT_SECRET`
+   - `GMAIL_REFRESH_TOKEN`
+   - `GMAIL_SENDER_EMAIL`
 4. Render generates `SETUP_SECRET`, `CRON_SECRET`, and `IP_HASH_SECRET`. Store/reveal them securely.
 5. When the two Render URLs exist, set:
    - API: `FRONTEND_ORIGINS=https://<your-static-site>.onrender.com`
@@ -109,15 +112,17 @@ GitHub scheduled workflows can run later than the exact cron minute during platf
 
 ## 8. Turn on automatic supplier email
 
-1. Confirm Brevo shows as configured in **Settings**.
+1. Confirm Gmail shows as configured in **Settings**; Super Admin manages the connection in **IT settings**.
 2. Add supplier email addresses.
 3. Assign suppliers as primary suppliers to products.
 4. Train a forecast and review reorder recommendations.
-5. Test **Email supplier** manually first.
+5. Test **Review supplier email** manually first. Edit the message, quantities and extra columns before sending.
 6. In **Settings**, enable **Automatic supplier email**.
 7. Set the email cooldown days (default 3) to prevent repeated identical messages.
 
 The email is a replenishment request, not an automatic purchase order. Staff still review supplier replies and purchasing decisions.
+
+Parts at or below their low-stock level appear in Restock even without a forecast. See [stock fields and email table customization](RESTOCK_GMAIL.md).
 
 ## 9. Backups
 

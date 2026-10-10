@@ -39,8 +39,7 @@ app.use(errorHandler);
 
 app.listen(config.PORT,'0.0.0.0',()=>console.log(`PartCast API listening on ${config.PORT}`));
 
-// The database lease also covers external cron invocations. Disabled by settings by default.
-if (config.BREVO_API_KEY && config.BREVO_SENDER_EMAIL) {
-  const timer=setInterval(() => autoEmailSuppliers().catch(() => console.error('Automatic stock email check failed.')),60000);
-  timer.unref();
-}
+// Check the live store setting so Gmail saved in IT settings works without a restart.
+// The database lease also covers external cron invocations. Disabled by default.
+const emailTimer=setInterval(() => autoEmailSuppliers().catch(() => console.error('Automatic stock email check failed.')),60000);
+emailTimer.unref();

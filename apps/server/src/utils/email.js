@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { config } from '../config.js';
+import { sendGmailMessage } from './gmail.js';
 import { escapeHtml } from './helpers.js';
 
 export function recommendationHash(items) {
@@ -10,19 +10,15 @@ export function recommendationHash(items) {
   return crypto.createHash('sha256').update(normalized).digest('hex');
 }
 
-export async function sendSupplierEmail({ supplier, items, subject, message }) {
-  if (!config.BREVO_API_KEY || !config.BREVO_SENDER_EMAIL) {
-    const error = new Error('Brevo email is not configured. Add BREVO_API_KEY and BREVO_SENDER_EMAIL.');
-    error.status = 503;
-    throw error;
-  }
-
+export async function sendSupplierEmail({ supplier, items, subject, message, extra_columns = [] }) {
   const rows = items.map(item => `
     <tr>
       <td style="padding:8px;border:1px solid #e5e7eb">${escapeHtml(item.part_number || 'N/A')}</td>
       <td style="padding:8px;border:1px solid #e5e7eb">${escapeHtml(item.description)}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right">${Number(item.current_stock).toFixed(0)}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right">${Number(item.current_stock).toLocaleString('en-PH',{maximumFractionDigits:2})}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb">${escapeHtml(item.unit || 'units')}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right">${Number(item.quantity ?? Math.ceil(Number(item.recommended_quantity))).toLocaleString('en-PH',{maximumFractionDigits:2})}</td>
+      ${extra_columns.map(col=>`<td style="padding:8px;border:1px solid #e5e7eb">${escapeHtml(item.extra_values?.[col.id]||'')}</td>`).join('')}
     </tr>`).join('');
 
   const htmlContent = `
@@ -32,33 +28,20 @@ export async function sendSupplierEmail({ supplier, items, subject, message }) {
       <p>${escapeHtml(message || 'Please confirm availability, price, and expected delivery schedule for these parts.').replace(/\n/g,'<br>')}</p>
       <table style="border-collapse:collapse;width:100%;margin:16px 0">
         <thead><tr>
-          <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Part No.</th>
+          <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Part number</th>
           <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Description</th>
-          <th style="padding:8px;border:1px solid #e5e7eb;text-align:right">On Hand</th>
-          <th style="padding:8px;border:1px solid #e5e7eb;text-align:right">Needed</th>
+          <th style="padding:8px;border:1px solid #e5e7eb;text-align:right">In stock</th>
+          <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Unit</th>
+          <th style="padding:8px;border:1px solid #e5e7eb;text-align:right">Quantity</th>
+          ${extra_columns.map(col=>`<th style="padding:8px;border:1px solid #e5e7eb;text-align:left">${escapeHtml(col.label)}</th>`).join('')}
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
       <p>This is an automated inventory replenishment request from NPG Autoparts. A staff member will review your reply before a purchase is finalized.</p>
     </div>`;
 
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'api-key': config.BREVO_API_KEY,
-      'content-type': 'application/json',
-      accept: 'application/json'
-    },
-    signal: AbortSignal.timeout(20000),
-    body: JSON.stringify({
-      sender: { name: config.BREVO_SENDER_NAME, email: config.BREVO_SENDER_EMAIL },
-      to: [{ email: supplier.email, name: supplier.name }],
-      subject: subject || `NPG Autoparts - Replenishment request (${items.length} item${items.length === 1 ? '' : 's'})`,
-      htmlContent
-    })
-  });
-
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.message || `Email provider returned ${response.status}`);
-  return result;
+  const text=[`Hello ${supplier.contact_person||supplier.name},`,message||'Please confirm availability, price, and expected delivery schedule for these parts.',
+    ...items.map(i=>[i.part_number||'N/A',i.description,`${i.quantity??Math.ceil(Number(i.recommended_quantity))} ${i.unit||'units'}`,...extra_columns.map(c=>`${c.label}: ${i.extra_values?.[c.id]||''}`)].join(' | ')),
+    'This request does not finalize a purchase. Please confirm prices and delivery.'].join('\n');
+  return sendGmailMessage({to:supplier.email,subject:subject||`NPG Autoparts - Replenishment request (${items.length} items)`,text,html:htmlContent});
 }
