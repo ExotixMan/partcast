@@ -2,8 +2,10 @@ import { t, useLocale } from "./context/LocaleContext.jsx";
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
+import {staffRoles,managerRoles,ownerRoles,homeForRole,verifiedCacheMatches} from './lib/access.js';
 import AppShell from './components/AppShell.jsx';
 import Loading from './components/Loading.jsx';
+const ITSettingsPage = lazy(() => import('./pages/ITSettingsPage.jsx'));
 const CounterPage = lazy(() => import('./pages/CounterPage.jsx'));
 const DebtsPage = lazy(() => import('./pages/DebtsPage.jsx'));
 const LoginPage = lazy(() => import('./pages/LoginPage.jsx'));
@@ -22,10 +24,11 @@ function Protected() {
   useLocale();
   const {
     session,
+    profile,
     loading
   } = useAuth();
   if (loading) return <Loading label={t("Checking secure session...")} />;
-  return session ? <AppShell /> : <Navigate to="/login" replace />;
+  return verifiedCacheMatches(session,profile) ? <AppShell /> : <Navigate to="/login" replace />;
 }
 function RoleRoute({
   roles,
@@ -35,30 +38,32 @@ function RoleRoute({
   const {
     profile
   } = useAuth();
-  return roles.includes(profile?.role) ? children : <Navigate to="/" replace />;
+  return roles.includes(profile?.role) ? children : <Navigate to={homeForRole(profile?.role)} replace />;
 }
 export default function App() {
   useLocale();
   const {
     session,
+    profile,
     loading
   } = useAuth();
   return <Suspense fallback={<Loading label={t("Opening page…")} />}><Routes>
- <Route path="/login" element={loading ? <Loading /> : session ? <Navigate to="/" replace /> : <LoginPage />} />
+ <Route path="/login" element={loading ? <Loading /> : verifiedCacheMatches(session,profile) ? <Navigate to={homeForRole(profile.role)} replace /> : <LoginPage />} />
  <Route element={<Protected />}>
-  <Route index element={<DashboardPage />} />
+  <Route index element={profile?.role === 'cashier' ? <Navigate to="/counter" replace /> : <DashboardPage />} />
   <Route path="counter" element={<CounterPage />} />
-  <Route path="debts" element={<DebtsPage />} />
+  <Route path="debts" element={<RoleRoute roles={staffRoles}><DebtsPage /></RoleRoute>} />
   <Route path="inventory" element={<InventoryPage />} />
-  <Route path="transactions" element={<TransactionsPage />} />
-  <Route path="forecast" element={<ForecastPage />} />
-  <Route path="reorder" element={<ReorderPage />} />
-  <Route path="reports" element={<ReportsPage />} />
+  <Route path="transactions" element={<RoleRoute roles={staffRoles}><TransactionsPage /></RoleRoute>} />
+  <Route path="forecast" element={<RoleRoute roles={staffRoles}><ForecastPage /></RoleRoute>} />
+  <Route path="reorder" element={<RoleRoute roles={staffRoles}><ReorderPage /></RoleRoute>} />
+  <Route path="reports" element={<RoleRoute roles={staffRoles}><ReportsPage /></RoleRoute>} />
   <Route path="account" element={<AccountPage />} />
-  <Route path="imports" element={<RoleRoute roles={['owner', 'admin']}><ImportPage /></RoleRoute>} />
-  <Route path="backups" element={<RoleRoute roles={['owner', 'admin']}><BackupsPage /></RoleRoute>} />
-  <Route path="users" element={<RoleRoute roles={['owner']}><UsersPage /></RoleRoute>} />
-  <Route path="settings" element={<RoleRoute roles={['owner']}><SettingsPage /></RoleRoute>} />
+  <Route path="imports" element={<RoleRoute roles={managerRoles}><ImportPage /></RoleRoute>} />
+  <Route path="backups" element={<RoleRoute roles={managerRoles}><BackupsPage /></RoleRoute>} />
+  <Route path="users" element={<RoleRoute roles={ownerRoles}><UsersPage /></RoleRoute>} />
+  <Route path="settings" element={<RoleRoute roles={ownerRoles}><SettingsPage /></RoleRoute>} />
+  <Route path="it-settings" element={<RoleRoute roles={['super_admin']}><ITSettingsPage /></RoleRoute>} />
  </Route>
  <Route path="*" element={<Navigate to={session ? '/' : '/login'} replace />} />
  </Routes></Suspense>;

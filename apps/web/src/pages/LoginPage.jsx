@@ -1,5 +1,5 @@
 import { t, useLocale } from "../context/LocaleContext.jsx";
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Boxes, Check, Eye, EyeOff, LockKeyhole, Mail, PackageCheck, Search, ShieldCheck, ShoppingCart } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { storeConfigured, storeConnectionIssue } from '../lib/supabase.js';
@@ -34,10 +34,11 @@ export default function LoginPage() {
   const {
     signIn,
     requestOtp,
-    verifyOtp
+    verifyOtp, needsOtp, session, signOut
   } = useAuth();
-  const [otpMode, setOtpMode] = useState(false),
-    [otpSent, setOtpSent] = useState(false),
+  const otpMode = Boolean(needsOtp && session);
+  const sentFor = useRef(null);
+  const [otpSent, setOtpSent] = useState(false),
     [otp, setOtp] = useState(''),
     [resendAt, setResendAt] = useState(0),
     [now, setNow] = useState(Date.now());
@@ -50,17 +51,14 @@ export default function LoginPage() {
   async function sendOtp() {
     if (loading || resendSeconds > 0) return;
     setError('');
-    const email = login.email.trim().toLowerCase();
+    const email = session?.user?.email || login.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
       setError('Enter a valid email address.');
       return;
     }
     setLoading(true);
     try {
-      const {
-        error
-      } = await requestOtp(email);
-      if (error) throw error;
+      await requestOtp();
       setLogin(l => ({
         ...l,
         email
@@ -69,7 +67,7 @@ export default function LoginPage() {
       setResendAt(Date.now() + 60000);
       setNow(Date.now());
     } catch (e) {
-      setError(e.status === 429 ? 'Too many code requests. Wait a moment before trying again.' : 'Could not send the sign-in code. Check your email address and connection, or ask your store owner.');
+      setError(e.message);
     } finally {
       setLoading(false);
     }
@@ -107,12 +105,8 @@ export default function LoginPage() {
   async function submitLogin(e) {
     e.preventDefault();
     if (loading) return;
-    if (otpMode && !otpSent) {
-      await sendOtp();
-      return;
-    }
-    if (otpMode && !/^[0-9]{6,10}$/.test(otp)) {
-      setError('Enter the 6 to 10 digit code from your email.');
+    if (otpMode && !/^[0-9]{6}$/.test(otp)) {
+      setError('Enter the 6 digit code from your email.');
       return;
     }
     setLoading(true);
@@ -123,11 +117,16 @@ export default function LoginPage() {
       } = otpMode ? await verifyOtp(login.email.trim(), otp) : await signIn(login.email.trim(), login.password);
       if (error) setError(otpMode ? 'The code is incorrect or expired. Request a new code and try again.' : connectionMessage(error, 'sign-in service'));
     } catch (e) {
-      setError(connectionMessage(e, 'sign-in service'));
+      setError(e.status ? e.message : connectionMessage(e, 'sign-in service'));
     } finally {
       setLoading(false);
     }
   }
+  useEffect(() => {
+    if (!otpMode || sentFor.current === session.access_token) return;
+    sentFor.current = session.access_token;
+    sendOtp();
+  },[otpMode,session?.access_token]);
   async function submitSetup(e) {
     e.preventDefault();
     setLoading(true);
@@ -185,8 +184,8 @@ export default function LoginPage() {
 
       <section className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="login-title">
         <p className="text-sm font-semibold text-red-600">{needsSetup ? t('Welcome to your store') : t('Welcome back')}</p>
-        <h1 id="login-title" className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{needsSetup ? t('Create the owner account') : t('Sign in to PartCast')}</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">{needsSetup ? t('Set up the owner account once to get started. Have your private setup code ready.') : t('Use the email and password your store owner gave you.')}</p>
+        <h1 id="login-title" className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{needsSetup ? t('Create the Super Admin account') : otpMode ? t('Check your email') : t('Sign in to PartCast')}</h1>
+        <p className="mt-3 text-sm leading-6 text-slate-600">{needsSetup ? t('Create the first account once. Have your private setup code ready.') : otpMode ? t('Your password is correct. Enter the code sent to your email to finish signing in.') : t('First enter your password. Then confirm the code sent to your email.')}</p>
 
         {!storeConfigured && <p role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t(storeConnectionIssue)}</p>}
         {serverError && <div role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><p>{t(serverError)}</p><button type="button" className="btn-secondary mt-3 w-full border-amber-200 bg-white text-amber-900" disabled={checkingServer} onClick={checkServer}>{checkingServer ? t('Checking connection…') : t('Check connection again')}</button></div>}
@@ -209,30 +208,21 @@ export default function LoginPage() {
             ...setup,
             password: e.target.value
           })} autoComplete="new-password" minLength={10} hint={t("Use at least 10 characters. Keep your password private.")} />
-          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-12 w-full">{loading ? t('Creating account…') : t('Create owner account')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
+          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-12 w-full">{loading ? t('Creating account…') : t('Create Super Admin account')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
         </form> : <form onSubmit={submitLogin} className="mt-7 space-y-5" aria-busy={loading}>
-          <div><label htmlFor="login-email" className="label">{t("Email address")}</label><div className="relative"><Mail aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={19} /><input id="login-email" type="email" autoComplete="email" spellCheck={false} autoCapitalize="none" className="input min-h-12 pl-11" required value={login.email} onChange={e => setLogin({
+          <div><label htmlFor="login-email" className="label">{t("Email address")}</label><div className="relative"><Mail aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={19} /><input id="login-email" type="email" autoComplete="email" spellCheck={false} autoCapitalize="none" className="input min-h-12 pl-11" required value={otpMode ? session.user.email : login.email} onChange={e => setLogin({
                 ...login,
                 email: e.target.value
               })} placeholder={t("Your email address")} maxLength={254} readOnly={otpMode && otpSent} /></div></div>
-          <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("Sign-in method")}><button type="button" className={!otpMode ? 'btn-primary' : 'btn-secondary'} disabled={loading} aria-pressed={!otpMode} onClick={() => {
-              setOtpMode(false);
-              setError('');
-            }}>{t("Password")}</button><button type="button" className={otpMode ? 'btn-primary' : 'btn-secondary'} disabled={loading} aria-pressed={otpMode} onClick={() => {
-              setOtpMode(true);
-              setError('');
-            }}>{t("Email code")}</button></div>
-          {otpMode ? otpSent ? <div><label className="label" htmlFor="login-otp">{t("Email sign-in code")}</label><input id="login-otp" className="input" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={10} pattern="[0-9]{6,10}" value={otp} onChange={e => setOtp(e.target.value.replace(/[^0-9]/g, ''))} /><p className="mt-2 text-sm text-slate-500">{t("Check your inbox and spam folder. Enter the code from your most recent email.")}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" disabled={loading || resendSeconds > 0} onClick={sendOtp}>{resendSeconds ? t("Resend in {v0}s", {
+          <ol className="flex gap-3 text-sm" aria-label={t("Sign-in steps")}><li className="flex-1 rounded-lg bg-slate-50 p-3">{t("1. Password")}{otpMode && <Check className="ml-2 inline text-emerald-600" size={16} />}</li><li className={`flex-1 rounded-lg p-3 ${otpMode ? 'bg-red-50 font-semibold text-red-700' : 'bg-slate-50 text-slate-500'}`}>{t("2. Email code")}</li></ol>
+          {otpMode ? <div><label className="label" htmlFor="login-otp">{t("Email sign-in code")}</label><input id="login-otp" className="input" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" value={otp} onChange={e => setOtp(e.target.value.replace(/[^0-9]/g, ''))} /><p className="mt-2 text-sm text-slate-500">{t("Check your inbox and spam folder. Enter the code from your most recent email.")}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" disabled={loading || resendSeconds > 0} onClick={sendOtp}>{resendSeconds ? t("Resend in {v0}s", {
                   v0: resendSeconds
-                }) : t('Resend code')}</button><button type="button" className="btn-secondary" disabled={loading} onClick={() => {
-                setOtpSent(false);
-                setOtp('');
-              }}>{t("Change email")}</button></div></div> : <p className="text-sm text-slate-500">{t("We will email a one-time sign-in code to your existing staff account. You need internet to receive and verify it.")}</p> : <PasswordField id="login-password" value={login.password} onChange={e => setLogin({
+                }) : otpSent ? t('Resend code') : t('Send email code')}</button><button type="button" className="btn-secondary" disabled={loading} onClick={signOut}>{t("Use another account")}</button></div></div> : <PasswordField id="login-password" value={login.password} onChange={e => setLogin({
             ...login,
             password: e.target.value
           })} autoComplete="current-password" />}
 
-          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-12 w-full">{loading ? t('Signing in…') : otpMode ? otpSent ? t('Verify code and sign in') : t('Send email code') : t('Sign in securely')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
+          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-12 w-full">{loading ? t('Signing in…') : otpMode ? t('Verify code and sign in') : t('Sign in securely')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
         </form>}
 
         <div className="mt-6 border-t border-slate-100 pt-5">

@@ -39,7 +39,7 @@ export default function SettingsPage() {
     setLoading(true);
     setError('');
     try {
-      const [saved, system] = await Promise.all([api.get('/api/admin/settings'), api.get('/api/admin/system-status')]);
+      const [saved, system] = await Promise.all([api.get('/api/admin/settings'), api.get('/api/admin/store-status')]);
       const values = {};
       for (const row of saved.data || []) values[row.key] = row.value;
       setSettings(values);

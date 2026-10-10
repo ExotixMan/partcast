@@ -9,7 +9,7 @@ const suggestions = ['How do I record a sale?', 'How do I receive a delivery?', 
 export default function AssistantChat() {
   const {language}=useLocale();
   const {
-    session
+    session, profile
   } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([{
@@ -78,7 +78,7 @@ export default function AssistantChat() {
     }]);
     setBusy(true);
     try {
-      const response = (await answerLocally(message, session.user.id, navigator.onLine,language)) || (await api.post('/api/assistant/chat', {message,language}));
+      const response = (await answerLocally(message, session.user.id, navigator.onLine,language,profile?.role)) || (await api.post('/api/assistant/chat', {message,language}));
       setMessages(current => [...current, {
         role: 'assistant',
         source: response.mode === 'gemini' ? 'Suggested answer · double-check important details' : response.mode === 'database' ? 'From your store records' : undefined,

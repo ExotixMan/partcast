@@ -23,7 +23,7 @@ export function ProductImage({
       if (objectURL) URL.revokeObjectURL(objectURL);
     };
   }, [path]);
-  return url ? <img src={url} alt={description} className={`${className} rounded-xl border border-slate-200 object-cover`} /> : <span className={`${className} flex shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500`}><Package size={24} aria-label={t("No saved photo")} /></span>;
+  return url ? <img src={url} alt={description} className={`${className} rounded-xl border border-slate-200 bg-white object-contain p-1`} /> : <span className={`${className} flex shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500`}><Package size={24} aria-label={t("No saved photo")} /></span>;
 }
 export default function ProductPhotos({
   productId,
@@ -82,6 +82,6 @@ export default function ProductPhotos({
 export function ProductThumbnail({product,className='h-16 w-16'}){
  const [open,setOpen]=useState(false);useLocale();
  if(!product.photo_paths?.length)return <ProductImage description={product.description} className={className}/>;
- return <><button type="button" className="shrink-0" aria-label={t('View photos of {v0}',{v0:product.description})} onClick={()=>setOpen(true)}><ProductImage path={product.photo_paths[0]} description={product.description} className={className}/></button>
+ return <><button type="button" className="shrink-0" aria-label={t('View photos of {v0}',{v0:product.description})} onClick={()=>setOpen(true)}><ProductImage path={product.photo_paths[0]} description={product.description} className={className}/><span className="mt-1 block text-xs font-semibold text-red-700">{t("View photos")}</span></button>
  <Modal open={open} onClose={()=>setOpen(false)} title={product.description} description={t('Part photos. Only photos previously viewed on this device are available offline.')} size="lg"><div className="grid gap-4 sm:grid-cols-2">{product.photo_paths.map(path=><ProductImage key={path} path={path} description={product.description} className="aspect-square w-full"/>)}</div></Modal></>;
 }

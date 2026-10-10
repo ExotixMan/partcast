@@ -20,8 +20,10 @@ Using one dynamic Render service is deliberate: Node.js is the API process and i
 
 6. Run `supabase/migrations/0004_offline_security_notifications.sql` completely.
 7. Run `supabase/migrations/0005_store_workflows.sql` completely.
+8. Run `supabase/migrations/0006_access_roles.sql` by itself and let it commit.
+9. Run `supabase/migrations/0007_verified_login_and_access.sql` separately.
 
-For an existing database, apply only unapplied migrations. See [feature activation](STORE_WORKFLOWS.md) for the Supabase email-code template and new store workflows.
+For an existing database, apply only unapplied migrations. See [feature activation](STORE_WORKFLOWS.md) and [required Gmail login/roles](LOGIN_ROLES_FORECASTING.md). Configure Gmail OAuth on the API before deploying, and promote a trusted IT account to Super Admin for an existing installation.
 
 8. In **Authentication settings**, disable public user signups. PartCast creates users through the server admin API.
 9. Copy:
@@ -69,7 +71,7 @@ Create a private GitHub repository and push the `partcast` folder contents. Do n
 
 1. Open the PartCast frontend.
 2. The app checks `/setup/status` and shows the one-time setup form when there are no profiles.
-3. Enter the Render `SETUP_SECRET`, owner name, owner email, and a strong password.
+3. Enter the Render `SETUP_SECRET`, Super Admin name, email, and a strong password.
 4. After it succeeds, the setup endpoint permanently refuses a second bootstrap because a profile now exists.
 5. Sign in.
 

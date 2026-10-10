@@ -5,7 +5,6 @@ export function notFound(req, res) {
 }
 
 export function errorHandler(err, req, res, next) {
-  console.error(err?.stack || err);
   if (res.headersSent) return next(err);
 
   if (err instanceof ZodError) {
@@ -26,7 +25,7 @@ export function errorHandler(err, req, res, next) {
   const status =
     Number(err?.status) || 500;
 
-  console.error('PARTCAST ERROR:', {
+  if(status>=500)console.error('PARTCAST ERROR:', {
     message: err?.message,
     code: err?.code,
     details: err?.details,
@@ -38,7 +37,7 @@ export function errorHandler(err, req, res, next) {
     process.env.NODE_ENV !== 'production';
 
   const message =
-    status >= 500 && !isDevelopment
+    status >= 500 && !isDevelopment && !err?.safe
       ? 'The server could not complete the request.'
       : err?.message ||
         'Unknown server error.';

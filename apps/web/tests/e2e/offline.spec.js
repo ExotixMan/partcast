@@ -1,25 +1,27 @@
 import {test,expect} from '@playwright/test';
 const userId='11111111-1111-4111-8111-111111111111';
 const productId='33333333-3333-4333-8333-333333333333';
+const sid='77777777-7777-4777-8777-777777777777';
+const token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({session_id:sid,amr:[{method:'password'}]})).toString('base64url')+'.test-only-signature';
 const project='ragdjkdcrvexqfadlqbf';
 async function setup(context,{role='inventory_staff'}={}){
  let stock=5,requests=[],receipts=new Set(),disconnected=false;
- await context.addInitScript(({userId,project})=>{
-  if(!localStorage.getItem(`sb-${project}-auth-token`))localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:'test-only-token',refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}}));
- },{userId,project});
+ await context.addInitScript(({userId,project,token})=>{
+  if(!localStorage.getItem(`sb-${project}-auth-token`))localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:token,refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}}));
+ },{userId,project,token});
  const product=()=>({id:productId,part_number:'BP-001',description:'Toyota brake pad',brand:'Toyota',unit:'pcs',location:'Shelf A',current_stock:stock,minimum_stock:2,selling_price:500,stock_status:stock<=0?'out':stock<=2?'low':'ok'});
  await context.route('http://localhost:10000/**',async route=>{
   if(disconnected){await route.abort('internetdisconnected');return;}
   const req=route.request(),url=new URL(req.url());let body;
   if(req.method()==='OPTIONS'){await route.fulfill({status:204,headers:{'access-control-allow-origin':'*','access-control-allow-methods':'GET,POST,PATCH,OPTIONS','access-control-allow-headers':'authorization,content-type'}});return;}
-  if(url.pathname==='/api/me')body={user:{id:userId,full_name:'Store Staff',role,active:true}};
+  if(url.pathname==='/api/me')body={user:{id:userId,full_name:'Store Staff',role,active:true,session_id:sid,verification_expires_at:'2099-01-01T00:00:00Z'}};
   else if(url.pathname==='/api/offline-snapshot')body={products:[product()],suppliers:[]};
   else if(url.pathname==='/api/products')body={data:[product()],count:1};
   else if(url.pathname==='/api/suppliers'||url.pathname==='/api/notifications')body={data:[]};
   else if(url.pathname==='/api/dashboard')body={metrics:{totalProducts:1,lowStock:0,outOfStock:0,inventoryValue:1000},salesTrend:[],fastMoving:[],slowMoving:[],reorder:[],latestForecastRun:null};
-  else if(url.pathname==='/api/inventory/movement'){
+  else if(url.pathname==='/api/inventory/movement'||url.pathname==='/api/inventory/batch'){
    const payload=req.postDataJSON();requests.push(payload);
-   if(!receipts.has(payload.client_operation_id)){stock+=(payload.tx_type==='stock_in'?1:-1)*Number(payload.quantity);receipts.add(payload.client_operation_id);}
+   if(!receipts.has(payload.client_operation_id)){stock+=(payload.tx_type==='stock_in'?1:-1)*Number(payload.lines?.[0].quantity??payload.quantity);receipts.add(payload.client_operation_id);}
    body={transactionId:'test-transaction'};
   }else body={data:[],needsSetup:false};
   await route.fulfill({json:body,headers:{'access-control-allow-origin':'*'}});
@@ -44,12 +46,13 @@ test('mobile: saved inventory survives offline reload, queued sale sends on reco
  await page.getByRole('button',{name:'Open Store Assistant'}).click();
  await page.getByRole('textbox',{name:'Message to Store Assistant'}).fill('How do I record a sale?');
  await page.getByRole('button',{name:'Send message'}).click();
- await expect(page.getByText(/Open Inventory, find the part/)).toBeVisible();
+ await expect(page.getByText(/Open Sell or receive, choose Sell parts/)).toBeVisible();
  await page.getByRole('button',{name:'Close Store Assistant'}).click();
- await page.getByRole('button',{name:'Sell',exact:true}).click();
- await page.getByLabel('Quantity *').fill('2');
- await expect(page.getByText('After this change:')).toContainText('3 pcs');
- await page.getByRole('button',{name:'Confirm stock change'}).click();
+ await page.getByRole('link',{name:'Sell or receive',exact:true}).filter({visible:true}).click();
+ await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();
+ await page.getByLabel('Quantity',{exact:true}).fill('2');
+ await expect(page.getByText('Stock after this sale: 3 pcs')).toBeVisible();
+ await page.getByRole('button',{name:'3. Confirm sale'}).click();
  await expect(page.getByText(/1 unsent transaction/)).toBeVisible();
  expect(backend.requests.length).toBe(0);
  await page.reload();
@@ -75,7 +78,7 @@ for(const size of [{name:'tablet',width:820,height:1180},{name:'desktop',width:1
   await page.getByRole('button',{name:'Open Store Assistant'}).click();
   await page.getByRole('textbox',{name:'Message to Store Assistant'}).fill('How do I record a sale?');
   await page.getByRole('button',{name:'Send message'}).click();
-  await expect(page.getByText(/Open Inventory, find the part/)).toBeVisible();
+  await expect(page.getByText(/Open Sell or receive, choose Sell parts/)).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.screenshot({path:`/tmp/partcast-${size.name}.png`,fullPage:true});
  });
@@ -137,25 +140,25 @@ test('home search and stock shortcuts carry the selected task to Inventory on a 
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-test('stock form keeps typing focus, rejects excessive or imprecise quantities, and saves a valid sale',async({page,context})=>{
+test('sale basket keeps typing focus, rejects excessive or imprecise quantities, and saves a valid sale',async({page,context})=>{
  const backend=await setup(context);await page.setViewportSize({width:390,height:844});await page.goto('/inventory?action=sale');
- await expect(page.getByText(/Inventory saved/)).toBeVisible();
- await page.getByRole('button',{name:'Sell',exact:true}).click();
- const quantity=page.getByLabel('Quantity *');
- await quantity.fill('6');await expect(quantity).toBeFocused();
- await page.getByRole('button',{name:'Confirm stock change'}).click();
- await expect(page.getByText(/Only 5 pcs/)).toBeVisible();expect(backend.requests).toHaveLength(0);
- await quantity.fill('0.005');await page.getByRole('button',{name:'Confirm stock change'}).click();
- await expect(quantity).toHaveAttribute('aria-invalid','true');expect(backend.requests).toHaveLength(0);
- await quantity.fill('2');
- await page.getByText('Add a receipt, price, or note',{exact:false}).click();
- const price=page.getByLabel('Price per unit',{exact:true});await price.fill('-1');
- await page.getByRole('button',{name:'Confirm stock change'}).click();await expect(price).toHaveAttribute('aria-invalid','true');
- await price.fill('500');await expect(price).toBeVisible();await expect(price).toBeFocused();
- await expect(page.getByText('After this change:')).toContainText('3 pcs');
- await page.getByRole('button',{name:'Confirm stock change'}).click();
- await expect.poll(()=>backend.requests.length).toBe(1);expect(backend.getStock()).toBe(3);
- await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(page).toHaveURL(/counter/);await expect(page.getByText(/Inventory saved/)).toBeVisible();
+ await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();
+ const quantity=page.getByLabel('Quantity',{exact:true}),price=page.getByLabel('Price per unit',{exact:true});
+ await quantity.fill('6');await expect(quantity).toBeFocused();await page.getByRole('button',{name:'3. Confirm sale'}).click();
+ await expect(page.getByRole('alert')).toContainText('not enough saved stock');expect(backend.requests).toHaveLength(0);
+ await quantity.fill('0.005');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByRole('alert')).toContainText('2 decimal places');expect(backend.requests).toHaveLength(0);
+ await quantity.fill('2');await price.fill('-1');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByRole('alert')).toContainText('2 decimal places');
+ await price.fill('500');await expect(price).toBeFocused();await expect(page.getByText('Stock after this sale: 3 pcs')).toBeVisible();
+ await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect.poll(()=>backend.requests.length).toBe(1);expect(backend.getStock()).toBe(3);
+});
+
+test('inventory offers only part editing and validated stock corrections',async({page,context})=>{
+ const backend=await setup(context);await page.setViewportSize({width:390,height:844});await page.goto('/inventory');await expect(page.getByText(/Inventory saved/)).toBeVisible();
+ await expect(page.getByRole('button',{name:'Sell',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Receive',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Adjust stock'}).filter({visible:true}).click();await page.getByRole('button',{name:'Confirm correction'}).click();await expect(page.getByLabel('Reason for correction *')).toHaveAttribute('aria-invalid','true');expect(backend.requests).toHaveLength(0);
+ await page.getByLabel('Reason for correction *').fill('Damaged part');await page.getByLabel('Quantity *').fill('6');await page.getByRole('button',{name:'Confirm correction'}).click();await expect(page.getByLabel('Quantity *')).toHaveAttribute('aria-invalid','true');
+ await page.getByLabel('Quantity *').fill('1');await page.getByRole('button',{name:'Confirm correction'}).click();await expect.poll(()=>backend.requests.length).toBe(1);expect(backend.getStock()).toBe(4);expect(backend.requests[0].tx_type).toBe('stock_out');
 });
 
 test('adding a part explains missing required information without submitting',async({page,context})=>{
@@ -178,7 +181,7 @@ test('navigation and help trap keyboard focus and return it when closed',async({
  await expect(page.getByRole('button',{name:'Close Store Assistant'})).toBeFocused();
  await page.keyboard.press('Shift+Tab');await expect(page.getByRole('textbox',{name:'Message to Store Assistant'})).toBeFocused();
  await page.getByRole('button',{name:'How do I receive a delivery?'}).click();
- await expect(page.getByText(/Choose Receive stock on Home/)).toBeVisible();
+ await expect(page.getByText(/Open Sell or receive and choose Receive delivery/)).toBeVisible();
  expect(await page.locator('#root').evaluate(el=>el.inert)).toBe(true);
  await page.keyboard.press('Escape');await expect(help).toBeFocused();
  expect(await page.locator('#root').evaluate(el=>el.inert)).toBe(false);

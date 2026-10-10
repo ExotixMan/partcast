@@ -11,7 +11,7 @@ import {batchSchema,debtSchema,paymentSchema} from '../utils/storeValidation.js'
 const router=Router(),write=requireRole('owner','admin','inventory_staff');
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:5*1024*1024,files:1}});
 for(const [path,schema] of [['/inventory/batch',batchSchema],['/debts',debtSchema],['/debts/payment',paymentSchema]]){
- router.post(path,write,async(req,res,next)=>{try{
+ router.post(path,path==='/inventory/batch'?requireRole('owner','admin','inventory_staff','cashier'):write,async(req,res,next)=>{try{
  const {client_operation_id,...payload}=schema.parse(req.body);
  const {data,error}=await userDb(req.user.accessToken).rpc('sync_store_operation',{p_operation_id:client_operation_id,p_payload:payload});
  if(error)throw error;

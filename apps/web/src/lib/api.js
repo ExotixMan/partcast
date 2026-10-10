@@ -1,3 +1,4 @@
+import {verifiedCacheMatches} from './access.js';
 import {lineCents,validAmount} from './store.js';
 import { readCache, saveCache, queueItems, projectedProducts, enqueueMovement, drainQueue } from './offline.js';
 import { resolveApiConnection, connectionMessage } from './connection.js';
@@ -38,7 +39,10 @@ async function networkRequest(path, options = {}) {
   const json = (res.headers.get('content-type') || '').includes('application/json');
   if (!res.ok) {
     const body = json ? await res.json().catch(() => ({})) : {};
-    throw new ApiError(body.error || `Request failed (${res.status})`, res.status);
+    const error = new ApiError(body.error || `Request failed (${res.status})`, res.status);
+    error.code = body.code;
+    if (res.status === 428) window.dispatchEvent(new Event('partcast:verify-email'));
+    throw error;
   }
   if (res.status === 204) return null;
   if(responseType==='image' && /image\/(webp|png|jpeg)/.test(res.headers.get('content-type')||''))return res.blob();
@@ -65,6 +69,7 @@ async function localRead(path) {
     if (snapshot) return { data: snapshot.value.suppliers, offline: true, savedAt: snapshot.savedAt };
   }
   const cached = cacheable(path) && await readCache(userId, path);
+  if (path === '/api/me' && !verifiedCacheMatches(currentSession,cached?.value?.user)) throw new ApiError('Connect to enter your email code before using this account.',428);
   if (!cached) throw new ApiError('This information is not saved on this device. Connect to the internet to load it.', 0);
   return { ...cached.value, offline: true, savedAt: cached.savedAt };
 }
@@ -110,7 +115,7 @@ async function movement(body, batch = false) {
   if (!userId) throw new ApiError('Please sign in first.', 401);
   const profile = await readCache(userId, '/api/me');
   const snapshot = await readCache(userId, '/api/offline-snapshot');
-  if (!profile?.value?.user?.active || !snapshot) {
+  if (!verifiedCacheMatches(currentSession,profile?.value?.user) || !snapshot) {
     if (!navigator.onLine) throw new ApiError('Connect once to save your inventory and verify your account before working offline.', 0);
     return networkRequest(batch?'/api/inventory/batch':'/api/inventory/movement', { method: 'POST', body: JSON.stringify({ ...body, client_operation_id: body.client_operation_id||crypto.randomUUID(),occurred_at:body.occurred_at||new Date().toISOString() }) });
   }
@@ -141,7 +146,7 @@ async function ledger(path,body){
  if(!userId)throw new ApiError('Please sign in.',401);
  if(!navigator.onLine)throw new ApiError('Connect to refresh customer balances before recording payments.',0);
  const profile=await readCache(userId,'/api/me');
- if(!profile?.value?.user?.active)throw new ApiError('Connect and verify your account before recording customer balances.',403);
+ if(!verifiedCacheMatches(currentSession,profile?.value?.user))throw new ApiError('Connect and verify your account before recording customer balances.',403);
  if((await queueItems(userId)).some(i=>i.status==='conflict'))throw new ApiError('Review the waiting change first.',409);
  const entry=await enqueueMovement(userId,body);
  try{await syncOffline();}catch(e){if(e.status&&e.status<500&&![408,429].includes(e.status))throw e;}

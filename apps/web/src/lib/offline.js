@@ -72,8 +72,8 @@ export async function removeQueued(key) {
   await transaction('queue', 'readwrite', s => s.delete(key));
   changed();globalThis.dispatchEvent?.(new Event('partcast:queue'));
 }
-export async function clearAccount(userId) {
-  for (const store of ['cache', 'queue']) {
+export async function clearAccount(userId,{keepQueue=false}={}) {
+  for (const store of keepQueue ? ['cache'] : ['cache', 'queue']) {
     const db = await open();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(store, 'readwrite');
@@ -102,7 +102,7 @@ export async function drainQueue(userId, send) {
     if (entry.status === 'conflict') break;
     try { await send(entry.payload); await removeQueued(entry.key); }
     catch (error) {
-      if (error.status >= 400 && error.status < 500 && ![401,403,408,429].includes(error.status)) await updateQueued(entry, error.message);
+      if (error.status >= 400 && error.status < 500 && ![401,403,408,428,429].includes(error.status)) await updateQueued(entry, error.message);
       throw error;
     }
   }

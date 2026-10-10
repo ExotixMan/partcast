@@ -2,8 +2,10 @@ import {test,expect} from '@playwright/test';
 import {createRequire} from 'node:module';
 const ExcelJS=createRequire(new URL('../../../server/package.json',import.meta.url))('exceljs');
 const userId='11111111-1111-4111-8111-111111111111',p1='33333333-3333-4333-8333-333333333333',p2='99999999-9999-4999-8999-999999999999',project='ragdjkdcrvexqfadlqbf',supplier='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-async function fixture(context){
- await context.addInitScript(({userId,project})=>localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:'test-only-token',refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}})),{userId,project});
+const sid='77777777-7777-4777-8777-777777777777';
+const token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({session_id:sid,amr:[{method:'password'}]})).toString('base64url')+'.test-only-signature';
+async function fixture(context,{role='owner'}={}){
+ await context.addInitScript(({userId,project,token})=>localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:token,refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}})),{userId,project,token});
  const products=[{id:p1,part_number:'BP-001',description:'Toyota brake pad',brand:'Toyota',unit:'pcs',location:'Shelf A',current_stock:5,minimum_stock:1,safety_stock:1,selling_price:500,unit_cost:100,category:'parts',barcode:'123456789012',search_aliases:['pastilyas'],photo_paths:[],stock_status:'ok'},{id:p2,part_number:'OIL-001',description:'Engine oil',brand:'Brand',unit:'bottles',location:'Shelf B',current_stock:8,minimum_stock:2,selling_price:100,unit_cost:60,category:'lubricants',barcode:'987654321098',search_aliases:['langis ng makina'],photo_paths:[],stock_status:'ok'}];
  const batches=[],debts=[],payments=[],emails=[],productWrites=[],photoUploads=[];let disconnected=false;const receipts=new Map();
  await context.route('http://localhost:10000/**',async route=>{
@@ -11,7 +13,7 @@ async function fixture(context){
  if(disconnected){await route.abort('internetdisconnected');return;}
  if(req.method()==='OPTIONS'){await route.fulfill({status:204,headers:{...headers,'access-control-allow-methods':'GET,POST,PATCH,DELETE,OPTIONS','access-control-allow-headers':'authorization,content-type'}});return;}
  let body={data:[]};
- if(url.pathname==='/api/me')body={user:{id:userId,full_name:'Store Staff',role:'owner',active:true}};
+ if(url.pathname==='/api/me')body={user:{id:userId,full_name:'Store Staff',role,active:true,session_id:sid,verification_expires_at:'2099-01-01T00:00:00Z'}};
  else if(url.pathname==='/api/offline-snapshot')body={products,suppliers:[{id:supplier,name:'Parts supplier'}]};
  else if(url.pathname==='/api/products'&&req.method()==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category');const data=products.filter(p=>`${p.description} ${p.barcode} ${p.search_aliases.join(' ')}`.toLowerCase().includes(q)&&(!category||category==='all'||p.category===category));body={data,count:data.length};}
  else if(url.pathname==='/api/products'&&req.method()==='POST'){const payload=req.postDataJSON();productWrites.push(payload);body={product:{...payload,id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'}};}
@@ -71,20 +73,33 @@ test('Tagalog and dark mode persist; assistant clarifies coolant versus radiator
  await page.getByRole('button',{name:'Buksan ang katulong sa tindahan'}).click();await page.getByLabel('Mensahe sa katulong sa tindahan').fill('Pareho ba ang coolant at radiator?');await page.getByRole('button',{name:'Ipadala ang mensahe'}).click();await expect(page.getByText(/magkaibang produkto/)).toBeVisible();
 });
 test('part photos validate upload and show saved images',async({page,context})=>{
- const api=await fixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/inventory');const card=page.getByRole('article').filter({hasText:'Toyota brake pad'});await card.getByText('Other actions').click();await card.getByRole('button',{name:'Edit details'}).click();
+ const api=await fixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/inventory');const card=page.getByRole('article').filter({hasText:'Toyota brake pad'});await card.getByRole('button',{name:'Edit details'}).click();
  await page.locator('input[type=file]').setInputFiles({name:'bad.txt',mimeType:'text/plain',buffer:Buffer.from('not an image')});await expect(page.getByRole('alert')).toContainText('JPEG');expect(api.photoUploads).toHaveLength(0);
  await page.locator('input[type=file]').setInputFiles({name:'part.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});await expect.poll(()=>api.photoUploads.length).toBe(1);await expect(page.getByRole('dialog').locator('img')).toBeVisible();await page.getByRole('button',{name:'Remove photo'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(0);
 });
-test('email OTP does not register accounts and verifies a received code',async({page,context})=>{
- const calls=[];
- await context.route('http://localhost:10000/**',route=>{const url=new URL(route.request().url());const json=url.pathname==='/api/me'?{user:{id:userId,full_name:'Store Staff',role:'owner',active:true}}:url.pathname==='/api/dashboard'?{metrics:{totalProducts:0,lowStock:0,outOfStock:0,inventoryValue:0},salesTrend:[],fastMoving:[],slowMoving:[],reorder:[]}:url.pathname==='/api/offline-snapshot'?{products:[],suppliers:[]}:{needsSetup:false,data:[]};return route.fulfill({json,headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'}});});
- await context.route(`https://${project}.supabase.co/**`,async route=>{
- const request=route.request();if(request.method()==='OPTIONS'){await route.fulfill({status:204,headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'}});return;}
- if(request.url().includes('/otp')){calls.push(request.postDataJSON());await route.fulfill({json:{},headers:{'access-control-allow-origin':'*'}});return;}
- if(request.url().includes('/verify')){calls.push(request.postDataJSON());const success=calls.filter(c=>c.token).length>1;await route.fulfill({status:success?200:403,json:success?{access_token:'test-only-token',refresh_token:'test-only-refresh',expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}}:{msg:'Token has expired or is invalid',code:'otp_expired'},headers:{'access-control-allow-origin':'*'}});return;}
- await route.fulfill({json:{},headers:{'access-control-allow-origin':'*'}});
+test('password is required before Gmail email code; wrong code cannot open the store',async({page,context})=>{
+ const calls=[],passwords=[];let verified=false;
+ const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'};
+ await context.route('http://localhost:10000/**',async route=>{
+ const req=route.request(),url=new URL(req.url());if(req.method()==='OPTIONS'){await route.fulfill({status:204,headers});return;}
+ let json={needsSetup:false,data:[]},status=200;
+ if(url.pathname==='/api/me'){status=verified?200:428;json=verified?{user:{id:userId,full_name:'Store Staff',role:'owner',active:true,session_id:sid,verification_expires_at:'2099-01-01T00:00:00Z'}}:{error:'Enter the email code to finish signing in.',code:'OTP_REQUIRED'};}
+ else if(url.pathname==='/auth/otp/request'){calls.push({path:url.pathname,body:req.postDataJSON()});json={sent:true};}
+ else if(url.pathname==='/auth/otp/verify'){calls.push({path:url.pathname,body:req.postDataJSON()});verified=req.postDataJSON().code==='654321';status=verified?200:422;json=verified?{verified:true}:{error:'The code is incorrect. Check your most recent email.'};}
+ else if(url.pathname==='/api/dashboard')json={metrics:{totalProducts:0,lowStock:0,outOfStock:0,inventoryValue:0},salesTrend:[],fastMoving:[],slowMoving:[],reorder:[]};
+ else if(url.pathname==='/api/offline-snapshot')json={products:[],suppliers:[]};
+ await route.fulfill({status,json,headers});
  });
- await page.goto('/login');await page.getByRole('button',{name:'Email code',exact:true}).click();await page.getByLabel('Email address',{exact:true}).fill('staff@example.test');await page.getByRole('button',{name:'Send email code'}).click();await expect(page.getByLabel('Email sign-in code')).toBeVisible();expect(calls[0].create_user).toBe(false);await expect(page.getByRole('button',{name:/Resend in/})).toBeDisabled();await page.getByLabel('Email sign-in code').fill('123456');await page.getByRole('button',{name:'Verify code and sign in'}).click();await expect(page.getByRole('alert')).toContainText('incorrect or expired');expect(calls[1].type).toBe('email');expect(calls[1].token).toBe('123456');await page.getByLabel('Email sign-in code').fill('654321');await page.getByRole('button',{name:'Verify code and sign in'}).click();await expect(page.getByRole('heading',{name:'Hello, Store'})).toBeVisible();
+ await context.route(`https://${project}.supabase.co/**`,async route=>{
+ const req=route.request();if(req.method()==='OPTIONS'){await route.fulfill({status:204,headers});return;}
+ if(req.url().includes('/token')){passwords.push(req.postDataJSON());const ok=req.postDataJSON().password==='test-only-correct-password';await route.fulfill({status:ok?200:400,json:ok?{access_token:token,refresh_token:'test-only-refresh',expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}}:{msg:'Invalid login credentials'},headers});return;}
+ await route.fulfill({json:{},headers});
+ });
+ await page.goto('/counter');await expect(page.getByLabel('Password',{exact:true})).toBeVisible();await expect(page.getByLabel('Email sign-in code')).toHaveCount(0);
+ await page.getByLabel('Email address',{exact:true}).fill('staff@example.test');await page.getByLabel('Password',{exact:true}).fill('wrong-password');await page.getByRole('button',{name:'Sign in securely'}).click();await expect(page.getByRole('alert')).toBeVisible();expect(calls).toHaveLength(0);
+ await page.getByLabel('Password',{exact:true}).fill('test-only-correct-password');await page.getByRole('button',{name:'Sign in securely'}).click();await expect(page.getByLabel('Email sign-in code')).toBeVisible();await expect.poll(()=>calls.length).toBe(1);await expect(page.getByRole('button',{name:/Resend in/})).toBeDisabled();expect(calls[0].path).toBe('/auth/otp/request');expect(calls[0].body).toEqual({});
+ await page.getByLabel('Email sign-in code').fill('123456');await page.getByRole('button',{name:'Verify code and sign in'}).click();await expect(page.getByRole('alert')).toContainText('code is incorrect');await expect(page.locator('main')).toHaveCount(0);
+ await page.getByLabel('Email sign-in code').fill('654321');await page.getByRole('button',{name:'Verify code and sign in'}).click();await expect(page.getByRole('heading',{name:'Hello, Store'})).toBeVisible();expect(passwords).toHaveLength(2);expect(calls.at(-1).body).toEqual({code:'654321'});
 });
 
 test('saved part photos open a gallery and remain available offline',async({page,context})=>{
@@ -117,4 +132,39 @@ test('temporary API failure retains one basket and retries its original operatio
  const api=await fixture(context);const attempts=[];let available=false;
  await context.route('http://localhost:10000/api/inventory/batch',async route=>{if(route.request().method()==='OPTIONS'){await route.fallback();return;}attempts.push(route.request().postDataJSON());if(available){await route.fallback();return;}await route.fulfill({status:503,json:{error:'Store server is starting.'},headers:{'access-control-allow-origin':'*'}});});
  await page.setViewportSize({width:390,height:844});await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('link',{name:'Review basket'}).click();await page.getByLabel('Quantity',{exact:true}).fill('5');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByText(/1 unsent transaction/)).toBeVisible();await expect(page.getByText('Tap a part to add it here.')).toBeVisible();expect(api.batches).toHaveLength(0);available=true;await page.getByRole('button',{name:'Send changes'}).click();await expect.poll(()=>api.batches.length,{timeout:15000}).toBe(1);expect(new Set(attempts.map(b=>b.client_operation_id)).size).toBe(1);expect(api.products[0].current_stock).toBe(0);
+});
+
+test('Cashier sees only selling and read-only inventory, including whole photo previews',async({page,context})=>{
+ const api=await fixture(context,{role:'cashier'});api.products[0].photo_paths=[`${p1}/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webp`];
+ await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page).toHaveURL(/counter/);await expect(page.getByRole('heading',{name:'Sell or receive',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'View photos of Toyota brake pad'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(1);expect(await page.getByRole('dialog').locator('img').evaluate(img=>getComputedStyle(img).objectFit)).toBe('contain');await page.getByRole('button',{name:'Close modal'}).click();
+ await page.getByRole('button',{name:'More pages'}).click();const nav=page.getByRole('dialog',{name:'All pages'});await expect(nav.getByRole('link',{name:/Demand planning|Reports|Settings|Customer utang/})).toHaveCount(0);await page.getByRole('button',{name:'Close navigation'}).click();
+ await page.goto('/inventory');await expect(page.getByRole('heading',{name:'Inventory',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Add a new part'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Edit details'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Adjust stock'})).toHaveCount(0);await expect(page.getByText(/View only/).filter({visible:true})).toHaveCount(2);
+ for(const path of ['/reports','/debts','/forecast','/it-settings','/users']){await page.goto(path);await expect(page).toHaveURL(/counter/);}
+ expect(api.productWrites).toHaveLength(0);
+});
+test('Owner cannot open IT settings; Super Admin can change masked Google credentials',async({page,context})=>{
+ await fixture(context);await page.goto('/it-settings');await expect(page).toHaveURL(/\/$/);await expect(page.getByRole('heading',{name:'IT settings',exact:true})).toHaveCount(0);
+ await context.route('http://localhost:10000/api/me',route=>route.fulfill({json:{user:{id:userId,full_name:'Store IT',role:'super_admin',active:true,session_id:sid,verification_expires_at:'2099-01-01T00:00:00Z'}},headers:{'access-control-allow-origin':'*'}}));
+ const changes=[];const rows=[{provider:'gmail',enabled:true,ready:true,sender_email:'sender@example.test',fields:{client_id:true,client_secret:true,refresh_token:true,sender_email:true}},{provider:'gemini',enabled:true,ready:true,model:'gemini-2.5-flash',fields:{api_key:true,model:true}}];
+ await context.route('http://localhost:10000/api/admin/integrations**',async route=>{if(route.request().method()==='OPTIONS')return route.fallback();if(route.request().method()==='PATCH'){changes.push(route.request().postDataJSON());await route.fulfill({json:{data:rows[1]},headers:{'access-control-allow-origin':'*'}});return;}await route.fulfill({json:{data:rows,forecasting:{ready:true,message:'The forecasting engine is ready.'}},headers:{'access-control-allow-origin':'*'}});});
+ await page.setViewportSize({width:320,height:840});await page.goto('/it-settings');await expect(page.getByRole('heading',{name:'IT settings',exact:true})).toBeVisible();await expect(page.getByLabel('Google client secret')).toHaveValue('');await expect(page.getByLabel('Google refresh token')).toHaveValue('');await expect(page.getByLabel('Gemini API key')).toHaveValue('');
+ await page.getByLabel('Gemini API key').fill('test-only-replacement');await page.getByRole('heading',{name:'Gemini chatbot'}).locator('..').locator('..').getByRole('button',{name:'Save connection',exact:true}).click();await expect.poll(()=>changes.length).toBe(1);expect(changes[0].api_key).toBe('test-only-replacement');await expect(page.getByLabel('Gemini API key')).toHaveValue('');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+test('stock notifications refresh after stock changes and failed read marking offers retry',async({page,context})=>{
+ await fixture(context);let stock=1,marked=false,fail=true;
+ await context.route('http://localhost:10000/api/notifications**',async route=>{const headers={'access-control-allow-origin':'*'};if(route.request().method()==='OPTIONS')return route.fallback();if(route.request().method()==='POST'){if(fail){await route.fulfill({status:503,json:{error:'Please retry marking this alert.'},headers});return;}marked=true;await route.fulfill({json:{ok:true},headers});return;}await route.fulfill({json:{data:stock<=1?[{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',kind:stock?'low':'out',read:marked,created_at:'2026-10-10T02:00:00Z',product:{description:'Toyota brake pad',current_stock:stock,minimum_stock:2,unit:'pcs'}}]:[]},headers});});
+ await page.goto('/inventory');await page.getByRole('button',{name:/Stock notifications/}).click();await expect(page.getByRole('dialog')).toContainText('Running low: Toyota brake pad');await page.getByRole('button',{name:'Mark as read'}).click();await expect(page.getByRole('alert')).toContainText('retry');fail=false;await page.getByRole('button',{name:'Mark as read'}).click();await expect(page.getByRole('button',{name:'Mark as read'})).toHaveCount(0);
+ stock=0;await page.evaluate(()=>window.dispatchEvent(new Event('partcast:queue')));await expect(page.getByRole('dialog')).toContainText('Out of stock: Toyota brake pad');stock=5;await page.evaluate(()=>window.dispatchEvent(new Event('partcast:queue')));await expect(page.getByRole('dialog')).toContainText('No stock alerts to show');
+});
+
+test('offline sale survives an expired email check and sends after re-verification',async({page,context})=>{
+ const store=await fixture(context);let needsCode=false;
+ const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'};
+ for(const path of ['/api/me','/api/inventory/batch'])await context.route('http://localhost:10000'+path,async route=>{if(route.request().method()==='OPTIONS')return route.fallback();if(!needsCode)return route.fallback();await route.fulfill({status:428,json:{code:'OTP_REQUIRED',error:'Enter the email code to finish signing in.'},headers});});
+ await context.route('http://localhost:10000/auth/**',async route=>{if(route.request().method()==='OPTIONS'){await route.fulfill({status:204,headers});return;}if(route.request().url().endsWith('/otp/verify'))needsCode=false;await route.fulfill({json:{sent:true,verified:true},headers});});
+ await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.evaluate(async()=>navigator.serviceWorker.ready);store.disconnect(true);await context.setOffline(true);await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByLabel('Quantity',{exact:true}).fill('2');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByText(/1 unsent transaction/)).toBeVisible();
+ needsCode=true;store.disconnect(false);await context.setOffline(false);await expect(page.getByLabel('Email sign-in code')).toBeVisible({timeout:15000});
+ const waiting=await page.evaluate(()=>new Promise(resolve=>{const r=indexedDB.open('partcast-offline-v1');r.onsuccess=()=>{const request=r.result.transaction('queue').objectStore('queue').getAll();request.onsuccess=()=>resolve(request.result);};}));expect(waiting).toHaveLength(1);expect(waiting[0].status).toBe('pending');
+ await page.getByLabel('Email sign-in code').fill('654321');await page.getByRole('button',{name:'Verify code and sign in'}).click();await expect.poll(()=>store.batches.length,{timeout:15000}).toBe(1);expect(store.batches[0].client_operation_id).toBe(waiting[0].payload.client_operation_id);expect(store.products[0].current_stock).toBe(3);
 });

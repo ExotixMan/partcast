@@ -1,6 +1,6 @@
+import {getIntegration,integrationReady} from '../utils/integrations.js';
 import {normalizeQuestion,isTagalog,explainParts,productTerms} from '../utils/partTerms.js';
 import { adminDb } from '../supabase.js';
-import { config } from '../config.js';
 
 function safeNumber(value) {
   const number = Number(value);
@@ -450,6 +450,7 @@ export function localAnswer(message, context) {
 }
 
 async function geminiAnswer(message, context, language) {
+  const integration=await getIntegration('gemini');
   const prompt = `You are the NPG Autoparts Store Assistant speaking directly to the store owner.
 
 The owner is not technical. Use simple business language and short, practical answers.
@@ -485,13 +486,13 @@ ${compactText(message, 1000)}`;
 
   const endpoint =
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      config.GEMINI_MODEL
-    )}:generateContent?key=${encodeURIComponent(config.GEMINI_API_KEY)}`;
+      integration.model
+    )}:generateContent`;
 
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json', 'x-goog-api-key': integration.api_key
     },
     body: JSON.stringify({
       contents: [
@@ -528,11 +529,12 @@ ${compactText(message, 1000)}`;
   return compactText(text, 2000);
 }
 
-export function assistantMode() {
-  return config.GEMINI_API_KEY
+export async function assistantMode() {
+  const integration=await getIntegration('gemini');
+  return integrationReady('gemini',integration)
     ? {
         mode: 'gemini',
-        model: config.GEMINI_MODEL
+        model: integration.model
       }
     : {
         mode: 'smart-local',
@@ -555,12 +557,24 @@ export function tagalogStoreAnswer(message,context){
  else return null;
  return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.current_stock} ${p.unit||'yunit'}${/price/.test(q)?`, ${money(p.selling_price)} bawat isa`:''}${/where/.test(q)?`, lokasyon: ${p.location||'hindi pa naitala'}`:''}${/restock/.test(q)?`, mungkahing order: ${Math.ceil(Number(p.recommended_quantity||0))}`:''}`).join('; '):'Walang katugmang piyesa sa mga tala.'}`;
 }
-export async function answerAssistant(message,language) {
+async function cashierAnswer(message,fil){
+ const q=normalizeQuestion(message);
+ if(/cost|capital|profit|revenue|sales|benta|forecast|demand|supplier|utang/.test(q))return {answer:fil?'Para sa ulat ng benta, utang, o pagpaplano, tanungin ang may-ari. Makakatulong ako sa paghahanap, presyo at stock ng piyesa.':'Ask the owner about sales reports, customer balances or planning. I can help find parts, selling prices and stock.',mode:'database',model:null};
+ const terms=productTerms(message),term=terms[0]||extractSearchTerm(q);
+ let query=adminDb.from('inventory_status').select('part_number,description,current_stock,unit,location,selling_price,stock_status').eq('active',true);
+ if(/out of stock/.test(q))query=query.eq('stock_status','out');else if(/low stock/.test(q))query=query.eq('stock_status','low');
+ else if(term)query=query.or((terms.length?terms:[term]).map(sanitizeSearchTerm).filter(Boolean).flatMap(t=>[`description.ilike.%${t}%,part_number.ilike.%${t}%,barcode.ilike.%${t}%,alias_text.ilike.%${t}%`]).join(','));
+ const {data,error}=await query.order('description').limit(8);if(error)throw error;
+ return {answer:(fil?'Mula sa tala ng tindahan: ':'Store records: ')+(data.length?data.map(p=>`${p.part_number||''} ${p.description}: ${units(p.current_stock)} ${p.unit||'units'}${/price/.test(q)?`, ${money(p.selling_price)}`:''}${/where/.test(q)?`, ${p.location|| (fil?'Walang naitalang lokasyon':'No saved location')}`:''}`).join('; '):(fil?'Walang katugmang piyesa.':'No matching parts.')),mode:'database',model:null};
+}
+export async function answerAssistant(message,language,role) {
  const fil=language==='fil'||isTagalog(message),definition=explainParts(message,fil);
  if(definition)return {answer:definition,mode:'local',model:null};
+ if(role==='cashier')return cashierAnswer(message,fil);
  const context=await loadContext(message);
  const answer=fil?tagalogStoreAnswer(message,context):localAnswer(normalizeQuestion(message),context);
  if(answer)return {answer,mode:'database',model:null,updatedAt:new Date().toISOString()};
- if(config.GEMINI_API_KEY){try{return {answer:await geminiAnswer(message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[email removed]'),context,fil?'fil':'en'),mode:'gemini',model:config.GEMINI_MODEL};}catch{console.error('Assistant AI unavailable; using store guidance.');}}
+ const integration=await getIntegration('gemini');
+ if(integrationReady('gemini',integration)){try{return {answer:await geminiAnswer(message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[email removed]'),context,fil?'fil':'en'),mode:'gemini',model:integration.model};}catch{console.error('Assistant AI unavailable; using store guidance.');}}
  return {answer:fil?'Maaari kong tingnan ang stock, presyo, benta, supplier, at inaasahang demand. Subukan ang part number o itanong: “Alin ang kailangang dagdagan ng stock?”':'I can check stock, prices, sales, suppliers and expected demand. Try a part number or ask “Which parts need restocking?”',mode:'database',model:null};
 }

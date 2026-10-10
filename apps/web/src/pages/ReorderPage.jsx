@@ -31,7 +31,7 @@ export default function ReorderPage() {
   const {
     profile
   } = useAuth();
-  const admin = ['owner', 'admin'].includes(profile?.role);
+  const admin = ['super_admin', 'owner', 'admin'].includes(profile?.role);
   const [tab, setTab] = useState('reorder');
   const [rows, setRows] = useState([]);
   const [suppliers, setSuppliers] = useState([]);

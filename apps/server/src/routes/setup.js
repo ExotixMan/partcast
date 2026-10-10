@@ -45,12 +45,12 @@ router.post('/bootstrap', rateLimit({windowMs:15*60*1000,limit:5}), async (req, 
 
     const { error: updateError } = await adminDb.from('profiles').update({
       full_name: body.fullName,
-      role: 'owner',
+      role: 'super_admin',
       active: true
     }).eq('id', data.user.id);
     if (updateError) {await adminDb.auth.admin.deleteUser(data.user.id);throw updateError;}
 
-    res.status(201).json({ message: 'Owner account created. You can now sign in.' });
+    res.status(201).json({ message: 'Super Admin account created. You can now sign in.' });
   } catch (e) { next(e); }
   finally {if(leased){const result=await adminDb.rpc('release_job',{p_name:'owner-bootstrap',p_token:leaseToken});if(result.error)console.error('Owner setup lease release failed.');}}
 });

@@ -1,3 +1,6 @@
+import {integrationStatuses,saveIntegration,getIntegration} from '../utils/integrations.js';
+import {gmailAccessToken} from '../utils/gmail.js';
+import {forecastingStatus} from '../utils/ml.js';
 import {supplierEmailSchema} from '../utils/storeValidation.js';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -12,7 +15,8 @@ router.use(requireRole('owner','admin'));
 
 router.get('/users', async(req,res,next)=>{
   try{
-    const {data,error}=await adminDb.from('profiles').select('*').order('created_at');
+    let q=adminDb.from('profiles').select('*').order('created_at');if(req.user.role!=='super_admin')q=q.neq('role','super_admin');
+    const {data,error}=await q;
     if(error) throw error;
     const users=[];
     for(const profile of data||[]){
@@ -25,11 +29,12 @@ router.get('/users', async(req,res,next)=>{
 
 router.post('/users', requireRole('owner'), async(req,res,next)=>{
   try{
-    const body=z.object({fullName:z.string().trim().min(2).max(120),email:z.string().email(),password:z.string().min(10).max(128),role:z.enum(['owner','admin','inventory_staff'])}).parse(req.body);
+    const body=z.object({fullName:z.string().trim().min(2).max(120),email:z.string().email(),password:z.string().min(10).max(128),role:z.enum(['super_admin','owner','admin','inventory_staff','cashier'])}).parse(req.body);
+    if(req.user.role!=='super_admin'&&['super_admin','owner'].includes(body.role))return res.status(403).json({error:'Only the Super Admin can assign this role.'});
     const {data,error}=await adminDb.auth.admin.createUser({email:body.email,password:body.password,email_confirm:true,user_metadata:{full_name:body.fullName}});
     if(error) throw error;
     const upd=await adminDb.from('profiles').update({full_name:body.fullName,role:body.role,active:true}).eq('id',data.user.id);
-    if(upd.error) throw upd.error;
+    if(upd.error){await adminDb.auth.admin.deleteUser(data.user.id);throw upd.error;}
     await audit(req,'create','user',data.user.id,{role:body.role});
     res.status(201).json({id:data.user.id});
   }catch(e){next(e);}
@@ -37,20 +42,17 @@ router.post('/users', requireRole('owner'), async(req,res,next)=>{
 
 router.patch('/users/:id', requireRole('owner'), async(req,res,next)=>{
   try{
-    const body=z.object({full_name:z.string().trim().min(2).max(120).optional(),role:z.enum(['owner','admin','inventory_staff']).optional(),active:z.boolean().optional()}).parse(req.body);
+    const body=z.object({full_name:z.string().trim().min(2).max(120).optional(),role:z.enum(['super_admin','owner','admin','inventory_staff','cashier']).optional(),active:z.boolean().optional()}).parse(req.body);
     const {data:target,error:targetError}=await adminDb.from('profiles').select('id,role,active').eq('id',req.params.id).single();
     if(targetError) throw targetError;
 
-    if(req.params.id===req.user.id){
-      if(body.active===false) return res.status(400).json({error:'You cannot deactivate your own account.'});
-      if(body.role && body.role!=='owner') return res.status(400).json({error:'You cannot remove your own owner role.'});
-    }
-
-    const removesActiveOwner = target.role==='owner' && target.active && (body.active===false || (body.role && body.role!=='owner'));
-    if(removesActiveOwner){
-      const {count,error:countError}=await adminDb.from('profiles').select('*',{count:'exact',head:true}).eq('role','owner').eq('active',true);
-      if(countError) throw countError;
-      if((count||0)<=1) return res.status(400).json({error:'At least one active owner account is required.'});
+    if(req.user.role!=='super_admin'&&(target.role==='super_admin'||target.role==='owner'||['super_admin','owner'].includes(body.role)))return res.status(403).json({error:'Only the Super Admin can change Owner or Super Admin accounts.'});
+    if(req.params.id===req.user.id&&(body.active===false||body.role&&body.role!==req.user.role))return res.status(400).json({error:'You cannot turn off or remove your own account access.'});
+    for(const role of ['super_admin','owner']){
+      if(target.role===role&&target.active&&(body.active===false||body.role&&body.role!==role)){
+        const {count,error}=await adminDb.from('profiles').select('*',{count:'exact',head:true}).eq('role',role).eq('active',true);if(error)throw error;
+        if((count||0)<=1)return res.status(400).json({error:`At least one active ${role==='super_admin'?'Super Admin':'Owner'} account is required.`});
+      }
     }
 
     const {data,error}=await adminDb.from('profiles').update(body).eq('id',req.params.id).select('*').single();
@@ -61,7 +63,7 @@ router.patch('/users/:id', requireRole('owner'), async(req,res,next)=>{
 });
 
 
-router.get('/system-status', async(req,res)=>{
+router.get('/system-status', requireRole('super_admin'),async(req,res)=>{
   res.json({
     emailConfigured:Boolean(process.env.BREVO_API_KEY && process.env.BREVO_SENDER_EMAIL),
     backupBucket:'partcast-backups',
@@ -69,6 +71,22 @@ router.get('/system-status', async(req,res)=>{
     environment:process.env.NODE_ENV||'development'
   });
 });
+
+router.get('/store-status',(req,res)=>res.json({emailConfigured:Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL)}));
+router.get('/integrations',requireRole('super_admin'),async(req,res,next)=>{try{res.json({data:await integrationStatuses(),forecasting:await forecastingStatus()});}catch(e){next(e);}});
+router.patch('/integrations/:provider',requireRole('super_admin'),async(req,res,next)=>{try{
+ const provider=z.enum(['gmail','gemini']).parse(req.params.provider);
+ const result=await saveIntegration(provider,req.body,req.user.id);
+ await audit(req,'update','integration',provider,{fields:Object.keys(req.body).filter(k=>k!=='enabled'),enabled:result.enabled});res.json({data:result});
+}catch(e){next(e);}});
+router.post('/integrations/:provider/test',requireRole('super_admin'),async(req,res,next)=>{try{
+ const provider=z.enum(['gmail','gemini']).parse(req.params.provider);
+ if(provider==='gmail'){await gmailAccessToken();return res.json({ok:true,message:'Google access is valid. Complete a password and email-code sign-in to confirm delivery.'});}
+ const v=await getIntegration('gemini');if(!v.enabled||!v.api_key)throw Object.assign(new Error('Complete and enable the Gemini connection first.'),{status:422});
+ const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(v.model)}`,{headers:{'x-goog-api-key':v.api_key},signal:AbortSignal.timeout(15000)});
+ if(!response.ok)throw Object.assign(new Error('Gemini could not be reached with these settings. Check the API key, model and Google project access.'),{status:422});
+ res.json({ok:true,message:'Gemini model access is available.'});
+}catch(e){next(e);}});
 
 router.get('/settings', async(req,res,next)=>{
   try{const {data,error}=await adminDb.from('system_settings').select('*').order('key');if(error)throw error;res.json({data});}catch(e){next(e);}

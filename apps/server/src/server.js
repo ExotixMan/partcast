@@ -8,6 +8,7 @@ import { errorHandler, notFound } from './middleware/error.js';
 import setupRoutes from './routes/setup.js';
 import apiRoutes from './routes/api.js';
 import adminRoutes from './routes/admin.js';
+import loginRoutes from './routes/login.js';
 import jobsRoutes, { autoEmailSuppliers } from './routes/jobs.js';
 
 const app=express();
@@ -22,15 +23,16 @@ app.use(cors({
   allowedHeaders:['Content-Type','Authorization','X-Cron-Secret'],
   maxAge:600
 }));
-app.use('/api', (req,res,next) => {res.set('Cache-Control','no-store');next();});
+app.use(['/api','/auth'], (req,res,next) => {res.set('Cache-Control','no-store');next();});
 app.use(express.json({limit:'2mb'}));
 app.use(express.urlencoded({extended:false,limit:'1mb'}));
 app.use(rateLimit({windowMs:15*60*1000,limit:500,standardHeaders:'draft-8',legacyHeaders:false}));
 
 app.get('/health',(req,res)=>res.json({ok:true,service:'partcast-api',time:new Date().toISOString()}));
 app.use('/setup',setupRoutes);
-app.use('/api',authenticate,apiRoutes);
+app.use('/auth',loginRoutes);
 app.use('/api/admin',authenticate,adminRoutes);
+app.use('/api',authenticate,apiRoutes);
 app.use('/jobs',cronAuth,jobsRoutes);
 app.use(notFound);
 app.use(errorHandler);

@@ -8,28 +8,17 @@ Back up the database, then open your project's **SQL Editor**. Run only migratio
 
 Migration 0005 adds categories, barcodes, alternate names, private part photos, multi-item transactions, customer utang, and payments. It preserves existing products and stock movements. Existing products start in **Car parts** until you select their category. The migration creates the private `partcast-photos` Storage bucket automatically.
 
-## 2. Enable email-code sign-in
+## 2. Required password and Gmail email code
 
-In Supabase, open **Authentication → Email Templates → Magic Link**. Include `{{ .Token }}` in the email body so users receive the numeric code that PartCast asks for. For example:
-
-```html
-<h2>Your PartCast sign-in code</h2>
-<p>Enter this code in PartCast:</p>
-<p style="font-size:28px;font-weight:bold">{{ .Token }}</p>
-<p>If you did not request this code, ignore this email.</p>
-```
-
-Keep public account signup disabled. The store owner creates staff accounts in PartCast. **Email code** signs in an existing account; it does not create an account. An active PartCast staff profile remains required after Supabase verifies the code. Password sign-in is still available. Email code is an alternative sign-in method, not a second factor added to a password.
-
-Supabase controls code expiry and provider rate limits. PartCast accepts 6–10 digit codes and waits at least 60 seconds before a resend. Configure a verified SMTP provider in Supabase for staff email delivery; its default email service has delivery and recipient restrictions. Brevo's supplier email API settings do not automatically configure Supabase Auth email. Never enter secret keys in chat or frontend settings.
+Follow [Required login, roles and forecasting upgrade](LOGIN_ROLES_FORECASTING.md). Apply missing migrations through 0005, then **0006 by itself** and **0007 separately**. Configure Gmail OAuth credentials on the API before deploying this release. Staff must enter a password and then a six-digit code; the old alternative Supabase OTP method is no longer accepted. Gmail delivery uses Google OAuth, and Gemini uses its separate API key. Owners do not see IT settings; only Super Admin can change saved Google connections.
 
 ## 3. Deploy both Render services
 
-Set the branch above on both the API Web Service and the website Static Site, then deploy both services after the migration. See [Render connection settings](RENDER_CONNECTION.md) for the correct URLs and matching Supabase keys. The site is `https://partcast-web.onrender.com`; its API is `https://partcast.onrender.com`. All Supabase keys must belong to `https://ragdjkdcrvexqfadlqbf.supabase.co`.
+Set the branch above on both the API Web Service and the website Static Site, then deploy both services after the migrations and Gmail configuration. See [Render connection settings](RENDER_CONNECTION.md) for the correct URLs and matching Supabase keys. The site is `https://partcast-web.onrender.com`; its API is `https://partcast.onrender.com`. All Supabase keys must belong to `https://ragdjkdcrvexqfadlqbf.supabase.co`.
 
 Frontend public settings are embedded at build time, so changing them requires a new website build. Keep the service-role, AI, and supplier email keys on the API service. This update adds `sharp` to the API installation and a camera barcode decoder to the website installation; the committed lockfiles and existing `npm ci` deployment commands include them.
 
-After deploying, open API `/health`, sign in, and wait for **Inventory saved**. Check the new screens below with a test product and test customer. Confirm an email code arrives for an existing staff account. Deploying source alone does not prove the migration, email provider, or camera works on your device.
+After deploying, open API `/health`, sign in, and wait for **Inventory saved**. Check the new screens below with a test product and test customer. Confirm a Gmail code arrives after a correct password for an existing active staff account. Deploying source alone does not prove the migration, email provider, or camera works on your device.
 
 ## Everyday store tasks
 
@@ -91,6 +80,6 @@ Reports need internet and download directly to the browser's Downloads folder. E
 
 ## Verification and remaining live checks
 
-Local verification completed with **27 server tests, 14 frontend unit tests, and 30 Chromium browser tests passing (71 total)**, plus the production build. Production dependency audits reported no known vulnerabilities in both packages at the time of testing. Tests use synthetic store/customer records. Database tests execute migrations 0001–0005 in PostgreSQL through PGlite and exercise atomic baskets, credit, idempotent retries, overpayment/precision checks, active-account access, notifications, and direct-write restrictions. Server tests build and reopen real Excel workbooks and decode real image bytes. Chromium tests exercise responsive screens, offline reload/reconnect, edited mail payloads, photo gallery caching, camera denial/manual entry, bilingual/dark preferences, and mocked Supabase email-code success/expiry.
+See [verification](VERIFICATION.md) for the latest suite results and production-build checks. Production dependency audits reported no known vulnerabilities in both packages at the time of testing. Tests use synthetic store/customer records. Database tests execute migrations 0001–0007 in PostgreSQL through PGlite and exercise atomic baskets, credit, idempotent retries, overpayment/precision checks, active-account access, notifications, and direct-write restrictions. Server tests build and reopen real Excel workbooks and decode real image bytes. Chromium tests exercise responsive screens, offline reload/reconnect, edited mail payloads, photo gallery caching, camera denial/manual entry, bilingual/dark preferences, and mocked password-then-Gmail-code success/denial.
 
 These checks do not send real staff/supplier emails, apply changes to hosted Supabase, deploy Render, or establish physical-camera accuracy. Complete those live checks after the activation steps. Existing forecasting data-quality requirements still apply; see [Forecasting data](FORECASTING_DATA.md).

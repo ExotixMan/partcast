@@ -91,3 +91,13 @@ test('quantity and price validation rejects blank, boolean and nonnumeric values
  for(const value of [0,'0',0.29,'19.9',999.99])assert.equal(validAmount(value),true);
  assert.equal(validAmount(0,true),false);assert.equal(validAmount('0.01',true),true);
 });
+
+test('expired email verification retains pending work; automatic cache invalidation preserves the outbox',async()=>{
+ const user='expired-code-user';
+ await saveCache(user,'/api/me',{user:{active:true}});
+ await enqueueMovement(user,{product_id:'p',tx_type:'sale',quantity:1});
+ await assert.rejects(drainQueue(user,async()=>{throw Object.assign(new Error('Enter the email code'),{status:428});}),/email code/);
+ assert.equal((await queueItems(user))[0].status,'pending');
+ await clearAccount(user,{keepQueue:true});assert.equal(await readCache(user,'/api/me'),null);assert.equal((await queueItems(user)).length,1);
+ await drainQueue(user,async()=>{});assert.equal((await queueItems(user)).length,0);
+});

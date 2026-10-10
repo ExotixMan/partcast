@@ -10,7 +10,7 @@ Full-stack capstone system using React + Tailwind CSS, Node.js/Express, Supabase
 - Categories, alternate names, private product photos, and camera/manual barcode search.
 - English/Tagalog interface, Tagalog part terminology, light default and optional dark mode.
 - Editable supplier email drafts and date/category-filtered Excel inventory and sales reports.
-- Existing-account email-code login alongside password login, with input and permission checks.
+- Required password followed by a Gmail email code, Super Admin/Owner/Cashier permissions, and encrypted Google API settings.
 - Header/mobile-help PartCast chatbot that keeps pagination clear.
 - Works immediately in **Smart Local** mode using live PartCast database facts.
 - Optional **Gemini-assisted** mode using `GEMINI_API_KEY`; only minimized inventory/forecast context is sent, not passwords, customer names, or supplier email addresses.
@@ -25,22 +25,24 @@ Full-stack capstone system using React + Tailwind CSS, Node.js/Express, Supabase
 
 ## Required database upgrade for an existing Supabase project
 
-Apply only unapplied migrations. Existing installations with 0001–0004 need `0005_store_workflows.sql`. Fresh projects need all five in order:
+Apply only unapplied migrations. Existing installations with 0001–0005 need `0006_access_roles.sql` followed by `0007_verified_login_and_access.sql` in separate executions. Fresh projects need all seven in order:
 
 1. `0001_schema.sql`
 2. `0002_rls.sql`
 3. `0003_training_import.sql`
 4. `0004_offline_security_notifications.sql`
 5. `0005_store_workflows.sql`
+6. `0006_access_roles.sql` (separate execution; commit before step 7)
+7. `0007_verified_login_and_access.sql`
 
-See [Activate and use the new features](docs/STORE_WORKFLOWS.md) for Supabase email-code templates, Render deployment, everyday sales/utang workflows, and validation limits.
+See [Activate and use the new features](docs/STORE_WORKFLOWS.md) for everyday sales/utang workflows and validation limits. See [Required login, roles, Google API setup and Python repair](docs/LOGIN_ROLES_FORECASTING.md) before deploying; configure Gmail first and apply 0006 separately before 0007.
 
 ## Recommended dataset import order
 
 1. Clean inventory spreadsheet
 2. Reviewed customer/reference transactions spreadsheet for invoice history
 3. Reviewed actual-quantity training workbook prepared from the raw receipts
-4. Go to **Demand Forecast** and click **Train & Forecast** once recent history meets the eligibility checks
+4. Go to **Demand planning** and click **Update demand estimate** once recent history meets the eligibility checks
 
 See [Forecasting data preparation](docs/FORECASTING_DATA.md). The original training-ready workbook contains inferred/proxy quantities; its older metrics do not establish current forecast accuracy.
 
@@ -93,7 +95,7 @@ Never put `GEMINI_API_KEY` in the React/Vite environment.
 
 ## Offline-first update
 
-See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply unapplied migrations through `0005_store_workflows.sql` before starting this version.
+See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply unapplied migrations through `0007_verified_login_and_access.sql` before starting this version.
 
 See [Light interface and everyday workflows](docs/USABILITY_REDESIGN.md) for the responsive redesign, guided stock forms, accessible navigation, and usability checks.
 

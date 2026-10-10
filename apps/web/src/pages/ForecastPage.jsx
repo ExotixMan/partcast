@@ -25,7 +25,8 @@ export default function ForecastPage() {
   const {
     profile
   } = useAuth();
-  const canTrain = ['owner', 'admin'].includes(profile?.role);
+  const canTrain = ['super_admin', 'owner', 'admin'].includes(profile?.role);
+  const [runtime,setRuntime] = useState(null);
   const [runs, setRuns] = useState([]);
   const [quality, setQuality] = useState(null);
   const [forecastProducts, setForecastProducts] = useState([]);
@@ -60,6 +61,7 @@ export default function ForecastPage() {
   }
   useEffect(() => {
     load();
+    api.get('/api/forecast/status').then(setRuntime).catch(e=>setRuntime({ready:false,message:e.message}));
   }, []);
   useEffect(() => {
     let active = true;
@@ -113,10 +115,11 @@ export default function ForecastPage() {
 
     {loadError && <div role="alert" className="mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-amber-950">{t("We could not load your sales estimates.")}</p><p className="mt-1 text-sm text-amber-900">{t(loadError)}</p></div><button className="btn-secondary shrink-0" onClick={load}><RefreshCw size={16} />{t("Try again")}</button></div>}
 
+    {runtime?.ready===false && <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="alert"><p className="font-bold">{t("The forecasting engine needs attention")}</p><p className="mt-2">{t(runtime.message)}</p><button className="btn-secondary mt-3" onClick={()=>api.get('/api/forecast/status').then(setRuntime).catch(e=>setRuntime({ready:false,message:e.message}))}>{t("Check again")}</button></div>}
     <section className="panel p-5 sm:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700"><CalendarDays size={16} />{t("Sales estimates")}</div><h2 className="text-lg font-bold text-slate-950">{t("A guide for your next stock order")}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t("PartCast uses recorded sales and imported sales history to estimate demand. Check your shelves and recent sales before ordering. Estimates are not guaranteed sales.")}</p><p className="mt-3 text-sm text-slate-500">{t("Last completed update: ")}<span className="font-medium text-slate-700">{time(latest?.completed_at || latest?.started_at)}</span></p></div>
-        {canTrain ? <div className="w-full rounded-xl border border-slate-200 bg-slate-50 p-4 lg:max-w-sm"><label className="label" htmlFor="planning-days">{t("How far ahead do you want to plan?")}</label><select id="planning-days" className="input" value={horizon} onChange={event => setHorizon(event.target.value)} disabled={training}><option value="14">{t("Next 14 days")}</option><option value="30">{t("Next 30 days")}</option><option value="60">{t("Next 60 days")}</option><option value="90">{t("Next 90 days")}</option></select><button className="btn-primary mt-3 w-full" disabled={training || Boolean(loadError)} onClick={train}><RefreshCw size={17} className={training ? 'animate-spin' : ''} />{training ? t('Updating estimates…') : t('Update demand estimate')}</button><p className="mt-2 text-xs leading-5 text-slate-500">{t("Uses the sales records already saved in PartCast. This can take a moment.")}</p></div> : <div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 lg:max-w-xs">{t("Your store manager can update these estimates. You can review the available results below.")}</div>}
+        {canTrain ? <div className="w-full rounded-xl border border-slate-200 bg-slate-50 p-4 lg:max-w-sm"><label className="label" htmlFor="planning-days">{t("How far ahead do you want to plan?")}</label><select id="planning-days" className="input" value={horizon} onChange={event => setHorizon(event.target.value)} disabled={training}><option value="14">{t("Next 14 days")}</option><option value="30">{t("Next 30 days")}</option><option value="60">{t("Next 60 days")}</option><option value="90">{t("Next 90 days")}</option></select><button className="btn-primary mt-3 w-full" disabled={training || Boolean(loadError) || runtime?.ready===false} onClick={train}><RefreshCw size={17} className={training ? 'animate-spin' : ''} />{training ? t('Updating estimates…') : t('Update demand estimate')}</button><p className="mt-2 text-xs leading-5 text-slate-500">{t("Uses the sales records already saved in PartCast. This can take a moment.")}</p></div> : <div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 lg:max-w-xs">{t("Your store manager can update these estimates. You can review the available results below.")}</div>}
       </div>
     </section>
 

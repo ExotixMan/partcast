@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Boxes, ChartNoAxesCombined, ChevronRight, CircleHelp, FileDown, History, House, ShoppingCart, Wallet, LogOut, Menu, RefreshCcw, Settings, Truck, Upload, UserRound, Users, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
+import {canOpenPage} from '../lib/access.js';
 import SyncStatus from './SyncStatus.jsx';
 import NotificationCenter from './NotificationCenter.jsx';
 import Preferences from './Preferences.jsx';
@@ -14,9 +15,14 @@ const daily = [{
   icon: House,
   end: true
 }, {
+  to: '/counter',
+  label: 'Sell or receive',
+  hint: 'Sales and deliveries in one place',
+  icon: ShoppingCart
+}, {
   to: '/inventory',
   label: 'Inventory',
-  hint: 'Find parts, sell or receive stock',
+  hint: 'Part details and stock corrections',
   icon: Boxes
 }, {
   to: '/reorder',
@@ -25,10 +31,6 @@ const daily = [{
   icon: Truck
 }];
 const tools = [{
-  to: '/counter',
-  label: 'Sell or receive',
-  icon: ShoppingCart
-}, {
   to: '/debts',
   label: 'Customer utang',
   icon: Wallet
@@ -65,7 +67,7 @@ const management = [{
   label: 'Store settings',
   icon: Settings,
   owner: true
-}];
+}, {to:'/it-settings',label:'IT settings',icon:Settings}];
 const allLinks = [...daily, ...tools, ...management, {
   to: '/account',
   label: 'My account'
@@ -94,15 +96,17 @@ function SidebarContent({
     signOut
   } = useAuth();
   const location = useLocation();
-  const allowed = management.filter(n => !n.owner || profile?.role === 'owner').filter(n => !n.admin || ['owner', 'admin'].includes(profile?.role));
+  const allowed = management.filter(n => canOpenPage(profile?.role,n.to));
+  const dailyLinks = daily.filter(n => canOpenPage(profile?.role,n.to));
+  const reviewLinks = tools.filter(n => canOpenPage(profile?.role,n.to));
   return <>
     <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-6">
       <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600"><Boxes size={24} /></span>
       <div><p className="text-xl font-bold tracking-tight text-slate-950">{t("PartCast")}<span className="text-red-600">.</span></p><p className="text-xs font-medium text-slate-500">{t("NPG Auto Parts")}</p></div>
     </div>
     <nav aria-label={mobile ? t('All pages') : t('Main navigation')} className="flex-1 space-y-5 overflow-y-auto px-3 py-5">
-      <div className="space-y-1">{daily.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div>
-      <div><p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("Review & plan")}</p><div className="space-y-1">{tools.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div></div>
+      <div className="space-y-1">{dailyLinks.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div>
+      <div hidden={!reviewLinks.length}><p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("Review & plan")}</p><div className="space-y-1">{reviewLinks.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div></div>
       {allowed.length > 0 && <details open={allowed.some(n => location.pathname.startsWith(n.to)) || undefined} className="group"><summary className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"><Settings size={17} />{t("Manage the store")}<ChevronRight size={16} className="ml-auto transition group-open:rotate-90" /></summary><div className="mt-2 space-y-1">{allowed.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div></details>}
       <button className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-red-100 bg-red-50/60 px-3 py-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50" onClick={() => {
         close?.();
@@ -117,6 +121,8 @@ function SidebarContent({
 }
 export default function AppShell() {
   useLocale();
+  const {profile} = useAuth();
+  const quickLinks = daily.filter(n => n.to !== '/reorder' && canOpenPage(profile?.role,n.to));
   const [open, setOpen] = useState(false);
   const drawerRef = useRef(null);
   const location = useLocation();
@@ -171,10 +177,10 @@ export default function AppShell() {
       </header>
       <SyncStatus />
       <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1440px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
-      <nav aria-label={t("Quick navigation")} className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(15,23,42,0.03)] lg:hidden">
-        {daily.map(item => <NavLink key={item.to} to={item.to} end={item.end} className={({
+      <nav aria-label={t("Quick navigation")} style={{gridTemplateColumns:`repeat(${quickLinks.length+2},minmax(0,1fr))`}} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(15,23,42,0.03)] lg:hidden">
+        {quickLinks.map(item => <NavLink key={item.to} to={item.to} end={item.end} className={({
           isActive
-        }) => `m-1 flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${isActive ? 'bg-red-50 text-red-700' : 'text-slate-600'}`}><item.icon size={21} />{item.to === '/inventory' ? t('Parts') : t(item.label)}</NavLink>)}
+        }) => `m-1 flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${isActive ? 'bg-red-50 text-red-700' : 'text-slate-600'}`}><item.icon size={21} />{item.to === '/inventory' ? t('Parts') : item.to === '/counter' ? t('Sell / receive') : t(item.label)}</NavLink>)}
         <button aria-label={t("Open Store Assistant")} className="m-1 flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={help}><CircleHelp size={21} />{t("Help")}</button>
         <button aria-label={t("More pages")} aria-expanded={open} className="m-1 flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => setOpen(true)}><Menu size={21} />{t("More")}</button>
       </nav>

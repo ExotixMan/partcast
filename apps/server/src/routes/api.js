@@ -4,18 +4,20 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { adminDb, userDb } from '../supabase.js';
-import { requireRole } from '../middleware/auth.js';
+import { requireRole,authorizeApi } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { fetchAll, cleanText } from '../utils/helpers.js';
 import { importInventoryWorkbook, importLegacySalesWorkbook, importDemandTrainingWorkbook, importSpreadsheetAuto, isSupportedSpreadsheetName } from '../services/importers.js';
 import { buildReportWorkbook } from '../utils/excel.js';
-import { runForecastPython } from '../utils/ml.js';
+import { runForecastPython,forecastingStatus } from '../utils/ml.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
 
 import storeRoutes from './store.js';
 import {storeReport} from '../utils/storeReports.js';
 import {amount,positiveAmount,category,barcode,reportDates,dateQuery} from '../utils/storeValidation.js';
+const storeDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const router = Router();
+router.use(authorizeApi);
 router.use(storeRoutes);
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -46,7 +48,7 @@ router.get('/offline-snapshot', async (req,res,next) => {
 router.get('/notifications', async (req,res,next) => {
   try {
     const [{data,error},{data:reads,error:readError}] = await Promise.all([
-      adminDb.from('stock_notifications').select('*').is('resolved_at',null).order('created_at',{ascending:false}).limit(100),
+      adminDb.from('stock_notifications').select('*,product:products(description,part_number,current_stock,unit,minimum_stock)').is('resolved_at',null).order('created_at',{ascending:false}).limit(100),
       adminDb.from('notification_reads').select('notification_id').eq('user_id',req.user.id)
     ]);
     if(error||readError)throw error||readError;
@@ -114,7 +116,7 @@ router.get('/products/:id', async (req, res, next) => {
       adminDb.from('products').select('*').eq('id', req.params.id).single(),
       adminDb.from('product_suppliers').select('*,supplier:suppliers(*)').eq('product_id', req.params.id),
       adminDb.from('inventory_transactions').select('*').eq('product_id', req.params.id).order('occurred_at',{ascending:false}).limit(50),
-      adminDb.from('demand_forecasts').select('forecast_date,predicted_quantity,run_id').eq('product_id', req.params.id).gte('forecast_date', new Date().toISOString().slice(0,10)).order('forecast_date').limit(90)
+      adminDb.from('demand_forecasts').select('forecast_date,predicted_quantity,run_id').eq('product_id', req.params.id).gte('forecast_date', storeDay()).order('forecast_date').limit(90)
     ]);
     if (product.error) throw product.error;
     res.json({ product: product.data, suppliers: suppliers.data || [], transactions: tx.data || [], forecasts: forecasts.data || [] });
@@ -222,7 +224,7 @@ router.get('/transactions', async (req, res, next) => {
 
 router.get('/suppliers', async (req, res, next) => {
   try {
-    const { data, error } = await adminDb.from('suppliers').select('*').eq('active',true).order('name');
+    const { data, error } = await adminDb.from('suppliers').select(req.user.role==='cashier'?'id,name':'*').eq('active',true).order('name');
     if (error) throw error;
     res.json({ data });
   } catch (e) { next(e); }
@@ -299,7 +301,7 @@ router.get('/forecast/products', async (req,res,next) => {
     if (!latest) return res.json({ run: null, data: [] });
     const rows = await fetchAll(() => adminDb.from('demand_forecasts')
       .select('product_id,forecast_date,predicted_quantity,product:products(part_number,description,brand)')
-      .eq('run_id', latest.id).gte('forecast_date', new Date().toISOString().slice(0,10)).order('forecast_date'));
+      .eq('run_id', latest.id).gte('forecast_date', storeDay()).order('forecast_date'));
     const grouped = new Map();
     for (const row of rows) {
       const current = grouped.get(row.product_id) || {
@@ -325,11 +327,13 @@ router.get('/forecast/product/:id', async (req,res,next) => {
     const { data, error } = await adminDb.from('demand_forecasts')
       .select('forecast_date,predicted_quantity,run_id,forecast_runs!inner(status,completed_at)')
       .eq('product_id',req.params.id).eq('forecast_runs.status','completed')
-      .gte('forecast_date',new Date().toISOString().slice(0,10)).order('forecast_date').limit(120);
+      .gte('forecast_date',storeDay()).order('forecast_date').limit(120);
     if (error) throw error;
     res.json({ data });
   } catch(e){ next(e); }
 });
+
+router.get('/forecast/status',async(req,res,next)=>{try{res.json(await forecastingStatus());}catch(e){next(e);}});
 
 router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
   try {
@@ -344,6 +348,7 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
     });
     if (observations.length < 30) return res.status(422).json({ error: 'Not enough usable demand observations for XGBoost. Import the training-ready spreadsheet or record more actual sales.' });
 
+    const runtime=await forecastingStatus();if(!runtime.ready)return res.status(503).json({error:runtime.message});
     const productIds = [...new Set(observations.map(o=>o.product_id))];
     const { data: created, error: runError } = await adminDb.from('forecast_runs').insert({
       id:runId,status:'running',horizon_days:body.horizonDays,include_proxy:body.includeProxy,
@@ -352,7 +357,8 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
     if (runError) throw runError;
 
     try {
-      const { result, modelBuffer } = await runForecastPython({ observations, horizonDays:body.horizonDays });
+      const asOfDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+      const { result, modelBuffer } = await runForecastPython({ observations, horizonDays:body.horizonDays,asOfDate });
       const modelPath = `models/${runId}.json`;
       const upload = await adminDb.storage.from('partcast-models').upload(modelPath, modelBuffer, { contentType:'application/json', upsert:true });
       if (upload.error) throw upload.error;
@@ -429,7 +435,7 @@ router.get('/reports/:type.xlsx', async (req,res,next) => {
     const sheets=await storeReport(type,req.query);
     const buffer = await buildReportWorkbook({title:`PartCast ${type}`,sheets});
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition',`attachment; filename="partcast-${type}-${new Date().toISOString().slice(0,10)}.xlsx"`);
+    res.setHeader('Content-Disposition',`attachment; filename="partcast-${type}-${storeDay()}.xlsx"`);
     res.send(buffer);
   } catch(e){next(e);}
 });
@@ -443,15 +449,16 @@ router.get('/data-quality', async (req,res,next) => {
       adminDb.from('legacy_sales').select('*',{count:'exact',head:true}),
       adminDb.from('legacy_sales').select('*',{count:'exact',head:true}).is('matched_product_id',null)
     ]);
+    for(const result of [actual,imported,proxy,legacy,unmatched])if(result.error)throw result.error;
     res.json({actualDemandRows:actual.count||0,importedTrainingRows:imported.count||0,proxyDemandRows:proxy.count||0,legacySalesRows:legacy.count||0,unmatchedLegacySales:unmatched.count||0});
   } catch(e){next(e);}
 });
 
-router.get('/assistant/status', (req,res) => res.json(assistantMode()));
+router.get('/assistant/status',async(req,res,next)=>{try{res.json(req.user.role==='cashier'?{mode:'database',model:null}:await assistantMode());}catch(e){next(e);}});
 router.post('/assistant/chat', assistantLimiter, async (req,res,next) => {
   try {
     const body = z.object({ message: z.string().trim().min(1).max(1000),language:z.enum(['en','fil']).optional() }).parse(req.body || {});
-    const result = await answerAssistant(body.message,body.language);
+    const result = await answerAssistant(body.message,body.language,req.user.role);
     res.json(result);
   } catch(e){ next(e); }
 });

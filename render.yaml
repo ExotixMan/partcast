@@ -31,6 +31,16 @@ services:
         sync: false
       - key: BREVO_SENDER_NAME
         value: NPG Autoparts - PartCast
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: GMAIL_SENDER_EMAIL
+        sync: false
+      - key: INTEGRATION_ENCRYPTION_KEY
+        generateValue: true
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL

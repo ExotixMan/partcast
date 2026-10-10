@@ -4,11 +4,11 @@ PartCast remains React/Vite, Express, Supabase and Python/XGBoost. No second fro
 
 ## Connect the store
 
-1. In Supabase, apply migrations 0001–0003 for a fresh project, then `0004_offline_security_notifications.sql` and `0005_store_workflows.sql`. For an existing database, apply only unapplied migrations. Back up existing data before migrating. Migration 0004 enables duplicate-safe offline movements, active-account reads, notifications and job leases. Migration 0005 adds basket sales, customer utang, categories, barcodes and private part photos. See [new feature activation](STORE_WORKFLOWS.md) for email-code login and deployment.
+1. In Supabase, apply migrations 0001–0003 for a fresh project, then `0004_offline_security_notifications.sql` and `0005_store_workflows.sql`. For an existing database, apply only unapplied migrations. Back up existing data before migrating. Migration 0004 enables duplicate-safe offline movements, active-account reads, notifications and job leases. Migration 0005 adds basket sales, customer utang, categories, barcodes and private part photos. Then apply 0006 separately and 0007 in a subsequent execution. See [required Gmail login and role activation](LOGIN_ROLES_FORECASTING.md) before deployment.
 2. Server environment: `SUPABASE_URL=https://ragdjkdcrvexqfadlqbf.supabase.co`, public `SUPABASE_ANON_KEY`, secret `SUPABASE_SERVICE_ROLE_KEY`, unique random `SETUP_SECRET`, `CRON_SECRET` and `IP_HASH_SECRET`. Keep service keys on the server. Create an ignored server `.env` or use your hosting environment settings. Preserve existing secrets; they are intentionally absent from GitHub.
 3. Frontend environment: matching `VITE_SUPABASE_URL`, public `VITE_SUPABASE_ANON_KEY`, and `VITE_API_URL`. Rebuild after changing frontend variables. Never put service keys, email keys or AI keys in `VITE_` variables.
-4. Allow the Supabase project hostname in cloud network settings. For optional email/AI, allow `api.brevo.com` / `generativelanguage.googleapis.com`. Use HTTPS for the deployed web app and API; set exact `FRONTEND_ORIGINS`. HTTP localhost is sufficient for development tests.
-5. Disable public Supabase signups. Bootstrap the owner once using the setup form and server secret, then create staff accounts as owner. Bootstrap requests are rate limited and protected by a database lease.
+4. Allow the Supabase project hostname in cloud network settings. For required login mail, allow `oauth2.googleapis.com` and `gmail.googleapis.com`. For supplier email/AI, allow `api.brevo.com` / `generativelanguage.googleapis.com`. Use HTTPS for the deployed web app and API; set exact `FRONTEND_ORIGINS`. HTTP localhost is sufficient for development tests.
+5. Disable public Supabase signups. Bootstrap Super Admin once using the setup form and server secret, then create Owner and staff accounts. For an existing project, explicitly promote a trusted IT account using the activation guide. Bootstrap requests are rate limited and protected by a database lease.
 
 Install:
 
@@ -56,7 +56,7 @@ Use Import Data as owner/admin. Review the raw-workbook preparation instructions
 
 ## Offline workflow
 
-Sign in online first. Account-scoped IndexedDB stores verified profile information, the active product list, supplier IDs/names and selected previously viewed screens for up to 12 hours. Cached summaries show their age. Offline, view saved inventory and record sales, received stock and removed stock. Product edits, creating products, imports, reports, account management, training and supplier email require internet.
+Sign in with password followed by the Gmail code online first. Account-scoped IndexedDB stores verified profile information, the active product list, supplier IDs/names and selected previously viewed screens for up to 12 hours, bounded by the verified password session and email-proof expiry. Cached summaries show their age. Offline, view saved inventory and record sales, received stock and removed stock. Product edits, creating products, imports, reports, account management, training and supplier email require internet.
 
 Stock movements enter a durable outbox with a unique operation UUID and original timestamp. While the app is open, reconnecting automatically replays them in order, and a retry every five seconds while movements are pending covers interruptions. A database transaction commits the stock change, demand observation and sync receipt together. Repeating a UUID/payload returns the original transaction without deducting stock again; changing its payload is rejected. Row locks stop two devices from overselling. An insufficient-stock or invalid-data response pauses the queue and remains visible for review. Remove a rejected change and record a corrected one rather than silently changing its quantity. Transport failures and expired sessions retain pending work.
 
@@ -92,7 +92,7 @@ cd /workspace/partcast/apps/web && npm test && npm run build && npm run test:e2e
 cd /workspace/partcast && .venv/bin/python -m unittest discover -s ml -p 'test_*.py'
 ```
 
-Database tests use actual PostgreSQL via PGlite with Supabase auth/storage scaffolding, exercising all five migrations, inactive accounts, duplicate receipts, stock conflicts, direct-write denials, alert transitions and email leases. Browser tests use Chromium with mocked API/auth responses, verify responsive flows, offline reload, outbox persistence/reconnect and sign-out cleanup. They are not evidence of a connection to your hosted database or real email/AI delivery.
+Database tests use actual PostgreSQL via PGlite with Supabase auth/storage scaffolding, exercising all seven migrations, inactive accounts, duplicate receipts, stock conflicts, direct-write denials, alert transitions and email leases. Browser tests use Chromium with mocked API/auth responses, verify responsive flows, offline reload, outbox persistence/reconnect and sign-out cleanup. They are not evidence of a connection to your hosted database or real email/AI delivery.
 
 The Figma URL could not be read due to environment network restrictions. This is an independently implemented simple layout, not a verified exact reproduction of those frames. Exported frames can be used for a later visual comparison.
 
