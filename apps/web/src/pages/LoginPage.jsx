@@ -1,67 +1,237 @@
-import { useEffect, useState } from 'react';
-import { LockKeyhole, Mail, ShieldCheck, Wrench } from 'lucide-react';
+import { t, useLocale } from "../context/LocaleContext.jsx";
+import { useEffect, useRef, useState } from 'react';
+import { ArrowRight, Boxes, Check, Eye, EyeOff, LockKeyhole, Mail, PackageCheck, Search, ShieldCheck, ShoppingCart } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { publicApi } from '../lib/api.js';
-
-export default function LoginPage() {
-  const { signIn } = useAuth();
-  const [needsSetup,setNeedsSetup]=useState(false);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState('');
-  const [login,setLogin]=useState({email:'',password:''});
-  const [setup,setSetup]=useState({setupSecret:'',fullName:'',email:'',password:''});
-
-  useEffect(()=>{ publicApi('/setup/status').then(r=>setNeedsSetup(r.needsSetup)).catch(()=>{}); },[]);
-
-  async function submitLogin(e){
-    e.preventDefault();setLoading(true);setError('');
-    const {error}=await signIn(login.email,login.password);
-    if(error)setError(error.message);
-    setLoading(false);
-  }
-  async function submitSetup(e){
-    e.preventDefault();setLoading(true);setError('');
-    try{await publicApi('/setup/bootstrap',{method:'POST',body:JSON.stringify(setup)});setNeedsSetup(false);setLogin({email:setup.email,password:setup.password});}
-    catch(e){setError(e.message);}finally{setLoading(false);}
-  }
-
-  return <div className="min-h-screen bg-[#050505] p-4 sm:p-8">
-    <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl sm:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.08fr_.92fr]">
-      <div className="relative hidden overflow-hidden bg-[#050505] p-10 text-white lg:flex lg:flex-col">
-        <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full bg-red-600/20 blur-3xl"/>
-        <img src="/npg-logo.png" alt="NPG Autoparts" className="relative h-20 w-80 object-contain object-left"/>
-        <div className="relative my-auto max-w-lg">
-          <p className="text-sm font-semibold uppercase tracking-[.22em] text-red-400">PartCast</p>
-          <h1 className="mt-4 text-4xl font-bold leading-tight">Demand forecasting and inventory control in one secure system.</h1>
-          <p className="mt-5 text-base leading-7 text-slate-300">Monitor spare parts, record stock movement, analyze demand, receive low-stock alerts, create reorder recommendations, and coordinate supplier replenishment.</p>
-          <div className="mt-8 grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4"><ShieldCheck className="mb-3 text-red-400"/><p className="font-semibold">Role-based security</p><p className="mt-1 text-xs leading-5 text-slate-400">Protected staff access and audited changes.</p></div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4"><Wrench className="mb-3 text-red-400"/><p className="font-semibold">Built for NPG</p><p className="mt-1 text-xs leading-5 text-slate-400">Responsive on desktop, tablet, and mobile.</p></div>
-          </div>
-        </div>
-        <p className="relative text-xs text-slate-500">NPG Autoparts · Toyota Specialist</p>
-      </div>
-      <div className="flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-md">
-          <img src="/npg-logo.png" alt="NPG Autoparts" className="mb-8 h-16 w-64 object-contain object-left lg:hidden"/>
-          <p className="text-sm font-semibold uppercase tracking-[.18em] text-red-600">{needsSetup?'First-time setup':'Authorized staff'}</p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">{needsSetup?'Create the owner account':'Sign in to PartCast'}</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-500">{needsSetup?'Use the setup secret configured on the server. This setup can only run once.':'Use your NPG Autoparts staff account to continue.'}</p>
-          {error&&<div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-          {needsSetup ? <form onSubmit={submitSetup} className="mt-7 space-y-4">
-            <label><span className="label">Setup secret</span><div className="relative"><LockKeyhole className="absolute left-3 top-3 text-slate-400" size={18}/><input type="password" className="input pl-10" required value={setup.setupSecret} onChange={e=>setSetup({...setup,setupSecret:e.target.value})}/></div></label>
-            <label><span className="label">Owner full name</span><input className="input" required value={setup.fullName} onChange={e=>setSetup({...setup,fullName:e.target.value})}/></label>
-            <label><span className="label">Email address</span><input type="email" className="input" required value={setup.email} onChange={e=>setSetup({...setup,email:e.target.value})}/></label>
-            <label><span className="label">Password</span><input type="password" minLength={10} className="input" required value={setup.password} onChange={e=>setSetup({...setup,password:e.target.value})}/><span className="mt-1 block text-xs text-slate-400">Use at least 10 characters.</span></label>
-            <button disabled={loading} className="btn-primary w-full">{loading?'Creating account...':'Create owner account'}</button>
-          </form> : <form onSubmit={submitLogin} className="mt-7 space-y-4">
-            <label><span className="label">Email address</span><div className="relative"><Mail className="absolute left-3 top-3 text-slate-400" size={18}/><input type="email" autoComplete="email" className="input pl-10" required value={login.email} onChange={e=>setLogin({...login,email:e.target.value})}/></div></label>
-            <label><span className="label">Password</span><div className="relative"><LockKeyhole className="absolute left-3 top-3 text-slate-400" size={18}/><input type="password" autoComplete="current-password" className="input pl-10" required value={login.password} onChange={e=>setLogin({...login,password:e.target.value})}/></div></label>
-            <button disabled={loading} className="btn-primary w-full">{loading?'Signing in...':'Sign in securely'}</button>
-          </form>}
-          <div className="mt-7 flex items-start gap-3 rounded-xl bg-slate-50 p-4"><ShieldCheck className="mt-0.5 shrink-0 text-slate-500" size={18}/><p className="text-xs leading-5 text-slate-500">Sessions use Supabase authentication. Sensitive service credentials are kept only on the server and are never included in the browser bundle.</p></div>
-        </div>
-      </div>
+import { storeConfigured, storeConnectionIssue } from '../lib/supabase.js';
+import { publicApi, apiConnectionIssue } from '../lib/api.js';
+import Preferences from '../components/Preferences.jsx';
+import { connectionMessage } from '../lib/connection.js';
+function PasswordField({
+  id,
+  label = 'Password',
+  value,
+  onChange,
+  autoComplete,
+  minLength,
+  hint
+}) {
+  useLocale();
+  const [visible, setVisible] = useState(false);
+  return <div>
+    <label className="label" htmlFor={id}>{t(label)}</label>
+    <div className="relative">
+      <LockKeyhole aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={19} />
+      <input id={id} type={visible ? 'text' : 'password'} autoComplete={autoComplete} minLength={minLength} className="input min-h-12 pl-11 pr-14" required value={value} onChange={onChange} aria-describedby={hint ? `${id}-hint` : undefined} />
+      <button type="button" aria-label={t(visible?'Hide {v0}':'Show {v0}',{v0:t(label).toLowerCase()})} aria-pressed={visible} onClick={() => setVisible(current => !current)} className="absolute right-1 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+        {visible ? <EyeOff aria-hidden="true" size={20} /> : <Eye aria-hidden="true" size={20} />}
+      </button>
     </div>
+    {hint && <p id={`${id}-hint`} className="mt-2 text-sm leading-5 text-slate-500">{t(hint)}</p>}
+  </div>;
+}
+export default function LoginPage() {
+  useLocale();
+  const {
+    signIn,
+    requestOtp,
+    verifyOtp, needsOtp, session, signOut
+  } = useAuth();
+  const otpMode = Boolean(needsOtp && session);
+  const sentFor = useRef(null);
+  const [otpSent, setOtpSent] = useState(false),
+    [otp, setOtp] = useState(''),
+    [resendAt, setResendAt] = useState(0),
+    [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!resendAt) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [resendAt]);
+  const resendSeconds = Math.max(0, Math.ceil((resendAt - now) / 1000));
+  async function sendOtp() {
+    if (loading || resendSeconds > 0) return;
+    setError('');
+    const email = session?.user?.email || login.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      setError('Enter a valid email address.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await requestOtp();
+      setLogin(l => ({
+        ...l,
+        email
+      }));
+      setOtpSent(true);
+      setResendAt(Date.now() + 60000);
+      setNow(Date.now());
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [serverError, setServerError] = useState('');
+  const [checkingServer, setCheckingServer] = useState(false);
+  const [login, setLogin] = useState({
+    email: '',
+    password: ''
+  });
+  const [setup, setSetup] = useState({
+    setupSecret: '',
+    fullName: '',
+    email: '',
+    password: ''
+  });
+  async function checkServer() {
+    setCheckingServer(true);
+    setServerError('');
+    try {
+      const result = await publicApi('/setup/status');
+      setNeedsSetup(Boolean(result.needsSetup));
+    } catch (e) {
+      setServerError(connectionMessage(e));
+    } finally {
+      setCheckingServer(false);
+    }
+  }
+  useEffect(() => {
+    checkServer();
+  }, []);
+  async function submitLogin(e) {
+    e.preventDefault();
+    if (loading) return;
+    if (otpMode && !/^[0-9]{6}$/.test(otp)) {
+      setError('Enter the 6 digit code from your email.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const {
+        error
+      } = otpMode ? await verifyOtp(login.email.trim(), otp) : await signIn(login.email.trim(), login.password);
+      if (error) setError(otpMode ? 'The code is incorrect or expired. Request a new code and try again.' : connectionMessage(error, 'sign-in service'));
+    } catch (e) {
+      setError(e.status ? e.message : connectionMessage(e, 'sign-in service'));
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (!otpMode || sentFor.current === session.access_token) return;
+    sentFor.current = session.access_token;
+    sendOtp();
+  },[otpMode,session?.access_token]);
+  async function submitSetup(e) {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await publicApi('/setup/bootstrap', {
+        method: 'POST',
+        body: JSON.stringify(setup)
+      });
+      setNeedsSetup(false);
+      setLogin({
+        email: setup.email,
+        password: setup.password
+      });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  return <div className="flex min-h-screen flex-col bg-[#f8f9fb] px-4 py-6 sm:px-8 sm:py-10">
+    <header className="mx-auto flex w-full max-w-5xl items-center gap-3">
+      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-red-50 text-red-600"><Boxes aria-hidden="true" size={25} /></span>
+      <div className="min-w-0"><p className="text-xl font-bold tracking-tight text-slate-900">{t("PartCast")}</p><p className="text-sm text-slate-500">{t("NPG Auto Parts")}</p></div><div className="ml-auto shrink-0"><Preferences /></div>
+    </header>
+
+    <div className="mx-auto my-auto grid w-full max-w-5xl gap-10 py-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-20 lg:py-16">
+      <div className="hidden lg:block">
+        <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-red-100 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700"><Check aria-hidden="true" size={16} />{t(" A simpler day at the store")}</p>
+        <h2 className="max-w-md text-4xl font-bold leading-tight tracking-tight text-slate-900">{t("Your parts.")}<br />{t("All in one place.")}</h2>
+        <p className="mt-5 max-w-md text-base leading-7 text-slate-600">{t("Find what you need, keep stock up to date, and know what to order next.")}</p>
+        <div className="mt-8 space-y-5">
+          {[{
+            icon: Search,
+            title: 'Find a part quickly',
+            text: 'Search by its name or part number.'
+          }, {
+            icon: ShoppingCart,
+            title: 'Record a sale',
+            text: 'Choose the part and enter how many you sold.'
+          }, {
+            icon: PackageCheck,
+            title: 'See what needs restocking',
+            text: 'Get a clear list of parts running low.'
+          }].map(({
+            icon: Icon,
+            title,
+            text
+          }) => <div key={title} className="flex items-center gap-4">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600"><Icon aria-hidden="true" size={22} /></span>
+            <div><p className="font-semibold text-slate-800">{t(title)}</p><p className="mt-1 text-sm leading-5 text-slate-500">{t(text)}</p></div>
+          </div>)}
+        </div>
+      </div>
+
+      <section className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="login-title">
+        <p className="text-sm font-semibold text-red-600">{needsSetup ? t('Welcome to your store') : t('Welcome back')}</p>
+        <h1 id="login-title" className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{needsSetup ? t('Create the Super Admin account') : otpMode ? t('Check your email') : t('Sign in to PartCast')}</h1>
+        <p className="mt-3 text-sm leading-6 text-slate-600">{needsSetup ? t('Create the first account once. Have your private setup code ready.') : otpMode ? t('Your password is correct. Enter the code sent to your email to finish signing in.') : t('First enter your password. Then confirm the code sent to your email.')}</p>
+
+        {!storeConfigured && <p role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t(storeConnectionIssue)}</p>}
+        {serverError && <div role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><p>{t(serverError)}</p><button type="button" className="btn-secondary mt-3 w-full border-amber-200 bg-white text-amber-900" disabled={checkingServer} onClick={checkServer}>{checkingServer ? t('Checking connection…') : t('Check connection again')}</button></div>}
+        {error && <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800">{t(error)}</div>}
+
+        {needsSetup ? <form onSubmit={submitSetup} className="mt-7 space-y-5" aria-busy={loading}>
+          <PasswordField id="setup-secret" label={t("Setup secret")} value={setup.setupSecret} onChange={e => setSetup({
+            ...setup,
+            setupSecret: e.target.value
+          })} autoComplete="off" hint={t("This is the private setup code provided by the person who set up PartCast.")} />
+          <div><label htmlFor="owner-name" className="label">{t("Owner full name")}</label><input id="owner-name" minLength={2} maxLength={120} autoComplete="name" className="input min-h-12" required value={setup.fullName} onChange={e => setSetup({
+              ...setup,
+              fullName: e.target.value
+            })} /></div>
+          <div><label htmlFor="owner-email" className="label">{t("Email address")}</label><input id="owner-email" maxLength={254} type="email" autoComplete="email" className="input min-h-12" required value={setup.email} onChange={e => setSetup({
+              ...setup,
+              email: e.target.value
+            })} /></div>
+          <PasswordField id="owner-password" value={setup.password} onChange={e => setSetup({
+            ...setup,
+            password: e.target.value
+          })} autoComplete="new-password" minLength={10} hint={t("Use at least 10 characters. Keep your password private.")} />
+          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-12 w-full">{loading ? t('Creating account…') : t('Create Super Admin account')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
+        </form> : <form onSubmit={submitLogin} className="mt-7 space-y-5" aria-busy={loading}>
+          <div><label htmlFor="login-email" className="label">{t("Email address")}</label><div className="relative"><Mail aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={19} /><input id="login-email" type="email" autoComplete="email" spellCheck={false} autoCapitalize="none" className="input min-h-12 pl-11" required value={otpMode ? session.user.email : login.email} onChange={e => setLogin({
+                ...login,
+                email: e.target.value
+              })} placeholder={t("Your email address")} maxLength={254} readOnly={otpMode && otpSent} /></div></div>
+          <ol className="flex gap-3 text-sm" aria-label={t("Sign-in steps")}><li className="flex-1 rounded-lg bg-slate-50 p-3">{t("1. Password")}{otpMode && <Check className="ml-2 inline text-emerald-600" size={16} />}</li><li className={`flex-1 rounded-lg p-3 ${otpMode ? 'bg-red-50 font-semibold text-red-700' : 'bg-slate-50 text-slate-500'}`}>{t("2. Email code")}</li></ol>
+          {otpMode ? <div><label className="label" htmlFor="login-otp">{t("Email sign-in code")}</label><input id="login-otp" className="input" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" value={otp} onChange={e => setOtp(e.target.value.replace(/[^0-9]/g, ''))} /><p className="mt-2 text-sm text-slate-500">{t("Check your inbox and spam folder. Enter the code from your most recent email.")}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" disabled={loading || resendSeconds > 0} onClick={sendOtp}>{resendSeconds ? t("Resend in {v0}s", {
+                  v0: resendSeconds
+                }) : otpSent ? t('Resend code') : t('Send email code')}</button><button type="button" className="btn-secondary" disabled={loading} onClick={signOut}>{t("Use another account")}</button></div></div> : <PasswordField id="login-password" value={login.password} onChange={e => setLogin({
+            ...login,
+            password: e.target.value
+          })} autoComplete="current-password" />}
+
+          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-12 w-full">{loading ? t('Signing in…') : otpMode ? t('Verify code and sign in') : t('Sign in securely')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
+        </form>}
+
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <p className="text-sm font-semibold text-slate-700">{t("Need help signing in?")}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">{t("Ask your store owner to check your account or password.")}</p>
+        </div>
+      </section>
+    </div>
+
+    <footer className="mx-auto flex max-w-5xl items-center justify-center gap-2 text-center text-xs leading-5 text-slate-500 sm:text-sm"><ShieldCheck aria-hidden="true" className="shrink-0" size={17} /><p>{t("Your account is for your use only. You need internet to sign in.")}</p></footer>
   </div>;
 }

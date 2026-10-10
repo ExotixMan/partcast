@@ -1,163 +1,82 @@
+import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api } from '../lib/api.js';
 import PageHeader from '../components/PageHeader.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import EmptyState from '../components/EmptyState.jsx';
+import Loading from '../components/Loading.jsx';
 import Toast from '../components/Toast.jsx';
-
+const sizeLabel = size => size ? `${(Number(size) / 1024 / 1024).toFixed(2)} MB` : 'Size unavailable';
+const dateLabel = date => date ? new Date(date).toLocaleString() : 'Date unavailable';
 export default function BackupsPage() {
+  useLocale();
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
-
-  const load = () =>
-    api.get('/api/admin/backups')
-      .then(r => setRows(r.data || []))
-      .catch(e =>
-        setToast({
-          type: 'error',
-          message: e.message
-        })
-      );
-
+  async function load() {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await api.get('/api/admin/backups');
+      setRows(result.data || []);
+    } catch (cause) {
+      setError(cause.message);
+    } finally {
+      setLoading(false);
+    }
+  }
   useEffect(() => {
     load();
   }, []);
-
   async function create() {
+    if (busy) return;
     setBusy(true);
-
     try {
-      const r = await api.post('/api/admin/backups', {});
-
+      const result = await api.post('/api/admin/backups', {});
       setToast({
-        message: `Backup created: ${r.backup.file_name}`
+        message: `Backup saved: ${result.backup.file_name}`
       });
-
       load();
-    } catch (e) {
+    } catch (cause) {
       setToast({
         type: 'error',
-        message: e.message
+        message: cause.message
       });
     } finally {
       setBusy(false);
     }
   }
-
   async function download(id) {
+    if (downloading) return;
+    setDownloading(id);
     try {
-      const r = await api.get(`/api/admin/backups/${id}/download`);
-
-      window.open(
-        r.url,
-        '_blank',
-        'noopener,noreferrer'
-      );
-    } catch (e) {
+      const result = await api.get(`/api/admin/backups/${id}/download`);
+      window.open(result.url, '_blank', 'noopener,noreferrer');
+    } catch (cause) {
       setToast({
         type: 'error',
-        message: e.message
+        message: cause.message
       });
+    } finally {
+      setDownloading('');
     }
   }
-
-  return (
-    <>
-      <PageHeader
-        title="Excel Backups"
-        subtitle="Private, server-generated Excel backups stored in the protected Supabase Storage bucket."
-        actions={
-          <button
-            className="btn-primary"
-            onClick={create}
-            disabled={busy}
-          >
-            <RefreshCw
-              size={16}
-              className={busy ? 'animate-spin' : ''}
-            />
-
-            {busy ? 'Creating...' : 'Create backup now'}
-          </button>
-        }
-      />
-
-      <div className="mb-5 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-        <ShieldCheck
-          className="mt-0.5 shrink-0 text-emerald-700"
-          size={19}
-        />
-
-        <p className="text-sm leading-6 text-emerald-900">
-          Backup files are not public. Downloads use a temporary signed
-          link that expires after five minutes. The scheduled job can
-          generate backups automatically every day.
-        </p>
-      </div>
-
-      <section className="panel overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-5 py-3">File</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Size</th>
-                <th className="px-4 py-3">Created</th>
-                <th className="px-5 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100">
-              {rows.map(r => (
-                <tr key={r.id}>
-                  <td className="px-5 py-3 font-medium">
-                    {r.file_name || 'Backup failed'}
-                  </td>
-
-                  <td className="px-4 py-3">
-                    <StatusBadge status={r.status} />
-                  </td>
-
-                  <td className="px-4 py-3 text-slate-600">
-                    {r.size_bytes
-                      ? `${(Number(r.size_bytes) / 1024 / 1024).toFixed(2)} MB`
-                      : '—'}
-                  </td>
-
-                  <td className="px-4 py-3 text-slate-600">
-                    {new Date(r.created_at).toLocaleString()}
-                  </td>
-
-                  <td className="px-5 py-3 text-right">
-                    {r.status === 'created' && (
-                      <button
-                        className="btn-secondary px-3 py-2"
-                        onClick={() => download(r.id)}
-                      >
-                        <Download size={15} />
-                        Download
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {!rows.length && (
-            <p className="p-10 text-center text-sm text-slate-500">
-              No backups have been generated yet.
-            </p>
-          )}
-        </div>
-      </section>
-
-      <Toast
-        toast={toast}
-        onClose={() => setToast(null)}
-      />
-    </>
-  );
+  const downloadButton = row => row.status === 'created' ? <button className="btn-secondary w-full lg:w-auto" disabled={Boolean(downloading)} aria-label={t("Download backup {v0}", {
+    v0: row.file_name
+  })} onClick={() => download(row.id)}><Download size={17} aria-hidden="true" />{downloading === row.id ? t('Preparing download…') : t('Download backup')}</button> : null;
+  return <>
+    <PageHeader title={t("Backup copies")} subtitle={t("Save an extra copy of your store records, or download a copy you saved earlier.")} actions={<button className="btn-primary" onClick={create} disabled={busy}><RefreshCw size={17} aria-hidden="true" className={busy ? 'animate-spin' : ''} />{busy ? t('Saving backup…') : t('Save a backup now')}</button>} />
+    <div className="mb-5 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4"><ShieldCheck className="mt-0.5 shrink-0 text-emerald-700" size={21} aria-hidden="true" /><p className="text-sm leading-6 text-emerald-900">{t("Backups are private Excel files. An internet connection is needed to save or download them. Each download link expires after five minutes; you can request a new one here.")}</p></div>
+    <section className="panel overflow-hidden" aria-busy={loading}><div className="panel-header"><h2 className="font-bold">{t("Saved backups")}</h2></div>
+      {loading ? <Loading label={t("Loading saved backups…")} /> : error ? <div className="space-y-3 p-5" role="alert"><h3 className="font-semibold">{t("Backups could not be loaded")}</h3><p className="text-sm text-red-700">{t(error)}</p><button className="btn-secondary" onClick={load}>{t("Try again")}</button></div> : !rows.length ? <EmptyState title={t("No backup copies yet")} text={t("Choose “Save a backup now” to make your first copy of the store’s saved records.")} /> : <>
+        <div className="divide-y divide-slate-100 lg:hidden">{rows.map(row => <article key={row.id} className="space-y-3 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="min-w-0 flex-1 break-all text-sm font-semibold text-slate-900">{row.file_name || t('Backup was not saved')}</h3><StatusBadge status={row.status} /></div><p className="text-sm text-slate-600">{t("Saved ")}{dateLabel(row.created_at)}</p><p className="text-sm text-slate-500">{sizeLabel(row.size_bytes)}</p>{downloadButton(row)}</article>)}</div>
+        <div className="hidden overflow-x-auto lg:block"><table className="min-w-full text-left text-sm"><caption className="sr-only">{t("Private saved backup files and their download actions")}</caption><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th scope="col" className="px-5 py-3">{t("File name")}</th><th scope="col" className="px-4 py-3">{t("Status")}</th><th scope="col" className="px-4 py-3">{t("File size")}</th><th scope="col" className="px-4 py-3">{t("Saved on")}</th><th scope="col" className="px-5 py-3 text-right">{t("Download")}</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.map(row => <tr key={row.id}><td className="px-5 py-4 font-medium">{row.file_name || t('Backup was not saved')}</td><td className="px-4 py-4"><StatusBadge status={row.status} /></td><td className="px-4 py-4 text-slate-600">{sizeLabel(row.size_bytes)}</td><td className="px-4 py-4 text-slate-600">{dateLabel(row.created_at)}</td><td className="px-5 py-4 text-right">{downloadButton(row)}</td></tr>)}</tbody></table></div>
+      </>}
+    </section>
+    <Toast toast={toast} onClose={() => setToast(null)} />
+  </>;
 }

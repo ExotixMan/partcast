@@ -4,23 +4,23 @@ PartCast handles inventory, supplier, customer-reference, pricing, and transacti
 
 ## Controls implemented
 
-- Supabase Auth handles password sessions and access tokens.
-- Public application registration is not used. The first owner is created using a one-time setup secret; later accounts are owner-created.
+- Supabase Auth validates password sessions and access tokens. PartCast then requires a Gmail six-digit code with a session-bound HMAC hash, 10-minute expiry, five incorrect attempts and a resend delay. Every protected API and database policy requires a valid password-session verification. Email codes do not create accounts.
+- Public application registration is not used. The first Super Admin is created using a one-time setup secret; later accounts are managed by authorized Owner/Super Admin accounts.
 - Newly created Supabase profiles default to `active = false`. A direct/public signup cannot access PartCast data even if signup is accidentally left enabled.
-- Roles: `owner`, `admin`, `inventory_staff`.
-- React never receives `SUPABASE_SERVICE_ROLE_KEY`, Brevo API key, setup secret, or cron secret.
+- Roles: `super_admin`, `owner`, `admin`, `inventory_staff`, `cashier`. See [access rules](LOGIN_ROLES_FORECASTING.md).
+- React never receives `SUPABASE_SERVICE_ROLE_KEY`, Google OAuth secrets/refresh tokens, Gemini API key, setup secret, or cron secret.
 - Node validates every protected request token against Supabase Auth and checks the staff profile.
-- Supabase Row Level Security is enabled for business tables. Direct browser access still requires an active authorized role.
+- Supabase Row Level Security is enabled for business tables. Direct browser access requires an active authorized role and unexpired email verification for the signed password session.
 - Product stock changes use an atomic PostgreSQL function and cannot reduce stock below zero.
 - Inventory transaction and demand observation histories are append-only for authenticated users.
 - Admin mutations generate an audit record. IP addresses are stored only as HMAC hashes, not raw IP strings.
 - Helmet security headers, strict CORS origins, request-size limits, server-side validation, upload-size limits, and rate limiting are enabled.
-- Excel uploads are limited to `.xlsx` and 25 MB.
+- Spreadsheet uploads accept `.xlsx`, `.xlsm`, or `.csv` up to 25 MB, with archive/XML expansion checks.
 - Backups and XGBoost model files are in private Supabase Storage buckets.
 - Backup downloads use five-minute signed URLs.
-- Supplier mail uses Brevo's HTTPS REST API; SMTP credentials are not required.
+- Login codes and supplier mail use Gmail's HTTPS API with OAuth; SMTP credentials are not required. Supplier recipients come only from saved supplier records. Selected parts must be active and assigned to that supplier; editable fields and custom columns are validated and HTML-escaped.
 - Automated job endpoints require a separate `X-Cron-Secret`.
-- Raw Excel source files are gitignored so customer data is not accidentally pushed to GitHub.
+- Raw Excel source files are gitignored so customer data is not accidentally pushed to GitHub. The existing cleaned-inventory download was explicitly approved for this repository; customer sales workbooks remain excluded.
 
 ## Deployment hardening checklist
 
@@ -29,7 +29,7 @@ PartCast handles inventory, supplier, customer-reference, pricing, and transacti
 3. Use unique random values for `SETUP_SECRET`, `CRON_SECRET`, and `IP_HASH_SECRET`.
 4. Keep `SUPABASE_SERVICE_ROLE_KEY` only on the Render API service.
 5. Configure `FRONTEND_ORIGINS` with exact HTTPS frontend origins; do not use `*`.
-6. Verify the Brevo sender/domain and enable SPF/DKIM/DMARC when a domain is available.
+6. Authorize the sending Google account with the `gmail.send` scope, keep OAuth credentials private, and verify actual code/supplier delivery to controlled accounts.
 7. Do not place customer spreadsheets in the repository. Import them through the protected Import Data page.
 8. Review the audit page and deactivate accounts that are no longer needed.
 9. Use strong passwords; enable additional Supabase Auth controls available to your project before a wider rollout.
@@ -38,3 +38,15 @@ PartCast handles inventory, supplier, customer-reference, pricing, and transacti
 ## Free-tier note
 
 Free hosting is appropriate for a capstone, pilot, or low-traffic internal demonstration, but free providers impose resource, inactivity, storage, and availability limits. Before relying on PartCast for uninterrupted day-to-day business operations, review the current provider limits and consider a paid production plan/SLA.
+
+## Customer credit, photos, and offline data
+
+Migration 0005 enforces atomic multi-item sales and customer credit, stable payload-bound operation IDs, two-decimal finite numeric inputs, row-locked payment balances and overpayment rejection. Migration 0007 restricts customer ledger records and payment history to verified non-Cashier staff; authenticated clients cannot directly mutate them. The API verifies the active account before using service-role reads or private Storage access.
+
+Part photos are held in a private bucket. Uploads accept only decodable JPEG/PNG/WebP, enforce 5 MB and 20-million-pixel limits, resize to at most 1600 pixels, strip metadata, and re-encode WebP. Photo paths are generated by the server and updated through a service-role-only database function. Browser clients cannot write photo metadata or arbitrary Storage paths directly.
+
+The service worker stores application assets only. Account-scoped IndexedDB caches viewed data/photos for up to 12 hours and keeps durable pending stock/customer operations until confirmation or explicit removal. Offline access cannot immediately learn about account revocation. Device storage is not encrypted by the application; protect the device/browser profile and send pending work before signing out. Server authorization and database validation are always applied again during sync.
+
+Input validation, RLS, and local/browser tests are implementation controls, not a complete security audit. See [activation and verification limits](STORE_WORKFLOWS.md).
+
+Google connection records use AES-256-GCM with a stable server encryption key. Super Admin APIs return field-presence flags, never keys or refresh tokens. Owner access is rejected independently of frontend navigation. Gemini keys travel in request headers, not URLs. Gmail login codes go only to the validated signed-in account; submitted login-request email addresses are ignored. Supplier messages go to the saved supplier email. Offline profiles are bound to the verified session ID and expire with its proof; a new password session cannot borrow an old offline verification.

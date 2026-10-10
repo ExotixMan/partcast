@@ -5,7 +5,6 @@ export function notFound(req, res) {
 }
 
 export function errorHandler(err, req, res, next) {
-  console.error(err?.stack || err);
   if (res.headersSent) return next(err);
 
   if (err instanceof ZodError) {
@@ -18,10 +17,15 @@ export function errorHandler(err, req, res, next) {
   if (err?.code === '23503') return res.status(409).json({ error: 'This record is still referenced by another record.' });
   if (err?.code === '23514' || err?.code === '22P02') return res.status(422).json({ error: 'The supplied value is not valid for this operation.' });
 
+  if (err?.code === 'P0001' && /Insufficient stock|Product not found/.test(err.message)) return res.status(409).json({error:err.message});
+  if (err?.code === '22023') return res.status(422).json({error:err.message || 'Review the saved change.'});
+  if(err?.code==='LIMIT_FILE_SIZE')return res.status(413).json({error:'The file is too large. Product photos must be under 5 MB; spreadsheets under 25 MB.'});
+  if (err?.code === '42501') return res.status(403).json({error:'This account is not allowed to make this change.'});
+
   const status =
     Number(err?.status) || 500;
 
-  console.error('PARTCAST ERROR:', {
+  if(status>=500)console.error('PARTCAST ERROR:', {
     message: err?.message,
     code: err?.code,
     details: err?.details,
@@ -33,7 +37,7 @@ export function errorHandler(err, req, res, next) {
     process.env.NODE_ENV !== 'production';
 
   const message =
-    status >= 500 && !isDevelopment
+    status >= 500 && !isDevelopment && !err?.safe
       ? 'The server could not complete the request.'
       : err?.message ||
         'Unknown server error.';
@@ -41,5 +45,4 @@ export function errorHandler(err, req, res, next) {
   res.status(status).json({
     error: message
 });
-  res.status(status).json({ error: message });
 }

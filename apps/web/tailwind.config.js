@@ -4,7 +4,7 @@ export default {
   theme: {
     extend: {
       fontFamily: { sans: ['Inter','ui-sans-serif','system-ui','sans-serif'] },
-      boxShadow: { soft: '0 10px 30px rgba(15,23,42,.06)' }
+      boxShadow: { soft: '0 2px 8px rgba(15,23,42,.025)' }
     }
   },
   plugins: []

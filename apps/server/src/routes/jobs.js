@@ -4,13 +4,14 @@ import { adminDb } from '../supabase.js';
 import { buildBackupWorkbook } from '../utils/excel.js';
 import { fetchAll } from '../utils/helpers.js';
 import { recommendationHash, sendSupplierEmail } from '../utils/email.js';
+import {neededRestock,normalizeRestock} from '../utils/restock.js';
 import { runForecastPython } from '../utils/ml.js';
 import { config } from '../config.js';
 
 const router = Router();
 
 async function createBackup(actorId = null) {
-  const [products, transactions, suppliers, productSuppliers, demandObservations, forecastRuns, forecasts, legacySales, purchaseHistory, importBatches, profiles, settings] = await Promise.all([
+  const [products, transactions, suppliers, productSuppliers, demandObservations, forecastRuns, forecasts, legacySales, purchaseHistory, importBatches, profiles, settings,stockBatches,customerDebts,debtPayments] = await Promise.all([
     fetchAll(() => adminDb.from('products').select('*').order('description')),
     fetchAll(() => adminDb.from('inventory_transactions').select('*,product:products(part_number,description),supplier:suppliers(name)').order('occurred_at',{ascending:false})),
     fetchAll(() => adminDb.from('suppliers').select('*').order('name')),
@@ -22,7 +23,10 @@ async function createBackup(actorId = null) {
     fetchAll(() => adminDb.from('purchase_history').select('*,supplier:suppliers(name)').order('purchase_date',{ascending:false})),
     fetchAll(() => adminDb.from('import_batches').select('*').order('created_at',{ascending:false})),
     fetchAll(() => adminDb.from('profiles').select('id,full_name,role,active,created_at,updated_at').order('created_at')),
-    fetchAll(() => adminDb.from('system_settings').select('*').order('key'))
+    fetchAll(() => adminDb.from('system_settings').select('*').order('key')),
+    fetchAll(()=>adminDb.from('stock_batches').select('*').order('occurred_at')),
+    fetchAll(()=>adminDb.from('customer_balances').select('*').order('occurred_at')),
+    fetchAll(()=>adminDb.from('debt_payments').select('*').order('paid_at'))
   ]);
 
   const txFlat = transactions.map(r => ({ ...r, part_number:r.product?.part_number, description:r.product?.description, supplier_name:r.supplier?.name }));
@@ -33,7 +37,7 @@ async function createBackup(actorId = null) {
   const purchaseFlat = purchaseHistory.map(r => ({ ...r, supplier_name:r.supplier?.name }));
   const importBatchFlat = importBatches.map(r => ({ ...r, warnings:r.warnings ? JSON.stringify(r.warnings) : null }));
   const settingFlat = settings.map(r => ({ ...r, value:JSON.stringify(r.value) }));
-  const buffer = await buildBackupWorkbook({ products, transactions:txFlat, suppliers, productSuppliers:productSupplierFlat, demandObservations:observationFlat, forecastRuns:forecastRunFlat, forecasts:forecastFlat, legacySales, purchaseHistory:purchaseFlat, importBatches:importBatchFlat, profiles, settings:settingFlat });
+  const buffer = await buildBackupWorkbook({ stockBatches,customerDebts,debtPayments,products:products.map(p=>({...p,search_aliases:(p.search_aliases||[]).join(', '),photo_paths:(p.photo_paths||[]).join(', ')})), transactions:txFlat, suppliers, productSuppliers:productSupplierFlat, demandObservations:observationFlat, forecastRuns:forecastRunFlat, forecasts:forecastFlat, legacySales, purchaseHistory:purchaseFlat, importBatches:importBatchFlat, profiles, settings:settingFlat });
   const stamp = new Date().toISOString().replaceAll(':','-').replaceAll('.','-');
   const fileName = `partcast-backup-${stamp}.xlsx`;
   const storagePath = `daily/${fileName}`;
@@ -90,13 +94,14 @@ async function trainForecast({ includeProxy=false, horizonDays=30, actorId=null 
   }
 }
 
-async function autoEmailSuppliers(actorId = null) {
+async function sendAutomaticSuppliers(actorId = null) {
   const { data: setting } = await adminDb.from('system_settings').select('value').eq('key','auto_supplier_email_enabled').maybeSingle();
   if (setting?.value !== true) return { skipped:true, reason:'Automatic supplier email is disabled.' };
   const { data: cooldownSetting } = await adminDb.from('system_settings').select('value').eq('key','supplier_email_cooldown_days').maybeSingle();
   const cooldownDays = Number(cooldownSetting?.value || 3);
-  const { data: rows, error } = await adminDb.from('reorder_recommendations').select('*').gt('recommended_quantity',0).not('supplier_id','is',null).not('supplier_email','is',null).order('supplier_name');
+  const { data: rawRows, error } = await neededRestock(adminDb.from('reorder_recommendations').select('*')).not('supplier_id','is',null).not('supplier_email','is',null).order('supplier_name');
   if(error) throw error;
+  const rows=(rawRows||[]).map(normalizeRestock);
 
   const grouped = new Map();
   for(const row of rows || []){
@@ -104,12 +109,15 @@ async function autoEmailSuppliers(actorId = null) {
     grouped.get(row.supplier_id).push(row);
   }
   const results=[];
+  let attempted=0;
   for(const [supplierId,items] of grouped){
     const supplier={id:supplierId,name:items[0].supplier_name,email:items[0].supplier_email};
     const hash=recommendationHash(items);
     const since=new Date(Date.now()-cooldownDays*86400000).toISOString();
-    const { data:last }=await adminDb.from('supplier_email_logs').select('*').eq('supplier_id',supplierId).eq('recommendation_hash',hash).eq('status','sent').gte('sent_at',since).limit(1);
+    const { data:last }=await adminDb.from('supplier_email_logs').select('*').eq('supplier_id',supplierId).eq('status','sent').gte('sent_at',since).limit(1);
     if(last?.length){ results.push({supplier:supplier.name,status:'skipped',reason:'same recommendation recently sent'}); continue; }
+    if(attempted>=10)break;
+    attempted++;
     try{
       const provider=await sendSupplierEmail({supplier,items});
       await adminDb.from('supplier_email_logs').insert({supplier_id:supplierId,recipient_email:supplier.email,subject:`NPG Autoparts replenishment request`,recommendation_hash:hash,item_count:items.length,status:'sent',provider_message_id:provider.messageId||null,sent_by:actorId});
@@ -120,6 +128,18 @@ async function autoEmailSuppliers(actorId = null) {
     }
   }
   return {skipped:false,results};
+}
+
+async function autoEmailSuppliers(actorId = null) {
+  const {data:setting,error:settingError}=await adminDb.from('system_settings').select('value').eq('key','auto_supplier_email_enabled').maybeSingle();
+  if(settingError)throw settingError;
+  if(setting?.value!==true)return {skipped:true,reason:'Automatic supplier email is disabled.'};
+  const token=crypto.randomUUID();
+  const {data:claimed,error}=await adminDb.rpc('claim_job',{p_name:'supplier-email',p_token:token,p_seconds:600});
+  if(error)throw error;
+  if(!claimed)return {skipped:true,reason:'Another stock email check is running.'};
+  try{return await sendAutomaticSuppliers(actorId);}
+  finally{const released=await adminDb.rpc('release_job',{p_name:'supplier-email',p_token:token});if(released.error)console.error('Email lease release failed.');}
 }
 
 router.post('/backup', async (req,res,next)=>{ try{res.json({backup:await createBackup(null)});}catch(e){next(e);} });

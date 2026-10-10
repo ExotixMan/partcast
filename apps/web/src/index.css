@@ -1,23 +1,63 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 @layer base {
-  html { @apply antialiased; }
-  body { @apply m-0 bg-slate-50 text-slate-900; }
+  html { @apply antialiased; color-scheme: light; }
+  body { @apply m-0 bg-slate-50 text-slate-900; line-height: 1.6; }
   button, input, select, textarea { @apply outline-none; }
+  :focus-visible { outline: 3px solid #dc2626; outline-offset: 3px; }
+  button, a, input, select, summary { touch-action: manipulation; }
+  button, input, select, textarea { min-height: 44px; }
+  button, summary { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  input, select, textarea { scroll-margin-block: 6rem; }
+  ::selection { background: #fee2e2; color: #7f1d1d; }
 }
 
+@utility btn { @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50; }
+
 @layer components {
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50; }
   .btn-primary { @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-4 focus:ring-red-100; }
   .btn-secondary { @apply btn border border-slate-200 bg-white text-slate-700 hover:bg-slate-50; }
-  .btn-danger { @apply btn bg-slate-900 text-white hover:bg-black; }
-  .input { @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:ring-4 focus:ring-red-50; }
-  .label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
-  .panel { @apply rounded-xl border border-slate-200 bg-white shadow-soft; }
+  .btn-danger { @apply btn border border-red-200 bg-red-50 text-red-700 hover:bg-red-100; }
+  .input { @apply min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 placeholder:text-slate-500 focus:border-red-500 focus:ring-4 focus:ring-red-50; }
+  .label { @apply mb-2 block text-sm font-semibold text-slate-700; }
+  .panel { @apply min-w-0 rounded-2xl border border-slate-200 bg-white shadow-soft; }
   .panel-header { @apply flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5; }
-  .page-title { @apply text-xl font-bold tracking-tight text-slate-950 sm:text-2xl; }
-  .page-subtitle { @apply mt-1 text-sm text-slate-500; }
-  .badge { @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold; }
+  .page-title { @apply text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl; }
+  .page-subtitle { @apply mt-2 max-w-2xl text-sm leading-6 text-slate-600; }
+  .badge { @apply inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-semibold; }
+  .skip-link { @apply fixed left-4 top-4 z-[100] -translate-y-24 rounded-xl bg-white px-5 py-3 font-semibold text-red-700 shadow-lg focus:translate-y-0; }
 }
+
+@media (max-width: 1023px) {
+ #main-content { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+
+/* Theme tokens apply to every shared control and existing screen. */
+html[data-theme="dark"] { color-scheme: dark; background:#111827; }
+html[data-theme="dark"] body {background:#111827;color:#f1f5f9;}
+html[data-theme="dark"] :is(.bg-white,.panel,.input,.btn-secondary,.skip-link) {background-color:#1f2937;color:#e2e8f0;border-color:#475569;}
+html[data-theme="dark"] [class*="bg-white/"] {background-color:#1f2937;}
+html[data-theme="dark"] :is(.bg-slate-50,.bg-slate-100,.bg-slate-200,[class*="bg-[#f8f9fb]"],[class*="bg-slate-50/"]) {background-color:#111827;}
+html[data-theme="dark"] :is(.text-slate-950,.text-slate-900,.text-slate-800) {color:#f1f5f9;}
+html[data-theme="dark"] :is(.text-slate-700,.text-slate-600,.label) {color:#cbd5e1;}
+html[data-theme="dark"] :is(.text-slate-500,.text-slate-400) {color:#a8b5c7;}
+html[data-theme="dark"] :is(.border-slate-100,.border-slate-200,.border-slate-300) {border-color:#475569;}
+html[data-theme="dark"] :is(.divide-slate-100,.divide-slate-200)>:not(:last-child) {border-color:#475569;}
+html[data-theme="dark"] :is(.bg-red-50,.bg-red-100,[class*="bg-red-50/"]) {background-color:#40252c;}
+html[data-theme="dark"] :is(.text-red-600,.text-red-700,.text-red-800,.text-red-900,.text-red-950) {color:#fca5a5;}
+html[data-theme="dark"] :is(.bg-amber-50,.bg-amber-100) {background-color:#382e1c;}
+html[data-theme="dark"] :is(.text-amber-600,.text-amber-700,.text-amber-800,.text-amber-900,.text-amber-950) {color:#fde68a;}
+html[data-theme="dark"] :is(.bg-emerald-50,.bg-emerald-100) {background-color:#17352e;}
+html[data-theme="dark"] :is(.text-emerald-600,.text-emerald-700,.text-emerald-800,.text-emerald-900) {color:#a7f3d0;}
+html[data-theme="dark"] .input::placeholder {color:#a8b5c7;}
+html[data-theme="dark"] .btn-primary {background:#b91c1c;color:#fff;}
+html[data-theme="dark"] .btn-danger {background:#40252c;color:#fca5a5;border-color:#9f4954;}
+html[data-theme="dark"] :is(.hover\:bg-slate-50,.hover\:bg-slate-100):hover {background-color:#334155;}
+html[data-theme="dark"] .recharts-cartesian-axis-tick text {fill:#cbd5e1;}
+html[data-theme="dark"] .recharts-cartesian-grid line {stroke:#475569;}
+html[data-theme="dark"] .recharts-default-tooltip {background:#1f2937!important;border-color:#475569!important;}
+html[data-theme="dark"] :focus-visible {outline-color:#fca5a5;}

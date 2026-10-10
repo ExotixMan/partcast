@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Mail, Plus, RefreshCw, Send, Truck } from 'lucide-react';
+import { t, useLocale } from "../context/LocaleContext.jsx";
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { ArrowRight, CheckCircle2, Mail, Package, Plus, RefreshCw, Send, Truck, UserRound } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -7,25 +9,286 @@ import Loading from '../components/Loading.jsx';
 import Modal from '../components/Modal.jsx';
 import PageHeader from '../components/PageHeader.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import { validAmount } from '../lib/store.js';
 import Toast from '../components/Toast.jsx';
+const peso = value => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP'
+}).format(Number(value || 0));
+const units = value => Number(value || 0).toLocaleString(undefined, {
+  maximumFractionDigits: 2
+});
+const suggested = row => Math.ceil(Number(row.recommended_quantity || 0));
+const blankSupplier = {
+  name: '',
+  contact_person: '',
+  email: '',
+  phone: '',
+  address: ''
+};
+export default function ReorderPage() {
+  useLocale();
+  const {
+    profile
+  } = useAuth();
+  const admin = ['super_admin', 'owner', 'admin'].includes(profile?.role);
+  const [tab, setTab] = useState('reorder');
+  const [rows, setRows] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [toast, setToast] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [supplierModal, setSupplierModal] = useState(false);
+  const [supplier, setSupplier] = useState(blankSupplier);
+  const [editingSupplierId, setEditingSupplierId] = useState('');
+  const [assign, setAssign] = useState(null);
+  const [assignSupplier, setAssignSupplier] = useState('');
+  const [unitCost, setUnitCost] = useState(0);
+  const [leadTime, setLeadTime] = useState(7);
+  const [emailGroup, setEmailGroup] = useState(null);
+  const [emailChoices,setEmailChoices]=useState([]),[choiceId,setChoiceId]=useState(''),[columnName,setColumnName]=useState('');
+  const loadNumber=useRef(0),emailNumber=useRef(0);
+  const [draft, setDraft] = useState({
+      subject: '',
+      message: '',
+      items: [],extra_columns:[]
+    }),
+    [emailError, setEmailError] = useState('');
+  async function reviewEmail(group) {
+    const request=++emailNumber.current;
+    setEmailGroup(group);
+    setEmailError('');
+    setColumnName('');setChoiceId('');setEmailChoices(group.items);
+    setDraft({
+      subject: 'NPG Autoparts - Parts order request',
+      message: 'Hello, please confirm availability, prices, and delivery time for the parts below. Thank you.',
+      extra_columns:[],
+      items: group.items.map(r => ({
+        product_id: r.product_id,
+        part_number: r.part_number || '',
+        description: r.description,
+        quantity: String(suggested(r)),unit:r.unit||'units',extra_values:{}
+      }))
+    });
+    try{const result=await api.get(`/api/reorder?onlyNeeded=false&supplierId=${group.supplierId}`);if(request===emailNumber.current)setEmailChoices(result.data||[]);}catch(e){if(request===emailNumber.current)setEmailError(e.message);}
+  }
+  function addColumn(){
+    const label=columnName.trim();
+    const reserved=['Part number','Description','In stock','Unit','Quantity'].flatMap(x=>[x.toLowerCase(),t(x).toLowerCase()]);
+    if(!label||label.length>50||/[\r\n]/.test(label)||reserved.includes(label.toLowerCase())||draft.extra_columns.some(c=>c.label.toLowerCase()===label.toLowerCase())||draft.extra_columns.length>=5){setEmailError('Use a unique column name. You can add up to 5 columns.');return;}
+    setDraft(d=>({...d,extra_columns:[...d.extra_columns,{id:crypto.randomUUID(),label}]}));setColumnName('');setEmailError('');
+  }
+  function removeColumn(id){setDraft(d=>({...d,extra_columns:d.extra_columns.filter(c=>c.id!==id),items:d.items.map(i=>({...i,extra_values:Object.fromEntries(Object.entries(i.extra_values||{}).filter(([key])=>key!==id))}))}));}
+  function addPart(){
+    const row=emailChoices.find(r=>r.product_id===choiceId);
+    if(!row||draft.items.some(i=>i.product_id===choiceId)||draft.items.length>=100)return;
+    setDraft(d=>({...d,items:[...d.items,{product_id:row.product_id,part_number:row.part_number||'',description:row.description,unit:row.unit||'units',quantity:String(Math.max(1,suggested(row))),extra_values:{}}]}));setChoiceId('');setEmailError('');
+  }
+  function editItem(id, key, value) {
+    setDraft(d => ({
+      ...d,
+      items: d.items.map(i => i.product_id === id ? {
+        ...i,
+        [key]: value
+      } : i)
+    }));
+    setEmailError('');
+  }
+  async function load(quiet=false) {
+    const request=++loadNumber.current;
+    if(!quiet)setLoading(true);
+    setLoadError('');
+    try {
+      const [r, s] = await Promise.all([api.get('/api/reorder?onlyNeeded=true'), api.get('/api/suppliers')]);
+      if(request!==loadNumber.current)return;
+      setRows(r.data || []);
+      setSuppliers(s.data || []);
+    } catch (error) {
+      if(request===loadNumber.current)setLoadError(error.message);
+    } finally {
+      if(request===loadNumber.current)setLoading(false);
+    }
+  }
+  useEffect(() => {
+    load();const refresh=()=>{if(navigator.onLine)load(true);};const timer=setInterval(refresh,60000);
+    window.addEventListener('partcast:queue',refresh);window.addEventListener('online',refresh);window.addEventListener('focus',refresh);
+    return()=>{loadNumber.current++;emailNumber.current++;clearInterval(timer);window.removeEventListener('partcast:queue',refresh);window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
+  }, []);
+  const groups = useMemo(() => {
+    const result = new Map();
+    for (const row of rows) {
+      const key = row.supplier_id || 'unassigned';
+      if (!result.has(key)) result.set(key, {
+        supplierId: row.supplier_id,
+        name: row.supplier_name || 'Choose a supplier for these parts',
+        email: row.supplier_email,
+        items: []
+      });
+      result.get(key).items.push(row);
+    }
+    return [...result.values()];
+  }, [rows]);
+  const outOfStock = rows.filter(row => String(row.status).includes('out')).length;
+  const unassigned = rows.filter(row => !row.supplier_id).length;
+  function openSupplier(item = null) {
+    if (busy) return;
+    setEditingSupplierId(item?.id || '');
+    setSupplier(item ? Object.fromEntries(Object.keys(blankSupplier).map(key => [key, item[key] || ''])) : blankSupplier);
+    setSupplierModal(true);
+  }
+  async function createSupplier(event) {
+    event.preventDefault();
+    if (busy || supplier.name.trim().length < 2) return;
+    setBusy('supplier');
+    try {
+      const details = {
+        ...supplier,
+        name: supplier.name.trim(),
+        email: supplier.email.trim() || null,
+        contact_person: supplier.contact_person.trim() || null,
+        phone: supplier.phone.trim() || null,
+        address: supplier.address.trim() || null
+      };
+      if (editingSupplierId) await api.patch(`/api/suppliers/${editingSupplierId}`, details);else await api.post('/api/suppliers', details);
+      setSupplier(blankSupplier);
+      setSupplierModal(false);
+      setToast({
+        message: editingSupplierId ? 'Supplier contact details updated.' : 'Supplier saved. You can now choose them for a part.'
+      });
+      await load();
+    } catch (error) {
+      setToast({
+        type: 'error',
+        message: error.message
+      });
+    } finally {
+      setBusy('');
+    }
+  }
+  function openAssign(row) {
+    setAssign(row);
+    setAssignSupplier('');
+    setUnitCost(row.estimated_unit_cost || 0);
+    setLeadTime(7);
+  }
+  async function saveAssign(event) {
+    event.preventDefault();
+    if (busy || !assignSupplier) return;
+    setBusy('assign');
+    try {
+      await api.post(`/api/products/${assign.product_id}/suppliers/${assignSupplier}`, {
+        latest_unit_cost: Number(unitCost || 0),
+        lead_time_days: Number(leadTime),
+        is_primary: true
+      });
+      setAssign(null);
+      setToast({
+        message: 'Supplier saved for this part.'
+      });
+      await load();
+    } catch (error) {
+      setToast({
+        type: 'error',
+        message: error.message
+      });
+    } finally {
+      setBusy('');
+    }
+  }
+  async function send(group) {
+    if (busy || !group?.supplierId) return;
+    if (!document.getElementById('supplier-email-form')?.reportValidity()) return;
+    if (!draft.items.length || draft.items.some(i => !validAmount(i.quantity, true) || i.description.trim().length < 2) || draft.subject.trim().length < 2 || draft.message.trim().length < 2) {
+      setEmailError('Check your subject, message, part descriptions, and positive quantities.');
+      return;
+    }
+    setEmailError('');
+    setBusy(group.supplierId);
+    try {
+      const result = await api.post(`/api/admin/supplier-email/${group.supplierId}`, {
+        ...draft,
+        subject: draft.subject.trim(),
+        message: draft.message.trim(),
+        items: draft.items.map(i => ({
+          ...i,
+          quantity: Number(i.quantity)
+        }))
+      });
+      setEmailGroup(null);
+      setToast({
+        message: t('Email sent to {v0} with {v1} parts to restock. Confirm availability and prices with your supplier.',{v0:group.name,v1:result.items})
+      });
+    } catch (error) {
+      setToast({
+        type: 'error',
+        message: error.message
+      });
+    } finally {
+      setBusy('');
+    }
+  }
+  return <>
+    <PageHeader title={t("Restock & suppliers")} subtitle={t("See what is running low, check the suggested amounts, and contact your supplier.")} actions={<><button className="btn-secondary" onClick={()=>load()} disabled={loading}><RefreshCw size={17} />{loading ? t('Checking stock…') : t('Refresh list')}</button>{admin && <button className="btn-primary" onClick={() => openSupplier()}><Plus size={17} />{t("Add supplier")}</button>}</>} />
+    <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6"><p className="font-semibold">{t("How stock alerts work")}</p><p className="mt-1 text-slate-600">{t("Parts at or below their low-stock level appear here, including parts with no stock. Set the low-stock level and reserve quantity in Inventory, then choose a supplier here.")}</p><Link className="mt-2 inline-block font-semibold text-red-700" to="/inventory">{t("Check stock limits in Inventory")}</Link></div>
 
-const peso=v=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(Number(v||0));
-const blankSupplier={name:'',contact_person:'',email:'',phone:'',address:''};
+    <div className="mb-5 flex w-full gap-1 rounded-xl border border-slate-200 bg-white p-1 sm:w-fit" role="group" aria-label={t("Restock pages")}><button className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold ${tab === 'reorder' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`} onClick={() => setTab('reorder')} aria-pressed={tab === 'reorder'}><Package size={17} />{t("Parts to restock")}</button><button className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold ${tab === 'suppliers' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`} onClick={() => setTab('suppliers')} aria-pressed={tab === 'suppliers'}><Truck size={17} />{t("Suppliers")}</button></div>
 
-export default function ReorderPage(){
- const {profile}=useAuth(); const admin=['owner','admin'].includes(profile?.role);
- const [tab,setTab]=useState('reorder'),[rows,setRows]=useState([]),[suppliers,setSuppliers]=useState([]),[loading,setLoading]=useState(true),[toast,setToast]=useState(null),[busy,setBusy]=useState('');
- const [supplierModal,setSupplierModal]=useState(false),[supplier,setSupplier]=useState(blankSupplier),[assign,setAssign]=useState(null),[assignSupplier,setAssignSupplier]=useState(''),[unitCost,setUnitCost]=useState(0),[leadTime,setLeadTime]=useState(7);
- const load=async()=>{setLoading(true);try{const [r,s]=await Promise.all([api.get('/api/reorder?onlyNeeded=true'),api.get('/api/suppliers')]);setRows(r.data||[]);setSuppliers(s.data||[]);}catch(e){setToast({type:'error',message:e.message});}finally{setLoading(false);}};
- useEffect(()=>{load();},[]);
- const groups=useMemo(()=>{const m=new Map();for(const r of rows){const key=r.supplier_id||'unassigned';if(!m.has(key))m.set(key,{supplierId:r.supplier_id,name:r.supplier_name||'Supplier not assigned',email:r.supplier_email,items:[]});m.get(key).items.push(r);}return [...m.values()];},[rows]);
- async function createSupplier(){setBusy('supplier');try{await api.post('/api/suppliers',{...supplier,email:supplier.email||null,contact_person:supplier.contact_person||null,phone:supplier.phone||null,address:supplier.address||null});setSupplier(blankSupplier);setSupplierModal(false);setToast({message:'Supplier added.'});load();}catch(e){setToast({type:'error',message:e.message});}finally{setBusy('');}}
- async function saveAssign(){if(!assignSupplier)return;setBusy('assign');try{await api.post(`/api/products/${assign.product_id}/suppliers/${assignSupplier}`,{latest_unit_cost:Number(unitCost||0),lead_time_days:Number(leadTime||7),is_primary:true});setAssign(null);setToast({message:'Primary supplier assigned.'});load();}catch(e){setToast({type:'error',message:e.message});}finally{setBusy('');}}
- async function send(group){setBusy(group.supplierId);try{const r=await api.post(`/api/admin/supplier-email/${group.supplierId}`,{});setToast({message:`Email sent with ${r.items} replenishment items.`});}catch(e){setToast({type:'error',message:e.message});}finally{setBusy('');}}
- return <><PageHeader title="Reorder & Suppliers" subtitle="Forecast-aware replenishment recommendations with supplier email coordination." actions={<><button className="btn-secondary" onClick={load}><RefreshCw size={16}/>Refresh</button>{admin&&<button className="btn-primary" onClick={()=>setSupplierModal(true)}><Plus size={16}/>Add supplier</button>}</>}/>
-  <div className="mb-5 flex gap-1 rounded-xl border border-slate-200 bg-white p-1 sm:w-fit"><button className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab==='reorder'?'bg-slate-900 text-white':'text-slate-600 hover:bg-slate-50'}`} onClick={()=>setTab('reorder')}>Reorder recommendations</button><button className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab==='suppliers'?'bg-slate-900 text-white':'text-slate-600 hover:bg-slate-50'}`} onClick={()=>setTab('suppliers')}>Suppliers</button></div>
-  {loading?<Loading/>:tab==='reorder'?<div className="space-y-5">{groups.length?groups.map(g=><section key={g.supplierId||'unassigned'} className="panel overflow-hidden"><div className="panel-header"><div className="flex items-center gap-3"><div className="rounded-xl bg-slate-100 p-2.5 text-slate-700"><Truck size={19}/></div><div><h2 className="font-bold text-slate-900">{g.name}</h2><p className="text-sm text-slate-500">{g.email||'No supplier email configured'} · {g.items.length} item{g.items.length===1?'':'s'}</p></div></div>{admin&&g.supplierId&&<button className="btn-primary" disabled={!g.email||busy===g.supplierId} onClick={()=>send(g)}><Send size={16}/>{busy===g.supplierId?'Sending...':'Email supplier'}</button>}</div><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Part</th><th className="px-4 py-3 text-right">On hand</th><th className="px-4 py-3 text-right">Forecast</th><th className="px-4 py-3 text-right">Suggested</th><th className="px-4 py-3 text-right">Est. cost</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{g.items.map(r=><tr key={r.product_id}><td className="px-5 py-3"><p className="font-semibold">{r.part_number||'N/A'}</p><p className="max-w-md truncate text-xs text-slate-500">{r.description}</p>{admin&&!r.supplier_id&&<button className="mt-1 text-xs font-semibold text-red-600 hover:underline" onClick={()=>{setAssign(r);setUnitCost(r.estimated_unit_cost||0);}}>Assign primary supplier</button>}</td><td className="px-4 py-3 text-right">{Number(r.current_stock).toFixed(0)}</td><td className="px-4 py-3 text-right">{Number(r.predicted_quantity).toFixed(1)}</td><td className="px-4 py-3 text-right font-bold text-red-700">{Math.ceil(Number(r.recommended_quantity))}</td><td className="px-4 py-3 text-right">{peso(r.estimated_order_cost)}</td><td className="px-5 py-3"><StatusBadge status={r.status}/></td></tr>)}</tbody></table></div></section>):<EmptyState title="No products need replenishment" text="Reorder recommendations appear when stock or forecast demand indicates additional supply is needed."/>}</div>:<section className="panel overflow-hidden">{suppliers.length?<div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Supplier</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Email</th><th className="px-5 py-3">Phone</th></tr></thead><tbody className="divide-y divide-slate-100">{suppliers.map(s=><tr key={s.id}><td className="px-5 py-3 font-semibold">{s.name}</td><td className="px-4 py-3 text-slate-600">{s.contact_person||'—'}</td><td className="px-4 py-3"><span className="inline-flex items-center gap-2 text-slate-600"><Mail size={15}/>{s.email||'Not set'}</span></td><td className="px-5 py-3 text-slate-600">{s.phone||'—'}</td></tr>)}</tbody></table></div>:<EmptyState title="No suppliers yet"/>}</section>}
-  <Modal open={supplierModal} onClose={()=>setSupplierModal(false)} title="Add supplier" description="Supplier email is required for automated replenishment email." footer={<><button className="btn-secondary" onClick={()=>setSupplierModal(false)}>Cancel</button><button className="btn-primary" disabled={busy==='supplier'} onClick={createSupplier}>{busy==='supplier'?'Saving...':'Save supplier'}</button></>}><div className="grid gap-4 sm:grid-cols-2"><label className="sm:col-span-2"><span className="label">Supplier name *</span><input className="input" value={supplier.name} onChange={e=>setSupplier({...supplier,name:e.target.value})}/></label><label><span className="label">Contact person</span><input className="input" value={supplier.contact_person} onChange={e=>setSupplier({...supplier,contact_person:e.target.value})}/></label><label><span className="label">Email</span><input type="email" className="input" value={supplier.email} onChange={e=>setSupplier({...supplier,email:e.target.value})}/></label><label><span className="label">Phone</span><input className="input" value={supplier.phone} onChange={e=>setSupplier({...supplier,phone:e.target.value})}/></label><label className="sm:col-span-2"><span className="label">Address</span><textarea className="input min-h-20" value={supplier.address} onChange={e=>setSupplier({...supplier,address:e.target.value})}/></label></div></Modal>
-  <Modal open={!!assign} onClose={()=>setAssign(null)} title="Assign primary supplier" description={assign?`${assign.part_number||'N/A'} · ${assign.description}`:''} footer={<><button className="btn-secondary" onClick={()=>setAssign(null)}>Cancel</button><button className="btn-primary" disabled={busy==='assign'||!assignSupplier} onClick={saveAssign}>Assign supplier</button></>}><div className="space-y-4"><label><span className="label">Supplier *</span><select className="input" value={assignSupplier} onChange={e=>setAssignSupplier(e.target.value)}><option value="">Select supplier</option>{suppliers.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label><span className="label">Latest unit cost</span><input className="input" type="number" min="0" step="0.01" value={unitCost} onChange={e=>setUnitCost(e.target.value)}/></label><label><span className="label">Lead time (days)</span><input className="input" type="number" min="0" value={leadTime} onChange={e=>setLeadTime(e.target.value)}/></label></div></div></Modal>
-  <Toast toast={toast} onClose={()=>setToast(null)}/></>;
+    {loading ? <Loading label={t("Checking parts and suppliers…")} /> : loadError ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5"><h2 className="font-bold text-amber-950">{t("We could not load your restock list.")}</h2><p className="mt-2 text-sm text-amber-900">{t(loadError)}</p><button className="btn-secondary mt-4" onClick={()=>load()}>{t("Try again")}</button></div> : tab === 'reorder' ? <>
+      <div className="mb-5 grid gap-3 sm:grid-cols-3"><div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Parts to review")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{rows.length}</p><p className="mt-1 text-sm text-slate-500">{t("Suggested for your next order")}</p></div><div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Out of stock")}</p><p className={`mt-2 text-3xl font-bold ${outOfStock ? 'text-red-700' : 'text-slate-950'}`}>{outOfStock}</p><p className="mt-1 text-sm text-slate-500">{t("Check these parts first")}</p></div><div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Need a supplier")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{unassigned}</p><p className="mt-1 text-sm text-slate-500">{t("Choose who supplies each part")}</p></div></div>
+      {groups.length > 0 ? <div className="space-y-5"><section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5"><h2 className="font-bold text-slate-950">{t("Before you order")}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t("1. Check the quantity on your shelves. \xA0 2. Review the suggested amount. \xA0 3. Contact your supplier to confirm price and availability.")}</p><p className="mt-2 text-sm leading-6 text-slate-500">{t("Suggestions use your stock limits and available demand estimates. Emailing a supplier does not add stock to PartCast.")}</p></section>{groups.map(group => <section key={group.supplierId || 'unassigned'} className="panel overflow-hidden"><div className="panel-header"><div className="flex min-w-0 items-start gap-3"><div className="shrink-0 rounded-xl bg-red-50 p-3 text-red-700"><Truck size={21} /></div><div className="min-w-0"><h2 className="font-bold text-slate-950">{group.name}</h2><p className="mt-1 break-words text-sm text-slate-600">{group.supplierId ? group.email || t('An email address is needed to email this supplier.') : admin ? t('Choose a supplier below before sending an email.') : t('Ask your store manager to choose a supplier.')}</p><p className="mt-1 text-sm text-slate-500">{group.items.length}{t(" part")}{group.items.length === 1 ? '' : t('s')}{t(" to review")}</p></div></div>{admin && group.supplierId && (group.email ? <button className="btn-primary shrink-0" disabled={Boolean(busy)} onClick={() => reviewEmail(group)}><Mail size={17} />{t("Review supplier email")}</button> : <button className="btn-secondary shrink-0" disabled={!suppliers.some(item => item.id === group.supplierId)} onClick={() => openSupplier(suppliers.find(item => item.id === group.supplierId))}><Plus size={17} />{t("Add email address")}</button>)}</div>
+        <div className="divide-y divide-slate-100 lg:hidden">{group.items.map(row => <article key={row.product_id} className="p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-red-700">{row.part_number || t('No part number')}</p><StatusBadge status={row.status} /></div><h3 className="mt-2 font-bold leading-6 text-slate-950">{t(row.description)}</h3><dl className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-50 p-3"><dt className="text-sm text-slate-600">{t("In stock now")}</dt><dd className="mt-1 text-lg font-semibold">{units(row.current_stock)}{t(" units")}</dd></div><div className="rounded-xl bg-red-50 p-3"><dt className="text-sm text-red-700">{t("Suggested order")}</dt><dd className="mt-1 text-lg font-bold text-red-800">{suggested(row)}{t(" units")}</dd></div><div><dt className="text-sm text-slate-500">{t("Estimated sales ahead")}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{units(row.predicted_quantity)}{t(" units")}</dd></div><div><dt className="text-sm text-slate-500">{t("Estimated order cost")}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{peso(row.estimated_order_cost)}</dd></div></dl>{admin && !row.supplier_id && <button className="btn-secondary mt-4 w-full" onClick={() => openAssign(row)}><Plus size={16} />{t("Choose supplier")}</button>}</article>)}</div>
+        <div className="hidden overflow-x-auto lg:block"><table className="w-full text-left text-sm"><caption className="sr-only">{t("Parts suggested for restocking from ")}{group.name}</caption><thead className="bg-slate-50 text-slate-600"><tr><th scope="col" className="px-5 py-4 font-semibold">{t("Part")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("In stock")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("Estimated sales")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("Suggested order")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("Estimated cost")}</th><th scope="col" className="px-5 py-4 font-semibold">{t("Stock status")}</th></tr></thead><tbody className="divide-y divide-slate-100">{group.items.map(row => <tr key={row.product_id}><td className="max-w-xs px-5 py-4"><p className="font-semibold text-slate-950">{row.part_number || t('No part number')}</p><p className="mt-1 text-sm leading-6 text-slate-600">{t(row.description)}</p>{admin && !row.supplier_id && <button className="btn-secondary mt-2" onClick={() => openAssign(row)}><Plus size={15} />{t("Choose supplier")}</button>}</td><td className="px-4 py-4 text-right">{units(row.current_stock)}</td><td className="px-4 py-4 text-right">{units(row.predicted_quantity)}</td><td className="px-4 py-4 text-right text-base font-bold text-red-700">{suggested(row)}{t(" units")}</td><td className="whitespace-nowrap px-4 py-4 text-right">{peso(row.estimated_order_cost)}</td><td className="px-5 py-4"><StatusBadge status={row.status} /></td></tr>)}</tbody></table></div><p className="border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500 sm:px-5">{t("Sales estimates cover the remaining forecast period. Costs use the saved unit price; confirm the final price with your supplier.")}</p></section>)}</div> : <section className="panel px-5 py-10 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><CheckCircle2 size={27} /></div><h2 className="mt-4 text-lg font-bold text-slate-950">{t("No parts are currently suggested for restocking")}</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-600">{t("Based on saved stock limits and available estimates. Keep recording sales and stock deliveries so this list stays useful.")}</p><Link className="btn-secondary mt-5" to="/inventory">{t("Check your inventory ")}<ArrowRight size={16} /></Link></section>}
+    </> : <section className="panel overflow-hidden"><div className="panel-header"><div><h2 className="text-lg font-bold text-slate-950">{t("Your suppliers")}</h2><p className="mt-1 text-sm text-slate-600">{t("Contact details for the businesses that supply your parts.")}</p></div></div>{suppliers.length ? <div className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-3">{suppliers.map(item => <article key={item.id} className="border-b border-slate-100 p-5 sm:border-r"><div className="flex items-start gap-3"><div className="rounded-xl bg-slate-50 p-3 text-slate-600"><Truck size={20} /></div><h3 className="min-w-0 self-center break-words font-bold text-slate-950">{item.name}</h3></div><dl className="mt-4 space-y-3 text-sm"><div><dt className="flex items-center gap-2 text-slate-500"><UserRound size={15} />{t("Contact person")}</dt><dd className="mt-1 font-medium text-slate-800">{item.contact_person || t('Not added')}</dd></div><div><dt className="flex items-center gap-2 text-slate-500"><Mail size={15} />{t("Email address")}</dt><dd className="mt-1 break-words font-medium text-slate-800">{item.email || t('Not added')}</dd></div><div><dt className="text-slate-500">{t("Phone number")}</dt><dd className="mt-1 font-medium text-slate-800">{item.phone || t('Not added')}</dd></div>{item.address && <div><dt className="text-slate-500">{t("Address")}</dt><dd className="mt-1 break-words text-slate-800">{item.address}</dd></div>}</dl>{admin && <button className="btn-secondary mt-5 w-full" onClick={() => openSupplier(item)}>{t("Edit contact details")}</button>}</article>)}</div> : <><EmptyState title={t("Add your first supplier")} text={admin ? t('Save a supplier’s name and contact details, then choose them for the parts they provide.') : t('Ask your store manager to add your supplier’s contact details.')} />{admin && <div className="px-5 pb-6 text-center"><button className="btn-primary" onClick={() => openSupplier()}><Plus size={17} />{t("Add supplier")}</button></div>}</>}</section>}
+
+    <Modal open={supplierModal} onClose={() => {
+      if (!busy) setSupplierModal(false);
+    }} title={editingSupplierId ? t('Edit supplier contact details') : t('Add a supplier')} description={t("Start with their name. Add an email address if you want PartCast to send restock requests.")} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setSupplierModal(false)}>{t("Cancel")}</button><button className="btn-primary" form="supplier-form" type="submit" disabled={busy === 'supplier' || supplier.name.trim().length < 2}>{busy === 'supplier' ? t('Saving supplier…') : t('Save supplier')}</button></>}><form id="supplier-form" onSubmit={createSupplier} className="grid gap-4 sm:grid-cols-2"><label className="sm:col-span-2"><span className="label">{t("Supplier name (required)")}</span><input className="input" required minLength={2} maxLength={180} autoComplete="organization" placeholder={t("Business or supplier name")} value={supplier.name} onChange={event => setSupplier({
+            ...supplier,
+            name: event.target.value
+          })} /></label><label><span className="label">{t("Contact person (optional)")}</span><input className="input" maxLength={180} autoComplete="name" placeholder={t("Who should we contact?")} value={supplier.contact_person} onChange={event => setSupplier({
+            ...supplier,
+            contact_person: event.target.value
+          })} /></label><label><span className="label">{t("Email address (optional)")}</span><input type="email" className="input" autoComplete="email" placeholder={t("supplier@example.com")} value={supplier.email} onChange={event => setSupplier({
+            ...supplier,
+            email: event.target.value
+          })} /></label><label><span className="label">{t("Phone number (optional)")}</span><input className="input" type="tel" maxLength={80} autoComplete="tel" value={supplier.phone} onChange={event => setSupplier({
+            ...supplier,
+            phone: event.target.value
+          })} /></label><label className="sm:col-span-2"><span className="label">{t("Address (optional)")}</span><textarea className="input min-h-20" maxLength={500} autoComplete="street-address" value={supplier.address} onChange={event => setSupplier({
+            ...supplier,
+            address: event.target.value
+          })} /></label></form></Modal>
+
+    <Modal open={Boolean(assign)} onClose={() => {
+      if (!busy) setAssign(null);
+    }} title={t("Choose a supplier for this part")} description={assign ? `${assign.part_number || 'No part number'} · ${assign.description}` : ''} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setAssign(null)}>{t("Cancel")}</button><button className="btn-primary" form="assign-supplier-form" type="submit" disabled={busy === 'assign' || !assignSupplier}>{busy === 'assign' ? t('Saving…') : t('Save supplier for part')}</button></>}><form id="assign-supplier-form" onSubmit={saveAssign} className="space-y-4"><label><span className="label">{t("Who supplies this part? (required)")}</span><select className="input" required value={assignSupplier} onChange={event => setAssignSupplier(event.target.value)}><option value="">{t("Choose a supplier")}</option>{suppliers.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>{!suppliers.length && <p className="rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-900">{t("No suppliers have been added yet. Close this window and use \u201CAdd supplier\u201D first.")}</p>}<div className="grid gap-4 sm:grid-cols-2"><label><span className="label">{t("Cost per unit (\u20B1)")}</span><input className="input" type="number" min="0" step="0.01" required value={unitCost} onChange={event => setUnitCost(event.target.value)} /><span className="mt-2 block text-sm text-slate-500">{t("The latest price paid for one unit.")}</span></label><label><span className="label">{t("Usual delivery time (days)")}</span><input className="input" type="number" min="0" max="365" step="1" required value={leadTime} onChange={event => setLeadTime(event.target.value)} /><span className="mt-2 block text-sm text-slate-500">{t("How many days delivery normally takes.")}</span></label></div><p className="text-sm leading-6 text-slate-500">{t("This becomes the main supplier used for this part\u2019s restock requests.")}</p></form></Modal>
+
+    <Modal open={Boolean(emailGroup)} onClose={() => {
+      if (!busy) setEmailGroup(null);
+    }} size="lg" title={t("Review your supplier email")} description={t("Edit the message and parts below. These exact details will be sent to your saved supplier.")} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setEmailGroup(null)}>{t("Keep reviewing")}</button><button className="btn-primary" disabled={Boolean(busy) || !draft.items.length} onClick={() => send(emailGroup)}><Send size={17} />{busy ? t('Sending email…') : t('Send email to supplier')}</button></>}>
+    {emailGroup && <form id="supplier-email-form" className="space-y-5" onSubmit={e => {
+        e.preventDefault();
+        send(emailGroup);
+      }}>
+    <div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">{t("Send restock request to")}</p><p className="mt-1 font-bold">{emailGroup.name}</p><p className="mt-1 break-words text-sm">{emailGroup.email}</p></div>
+    {emailError && <p role="alert" className="text-red-700">{t(emailError)}</p>}
+    <fieldset disabled={Boolean(busy)} className="space-y-4"><label className="block"><span className="label">{t("Email subject *")}</span><input className="input" required minLength={2} maxLength={180} value={draft.subject} onChange={e => setDraft({
+              ...draft,
+              subject: e.target.value
+            })} /></label><label className="block"><span className="label">{t("Your message *")}</span><textarea className="input min-h-32" required minLength={2} maxLength={2000} value={draft.message} onChange={e => setDraft({
+              ...draft,
+              message: e.target.value
+            })} /></label>
+    <section className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">{t("Customize the email table")}</h3><p className="mt-1 text-sm text-slate-600">{t("Add up to 5 columns, such as Brand, Delivery date, or Notes. These fields are included in this email only.")}</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><label className="flex-1"><span className="label">{t("Column name")}</span><input className="input" maxLength={50} value={columnName} onChange={e=>setColumnName(e.target.value)} placeholder={t("For example: Delivery date")} /></label><button type="button" className="btn-secondary sm:self-end" disabled={!columnName.trim()||draft.extra_columns.length>=5} onClick={addColumn}><Plus size={16}/>{t("Add column")}</button></div><div className="mt-3 flex flex-wrap gap-2">{draft.extra_columns.map(c=><button key={c.id} type="button" className="btn-secondary" onClick={()=>removeColumn(c.id)} aria-label={t('Remove column {v0}',{v0:c.label})}>{c.label} ×</button>)}</div></section>
+    <div className="flex flex-col gap-2 sm:flex-row"><label className="flex-1"><span className="label">{t("Add another part from this supplier")}</span><select className="input" value={choiceId} onChange={e=>setChoiceId(e.target.value)}><option value="">{t("Choose a part")}</option>{emailChoices.filter(r=>!draft.items.some(i=>i.product_id===r.product_id)).map(r=><option key={r.product_id} value={r.product_id}>{r.part_number||r.description} · {r.description}</option>)}</select></label><button type="button" className="btn-secondary sm:self-end" disabled={!choiceId||draft.items.length>=100} onClick={addPart}><Plus size={16}/>{t("Add part to request")}</button></div>
+    <h3 className="font-semibold">{t("Parts to request")}</h3>{draft.items.map(i => <div key={i.product_id} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-[1fr_100px]"><div className="space-y-3"><label className="block"><span className="label">{t("Part number")}</span><input className="input" maxLength={120} value={i.part_number} onChange={e => editItem(i.product_id, 'part_number', e.target.value)} /></label><label className="block"><span className="label">{t("Description *")}</span><input className="input" required minLength={2} maxLength={500} value={i.description} onChange={e => editItem(i.product_id, 'description', e.target.value)} /></label><label className="block"><span className="label">{t("Unit")}</span><input className="input" maxLength={40} value={i.unit||''} onChange={e=>editItem(i.product_id,'unit',e.target.value)} /></label>{draft.extra_columns.map(c=><label key={c.id} className="block"><span className="label">{c.label}</span><input className="input" maxLength={300} value={i.extra_values?.[c.id]||''} onChange={e=>editItem(i.product_id,'extra_values',{...i.extra_values,[c.id]:e.target.value})}/></label>)}</div><div><label className="block"><span className="label">{t("Quantity *")}</span><input className="input" required type="number" min="0.01" max="999999999999.99" step="0.01" value={i.quantity} onChange={e => editItem(i.product_id, 'quantity', e.target.value)} /></label><button type="button" className="btn-secondary mt-3 w-full" onClick={() => setDraft(d => ({
+                ...d,
+                items: d.items.filter(x => x.product_id !== i.product_id)
+              }))}>{t("Remove")}</button></div></div>)}
+    </fieldset><section><h3 className="mb-3 font-semibold">{t("Email table preview")}</h3><div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr>{['Part number','Description','In stock','Unit','Quantity'].map(label=><th key={label} className="whitespace-nowrap px-3 py-3">{t(label)}</th>)}{draft.extra_columns.map(c=><th key={c.id} className="whitespace-nowrap px-3 py-3">{c.label}</th>)}</tr></thead><tbody>{draft.items.map(i=><tr key={i.product_id} className="border-t border-slate-200"><td className="px-3 py-3">{i.part_number}</td><td className="min-w-48 px-3 py-3">{i.description}</td><td className="px-3 py-3">{units(emailChoices.find(r=>r.product_id===i.product_id)?.current_stock)}</td><td className="px-3 py-3">{i.unit||'units'}</td><td className="px-3 py-3">{i.quantity}</td>{draft.extra_columns.map(c=><td key={c.id} className="min-w-32 px-3 py-3">{i.extra_values?.[c.id]||''}</td>)}</tr>)}</tbody></table></div></section><p className="text-sm text-slate-500">{t("Confirm prices with your supplier. This email does not change stock. Record a delivery when the parts arrive.")}</p>
+    </form>}
+    </Modal>
+    <Toast toast={toast} onClose={() => setToast(null)} />
+  </>;
 }

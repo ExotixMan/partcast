@@ -19,7 +19,7 @@ function styleSheet(ws) {
     });
     col.width = max;
   });
-  ws.autoFilter = ws.rowCount > 1 ? { from: 'A1', to: ws.getRow(1).lastCell.address } : undefined;
+  ws.autoFilter = ws.rowCount > 1 ? { from: 'A1', to: ws.getCell(1,ws.columnCount).address } : undefined;
 }
 
 function addRows(ws, rows, columns) {
@@ -39,9 +39,13 @@ export async function buildBackupWorkbook(data) {
     { header: 'Quantity', key: 'current_stock' }, { header: 'Unit', key: 'unit' },
     { header: 'Location', key: 'location' }, { header: 'Minimum Stock', key: 'minimum_stock' },
     { header: 'Safety Stock', key: 'safety_stock' }, { header: 'Unit Cost', key: 'unit_cost' },
+    {header:'Category',key:'category'},{header:'Barcode',key:'barcode'},{header:'Other names',key:'search_aliases'},{header:'Private photo paths',key:'photo_paths'},
     { header: 'Selling Price', key: 'selling_price' }, { header: 'Active', key: 'active' }
   ]);
 
+  addRows(wb.addWorksheet('Sale and delivery baskets'),data.stockBatches||[],[{header:'Basket ID',key:'id'},{header:'Type',key:'tx_type'},{header:'Customer',key:'customer_name'},{header:'Reference',key:'reference_no'},{header:'Total',key:'total_amount'},{header:'Paid at sale',key:'paid_amount'},{header:'Date',key:'occurred_at'},{header:'Notes',key:'notes'}]);
+  addRows(wb.addWorksheet('Customer utang'),data.customerDebts||[],[{header:'Debt ID',key:'id'},{header:'Basket ID',key:'batch_id'},{header:'Customer',key:'customer_name'},{header:'Phone',key:'phone'},{header:'Original utang',key:'principal'},{header:'Paid',key:'paid_amount'},{header:'Balance',key:'balance'},{header:'Due date',key:'due_date'},{header:'Reference',key:'reference_no'},{header:'Date',key:'occurred_at'},{header:'Notes',key:'notes'}]);
+  addRows(wb.addWorksheet('Customer payments'),data.debtPayments||[],[{header:'Payment ID',key:'id'},{header:'Debt ID',key:'debt_id'},{header:'Amount',key:'amount'},{header:'Date',key:'paid_at'},{header:'Notes',key:'notes'}]);
   addRows(wb.addWorksheet('Inventory Transactions'), data.transactions, [
     { header: 'Date', key: 'occurred_at' }, { header: 'Type', key: 'tx_type' },
     { header: 'Part Number', key: 'part_number' }, { header: 'Description', key: 'description' },
