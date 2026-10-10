@@ -2,6 +2,8 @@
 
 The saved branch is `codex/partcast-offline-forecasting-20261009`. This release requires password **then** a six-digit email code through **Gmail API**. Owners manage the store; Super Admin manages Google connections and technical settings. Inventory contains part editing and stock corrections; Sell or receive contains all sales and deliveries.
 
+For full files to copy into SQL Editor, use [Complete SQL and API configuration](../supabase/paste-ready/README.md). Its two main scripts install missing official migrations on a fresh or recognized existing PartCast schema and safely replace final functions/policies. Run both parts in separate executions; Part 1 pauses business-table access until Part 2 finishes. Use either these complete scripts or the individual migration procedure below.
+
 ## Upgrade an existing Supabase project
 
 Keep the existing database. These migrations add tables, roles, and policies; they do not erase inventory, sales, forecasts, or customer balances. Apply only migrations that have not already run. Back up the current project before updating its schema.

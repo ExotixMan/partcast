@@ -20,7 +20,11 @@ Server tests generate/reopen real Excel reports to check date boundaries, exact 
 
 Chromium tests run against the production build with mocked Supabase/Auth/API services. They cover phone, tablet and desktop layouts; dedicated sale/receive baskets and inventory corrections; required password followed by email code; wrong passwords/codes; Owner/Cashier/Super Admin navigation; labels and keyboard focus; offline reload/reconnect and account cleanup; an offline sale surviving expired verification and sending exactly once after a new code; multi-item credit sales; partial payments and overpayment refusal; category filters; known/unknown barcode entry; camera permission failure/manual fallback; uncropped photos and sale-page galleries; private-photo upload/gallery/cache/removal; bilingual/dark preferences; supplier draft edits; stock-alert refresh/read failures; and actual Excel download handling.
 
-The final browser suite completed with **35 tests passed**. Together with the server, frontend and Python suites, **102 local tests passed**. API mocks do not establish that the hosted database, Render service, Gmail/Brevo provider or a physical barcode camera is configured.
+The final browser suite completed with **35 tests passed**. Together with the server, frontend and Python suites, **102 local tests passed for the application release**. API mocks do not establish that the hosted database, Render service, Gmail/Brevo provider or a physical barcode camera is configured.
+
+## Complete paste-ready SQL follow-up
+
+The [complete SQL bundle](../supabase/paste-ready/README.md) has **11 additional PostgreSQL checks passed** in `apps/server/tests/paste-sql.test.js`. They execute both complete files on a fresh Supabase-scaffolded database, upgrade the original 0001–0003 schema, repeat both files, and verify that inventory, photos, credit sales, payments, account roles, session verification, encrypted connection records and retry receipts survive. They also verify denied password-only access, direct stock edits and truncation, a pause in business-table access between files, rollback on an unrelated/incomplete schema, and exact-account Super Admin promotion with absent/duplicate-email rejection. These files were not applied to hosted Supabase during preparation.
 
 ## Forecasting interpretation
 

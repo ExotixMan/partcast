@@ -37,6 +37,8 @@ Apply only unapplied migrations. Existing installations with 0001–0005 need `0
 
 See [Activate and use the new features](docs/STORE_WORKFLOWS.md) for everyday sales/utang workflows and validation limits. See [Required login, roles, Google API setup and Python repair](docs/LOGIN_ROLES_FORECASTING.md) before deploying; configure Gmail first and apply 0006 separately before 0007.
 
+For complete files to copy into Supabase SQL Editor, use [Paste-ready SQL and API settings](supabase/paste-ready/README.md). Run the two main files separately, in order. They support fresh and recognized existing PartCast databases and preserve store records; business-table access pauses between the two executions.
+
 ## Recommended dataset import order
 
 1. Clean inventory spreadsheet
