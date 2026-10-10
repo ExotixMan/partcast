@@ -48,8 +48,15 @@ export async function enqueueMovement(userId, payload) {
     let next;
     const all=store.getAll();
     all.onsuccess=()=>{
+      const existing=all.result.find(e=>e.key===`${userId}:${id}`);
+      const normalized={...payload,client_operation_id:id,occurred_at:payload.occurred_at||existing?.payload.occurred_at||new Date().toISOString()};
+      if(existing){
+        const stable=v=>Array.isArray(v)?v.map(stable):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;
+        if(JSON.stringify(stable(existing.payload))!==JSON.stringify(stable(normalized))){reject(Object.assign(new Error('This operation ID is already used for a different change.'),{status:409}));tx.abort();return;}
+        next=existing;return;
+      }
       const createdAt=Math.max(Date.now(),...all.result.filter(e=>e.userId===userId).map(e=>e.createdAt+1));
-      next={key:`${userId}:${id}`,userId,payload:{...payload,client_operation_id:id,occurred_at:payload.occurred_at||new Date().toISOString()},createdAt,status:'pending'};
+      next={key:`${userId}:${id}`,userId,payload:normalized,createdAt,status:'pending'};
       store.put(next);
     };
     tx.oncomplete=()=>resolve(next);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
@@ -80,7 +87,7 @@ export async function clearAccount(userId) {
 
 export function projectedProducts(products, queue) {
   return products.map(product => {
-    const movements = queue.filter(e => e.status === 'pending' && e.payload.product_id === product.id);
+    const movements = queue.filter(e => e.status === 'pending').flatMap(e => (e.payload.lines || [e.payload]).filter(l=>l.product_id===product.id).map(l=>({payload:{...l,tx_type:e.payload.tx_type}})));
     // Match PostgreSQL's two-decimal stock quantities without binary subtraction drift.
     const delta = movements.reduce((sum,e) => sum + (e.payload.tx_type === 'stock_in' ? 1 : -1) * Math.round(Number(e.payload.quantity) * 100), 0);
     const stock = (Math.round(Number(product.current_stock) * 100) + delta) / 100;

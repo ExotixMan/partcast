@@ -1,3 +1,4 @@
+import {t} from './LocaleContext.jsx';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase, authStorageKey } from '../lib/supabase.js';
 import { api, setApiSession } from '../lib/api.js';
@@ -36,9 +37,11 @@ export function AuthProvider({ children }) {
   const value = useMemo(() => ({
     session, profile, loading, offlineAccess,
     signIn: (email,password) => supabase.auth.signInWithPassword({email,password}),
+    requestOtp:email=>supabase.auth.signInWithOtp({email,options:{shouldCreateUser:false}}),
+    verifyOtp:(email,token)=>supabase.auth.verifyOtp({email,token,type:'email'}),
     signOut: async () => {
       const userId = session?.user?.id;
-      if (userId && (await queueItems(userId)).length && !window.confirm('You have unsent stock changes. Signing out removes them from this device. Sign out anyway?')) return;
+      if (userId && (await queueItems(userId)).length && !window.confirm(t('You have unsent changes. Signing out removes them from this device. Sign out anyway?'))) return;
       setApiSession(null); setProfile(null); setSession(null);
       if (userId) await clearAccount(userId);
       await supabase.auth.signOut({scope:'local'});

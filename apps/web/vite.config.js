@@ -11,5 +11,5 @@ export default defineConfig({
       icons: [{src:'/icons/partcast-192.png',sizes:'192x192',type:'image/png',purpose:'any'},{src:'/icons/partcast-512.png',sizes:'512x512',type:'image/png',purpose:'any maskable'}]
     },
     workbox: {globPatterns: ['**/*.{js,css,html,png,woff2}'],navigateFallbackDenylist: [/^\/api\//,/^\/jobs\//,/^\/setup\//],cleanupOutdatedCaches:true}
-  })], server: { port: 5173 }
+  })], build:{rollupOptions:{output:{manualChunks(id){if(id.includes('node_modules/@supabase/'))return 'supabase';if(/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id))return 'react';if(id.endsWith('/src/lib/tagalog.json'))return 'tagalog';}}}}, server: { port: 5173 }
 });

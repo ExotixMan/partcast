@@ -18,9 +18,13 @@ Using one dynamic Render service is deliberate: Node.js is the API process and i
 4. Run `supabase/migrations/0002_rls.sql` completely.
 5. Run `supabase/migrations/0003_training_import.sql` completely.
 
-If this is an existing PartCast database that already has 0001 and 0002, only run 0003 for this update.
-5. In **Authentication settings**, disable public user signups. PartCast creates users through the server admin API.
-6. Copy:
+6. Run `supabase/migrations/0004_offline_security_notifications.sql` completely.
+7. Run `supabase/migrations/0005_store_workflows.sql` completely.
+
+For an existing database, apply only unapplied migrations. See [feature activation](STORE_WORKFLOWS.md) for the Supabase email-code template and new store workflows.
+
+8. In **Authentication settings**, disable public user signups. PartCast creates users through the server admin API.
+9. Copy:
    - Project URL
    - anon/public key
    - service role key

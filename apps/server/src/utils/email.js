@@ -10,7 +10,7 @@ export function recommendationHash(items) {
   return crypto.createHash('sha256').update(normalized).digest('hex');
 }
 
-export async function sendSupplierEmail({ supplier, items }) {
+export async function sendSupplierEmail({ supplier, items, subject, message }) {
   if (!config.BREVO_API_KEY || !config.BREVO_SENDER_EMAIL) {
     const error = new Error('Brevo email is not configured. Add BREVO_API_KEY and BREVO_SENDER_EMAIL.');
     error.status = 503;
@@ -22,14 +22,14 @@ export async function sendSupplierEmail({ supplier, items }) {
       <td style="padding:8px;border:1px solid #e5e7eb">${escapeHtml(item.part_number || 'N/A')}</td>
       <td style="padding:8px;border:1px solid #e5e7eb">${escapeHtml(item.description)}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;text-align:right">${Number(item.current_stock).toFixed(0)}</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right">${Math.ceil(Number(item.recommended_quantity))}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;text-align:right">${Number(item.quantity ?? Math.ceil(Number(item.recommended_quantity))).toLocaleString('en-PH',{maximumFractionDigits:2})}</td>
     </tr>`).join('');
 
   const htmlContent = `
     <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.5">
       <h2>NPG Autoparts Supply Request</h2>
       <p>Hello ${escapeHtml(supplier.contact_person || supplier.name)},</p>
-      <p>PartCast identified the following items for replenishment based on current stock thresholds and, when available, the latest demand forecast. Please confirm availability, price, and expected delivery schedule.</p>
+      <p>${escapeHtml(message || 'Please confirm availability, price, and expected delivery schedule for these parts.').replace(/\n/g,'<br>')}</p>
       <table style="border-collapse:collapse;width:100%;margin:16px 0">
         <thead><tr>
           <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Part No.</th>
@@ -53,7 +53,7 @@ export async function sendSupplierEmail({ supplier, items }) {
     body: JSON.stringify({
       sender: { name: config.BREVO_SENDER_NAME, email: config.BREVO_SENDER_EMAIL },
       to: [{ email: supplier.email, name: supplier.name }],
-      subject: `NPG Autoparts - Replenishment request (${items.length} item${items.length === 1 ? '' : 's'})`,
+      subject: subject || `NPG Autoparts - Replenishment request (${items.length} item${items.length === 1 ? '' : 's'})`,
       htmlContent
     })
   });

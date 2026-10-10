@@ -12,7 +12,11 @@ import { buildReportWorkbook } from '../utils/excel.js';
 import { runForecastPython } from '../utils/ml.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
 
+import storeRoutes from './store.js';
+import {storeReport} from '../utils/storeReports.js';
+import {amount,positiveAmount,category,barcode,reportDates,dateQuery} from '../utils/storeValidation.js';
 const router = Router();
+router.use(storeRoutes);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
@@ -33,7 +37,7 @@ router.get('/me', (req, res) => { const {accessToken,...user}=req.user;res.json(
 router.get('/offline-snapshot', async (req,res,next) => {
   try {
     const [products,suppliers] = await Promise.all([
-      fetchAll(() => adminDb.from('inventory_status').select('id,part_number,sub_number,description,brand,unit,location,current_stock,minimum_stock,safety_stock,unit_cost,selling_price,stock_status,updated_at').eq('active',true).order('id')),
+      fetchAll(() => adminDb.from('inventory_status').select('id,part_number,sub_number,description,brand,unit,location,current_stock,minimum_stock,safety_stock,unit_cost,selling_price,stock_status,updated_at,category,barcode,search_aliases,photo_paths').eq('active',true).order('id')),
       fetchAll(() => adminDb.from('suppliers').select('id,name').eq('active',true).order('id'))
     ]);
     res.json({products,suppliers,savedAt:new Date().toISOString()});
@@ -93,7 +97,8 @@ router.get('/products', async (req, res, next) => {
     const q = String(req.query.q || '').trim().replace(/[^a-zA-Z0-9_\-./ ()]/g, '').slice(0, 80);
     const status = String(req.query.status || 'all');
     let query = adminDb.from('inventory_status').select('*', { count: 'exact' }).eq('active', true);
-    if (q) query = query.or(`part_number.ilike.%${q}%,description.ilike.%${q}%,brand.ilike.%${q}%`);
+    if (q) query = query.or(`part_number.ilike.%${q}%,description.ilike.%${q}%,brand.ilike.%${q}%,barcode.ilike.%${q}%,alias_text.ilike.%${q}%`);
+    if(req.query.category && req.query.category!=='all') query=query.eq('category',category.parse(req.query.category));
     if (status === 'low') query = query.eq('stock_status', 'low');
     if (status === 'out') query = query.eq('stock_status', 'out');
     query = query.order('description').range((page - 1) * pageSize, page * pageSize - 1);
@@ -121,15 +126,16 @@ router.post('/products', rolesWrite, async (req, res, next) => {
     const body = z.object({
       part_number: z.string().trim().max(120).nullable().optional(),
       sub_number: z.string().trim().max(120).nullable().optional(),
+      category:category.optional(),barcode,search_aliases:z.array(z.string().trim().min(1).max(80)).max(20).optional(),
       description: z.string().trim().min(2).max(500),
       brand: z.string().trim().max(120).nullable().optional(),
       unit: z.string().trim().max(40).nullable().optional(),
       location: z.string().trim().max(80).nullable().optional(),
-      current_stock: z.coerce.number().min(0).default(0),
-      minimum_stock: z.coerce.number().min(0).default(0),
-      safety_stock: z.coerce.number().min(0).default(0),
-      unit_cost: z.coerce.number().min(0).default(0),
-      selling_price: z.coerce.number().min(0).default(0)
+      current_stock: amount.default(0),
+      minimum_stock: amount.default(0),
+      safety_stock: amount.default(0),
+      unit_cost: amount.default(0),
+      selling_price: amount.default(0)
     }).parse(req.body);
     const initial = body.current_stock;
     const { data, error } = await adminDb.from('products').insert({ ...body, current_stock: 0 }).select('*').single();
@@ -155,14 +161,15 @@ router.patch('/products/:id', rolesWrite, async (req, res, next) => {
     const body = z.object({
       part_number: z.string().trim().max(120).nullable().optional(),
       sub_number: z.string().trim().max(120).nullable().optional(),
+      category:category.optional(),barcode,search_aliases:z.array(z.string().trim().min(1).max(80)).max(20).optional(),
       description: z.string().trim().min(2).max(500).optional(),
       brand: z.string().trim().max(120).nullable().optional(),
       unit: z.string().trim().max(40).nullable().optional(),
       location: z.string().trim().max(80).nullable().optional(),
-      minimum_stock: z.coerce.number().min(0).optional(),
-      safety_stock: z.coerce.number().min(0).optional(),
-      unit_cost: z.coerce.number().min(0).optional(),
-      selling_price: z.coerce.number().min(0).optional(),
+      minimum_stock: amount.optional(),
+      safety_stock: amount.optional(),
+      unit_cost: amount.optional(),
+      selling_price: amount.optional(),
       active: z.boolean().optional()
     }).parse(req.body);
     const { data, error } = await adminDb.from('products').update(body).eq('id', req.params.id).select('*').single();
@@ -178,13 +185,13 @@ router.post('/inventory/movement', rolesWrite, async (req, res, next) => {
       client_operation_id: z.string().uuid(),
       product_id: z.string().uuid(),
       tx_type: z.enum(['stock_in','stock_out','sale']),
-      quantity: z.coerce.number().positive(),
-      unit_cost: z.coerce.number().min(0).nullable().optional(),
-      unit_price: z.coerce.number().min(0).nullable().optional(),
+      quantity: positiveAmount,
+      unit_cost: amount.nullable().optional(),
+      unit_price: amount.nullable().optional(),
       reference_no: z.string().trim().max(180).nullable().optional(),
       supplier_id: z.string().uuid().nullable().optional(),
       customer_name: z.string().trim().max(240).nullable().optional(),
-      total_amount: z.coerce.number().min(0).nullable().optional(),
+      total_amount: amount.nullable().optional(),
       notes: z.string().trim().max(1000).nullable().optional(),
       occurred_at: z.string().datetime().optional()
     }).parse(req.body);
@@ -205,7 +212,8 @@ router.get('/transactions', async (req, res, next) => {
     const type = String(req.query.type || 'all');
     let q = adminDb.from('inventory_transactions')
       .select('*,product:products(part_number,description,brand),supplier:suppliers(name)', { count: 'exact' });
-    if (type !== 'all') q = q.eq('tx_type', type);
+    if (type !== 'all') q = q.eq('tx_type', z.enum(['initial','stock_in','stock_out','sale']).parse(type));
+    q=dateQuery(q,reportDates(req.query));
     const { data, error, count } = await q.order('occurred_at',{ascending:false}).range((page-1)*pageSize, page*pageSize-1);
     if (error) throw error;
     res.json({ data, count, page, pageSize });
@@ -251,7 +259,7 @@ router.patch('/suppliers/:id', rolesAdmin, async (req, res, next) => {
 router.post('/products/:productId/suppliers/:supplierId', rolesAdmin, async (req, res, next) => {
   try {
     const body = z.object({
-      latest_unit_cost: z.coerce.number().min(0).default(0),
+      latest_unit_cost: amount.default(0),
       lead_time_days: z.coerce.number().int().min(0).max(365).default(7),
       supplier_part_number: z.string().trim().max(120).nullable().optional(),
       is_primary: z.boolean().default(false)
@@ -418,32 +426,7 @@ router.get('/imports', rolesAdmin, async (req,res,next) => {
 router.get('/reports/:type.xlsx', async (req,res,next) => {
   try {
     const type = req.params.type;
-    let sheets;
-    if (type === 'inventory') {
-      const rows = await fetchAll(() => adminDb.from('products').select('part_number,description,brand,current_stock,minimum_stock,safety_stock,unit,location,unit_cost,selling_price').eq('active',true).order('description'));
-      sheets=[{name:'Inventory',rows,columns:[
-        {header:'Part Number',key:'part_number'},{header:'Description',key:'description'},{header:'Brand',key:'brand'},
-        {header:'Current Stock',key:'current_stock'},{header:'Minimum Stock',key:'minimum_stock'},{header:'Safety Stock',key:'safety_stock'},
-        {header:'Unit',key:'unit'},{header:'Location',key:'location'},{header:'Unit Cost',key:'unit_cost'},{header:'Selling Price',key:'selling_price'}
-      ]}];
-    } else if (type === 'reorder') {
-      const {data,error}=await adminDb.from('reorder_recommendations').select('*').gt('recommended_quantity',0).order('recommended_quantity',{ascending:false});
-      if(error) throw error;
-      sheets=[{name:'Reorder Recommendations',rows:data,columns:[
-        {header:'Part Number',key:'part_number'},{header:'Description',key:'description'},{header:'Current Stock',key:'current_stock'},
-        {header:'Predicted Demand',key:'predicted_quantity'},{header:'Recommended Qty',key:'recommended_quantity'},
-        {header:'Supplier',key:'supplier_name'},{header:'Supplier Email',key:'supplier_email'},{header:'Estimated Cost',key:'estimated_order_cost'}
-      ]}];
-    } else if (type === 'transactions') {
-      const rows = await fetchAll(() => adminDb.from('inventory_transactions').select('occurred_at,tx_type,quantity,reference_no,customer_name,total_amount,notes,product:products(part_number,description),supplier:suppliers(name)').order('occurred_at',{ascending:false}));
-      const flat=rows.map(r=>({...r,part_number:r.product?.part_number,description:r.product?.description,supplier_name:r.supplier?.name}));
-      sheets=[{name:'Transactions',rows:flat,columns:[
-        {header:'Date',key:'occurred_at'},{header:'Type',key:'tx_type'},{header:'Part Number',key:'part_number'},
-        {header:'Description',key:'description'},{header:'Quantity',key:'quantity'},{header:'Reference',key:'reference_no'},
-        {header:'Supplier',key:'supplier_name'},{header:'Customer',key:'customer_name'},{header:'Amount',key:'total_amount'},{header:'Notes',key:'notes'}
-      ]}];
-    } else return res.status(404).json({error:'Unknown report type.'});
-
+    const sheets=await storeReport(type,req.query);
     const buffer = await buildReportWorkbook({title:`PartCast ${type}`,sheets});
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition',`attachment; filename="partcast-${type}-${new Date().toISOString().slice(0,10)}.xlsx"`);
@@ -467,8 +450,8 @@ router.get('/data-quality', async (req,res,next) => {
 router.get('/assistant/status', (req,res) => res.json(assistantMode()));
 router.post('/assistant/chat', assistantLimiter, async (req,res,next) => {
   try {
-    const body = z.object({ message: z.string().trim().min(1).max(1000) }).parse(req.body || {});
-    const result = await answerAssistant(body.message);
+    const body = z.object({ message: z.string().trim().min(1).max(1000),language:z.enum(['en','fil']).optional() }).parse(req.body || {});
+    const result = await answerAssistant(body.message,body.language);
     res.json(result);
   } catch(e){ next(e); }
 });

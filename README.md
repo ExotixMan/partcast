@@ -6,7 +6,12 @@ Full-stack capstone system using React + Tailwind CSS, Node.js/Express, Supabase
 
 ## New in this build
 
-- AI-assisted floating PartCast chatbot on desktop, tablet, and mobile.
+- Guided multi-part sales/deliveries and customer-only utang with partial payments.
+- Categories, alternate names, private product photos, and camera/manual barcode search.
+- English/Tagalog interface, Tagalog part terminology, light default and optional dark mode.
+- Editable supplier email drafts and date/category-filtered Excel inventory and sales reports.
+- Existing-account email-code login alongside password login, with input and permission checks.
+- Header/mobile-help PartCast chatbot that keeps pagination clear.
 - Works immediately in **Smart Local** mode using live PartCast database facts.
 - Optional **Gemini-assisted** mode using `GEMINI_API_KEY`; only minimized inventory/forecast context is sent, not passwords, customer names, or supplier email addresses.
 - Smart spreadsheet import accepts files with **any base file name** in `.xlsx`, `.xlsm`, or `.csv` format.
@@ -20,22 +25,24 @@ Full-stack capstone system using React + Tailwind CSS, Node.js/Express, Supabase
 
 ## Required database upgrade for an existing Supabase project
 
-Run this in Supabase SQL Editor after your original migrations:
-
-`supabase/migrations/0003_training_import.sql`
-
-For a fresh Supabase project, run migrations in order:
+Apply only unapplied migrations. Existing installations with 0001–0004 need `0005_store_workflows.sql`. Fresh projects need all five in order:
 
 1. `0001_schema.sql`
 2. `0002_rls.sql`
 3. `0003_training_import.sql`
+4. `0004_offline_security_notifications.sql`
+5. `0005_store_workflows.sql`
+
+See [Activate and use the new features](docs/STORE_WORKFLOWS.md) for Supabase email-code templates, Render deployment, everyday sales/utang workflows, and validation limits.
 
 ## Recommended dataset import order
 
 1. Clean inventory spreadsheet
-2. Clean customer/reference transactions spreadsheet
-3. XGBoost training-ready spreadsheet
-4. Go to **Demand Forecast** and click **Train & Forecast**
+2. Reviewed customer/reference transactions spreadsheet for invoice history
+3. Reviewed actual-quantity training workbook prepared from the raw receipts
+4. Go to **Demand Forecast** and click **Train & Forecast** once recent history meets the eligibility checks
+
+See [Forecasting data preparation](docs/FORECASTING_DATA.md). The original training-ready workbook contains inferred/proxy quantities; its older metrics do not establish current forecast accuracy.
 
 The file name itself is not used to decide the dataset type. Auto detection uses the table headers.
 
@@ -86,7 +93,7 @@ Never put `GEMINI_API_KEY` in the React/Vite environment.
 
 ## Offline-first update
 
-See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply `supabase/migrations/0004_offline_security_notifications.sql` after the original migrations before starting this version.
+See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply unapplied migrations through `0005_store_workflows.sql` before starting this version.
 
 See [Light interface and everyday workflows](docs/USABILITY_REDESIGN.md) for the responsive redesign, guided stock forms, accessible navigation, and usability checks.
 

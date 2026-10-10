@@ -1,3 +1,4 @@
+import {supplierEmailSchema} from '../utils/storeValidation.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { adminDb } from '../supabase.js';
@@ -90,14 +91,18 @@ router.patch('/settings/:key', requireRole('owner'), async(req,res,next)=>{
 
 router.post('/supplier-email/:supplierId', async(req,res,next)=>{
   try{
-    const {data:items,error}=await adminDb.from('reorder_recommendations').select('*').eq('supplier_id',req.params.supplierId).gt('recommended_quantity',0);
+    const draft=Object.keys(req.body||{}).length?supplierEmailSchema.parse(req.body):null;
+    const {data:recommendations,error}=await adminDb.from('reorder_recommendations').select('*').eq('supplier_id',req.params.supplierId).gt('recommended_quantity',0);
     if(error)throw error;
-    if(!items?.length)return res.status(422).json({error:'No replenishment items for this supplier.'});
-    const supplier={id:req.params.supplierId,name:items[0].supplier_name,email:items[0].supplier_email};
+    if(!recommendations?.length)return res.status(422).json({error:'No replenishment items for this supplier.'});
+    const supplier={id:req.params.supplierId,name:recommendations[0].supplier_name,email:recommendations[0].supplier_email};
     if(!supplier.email)return res.status(422).json({error:'This supplier has no email address.'});
-    const provider=await sendSupplierEmail({supplier,items});
+    const available=new Map(recommendations.map(i=>[i.product_id,i]));
+    if(draft&&draft.items.some(i=>!available.has(i.product_id)))return res.status(422).json({error:'Choose parts from this supplier’s saved restock list.'});
+    const items=draft?draft.items.map(i=>({...available.get(i.product_id),...i,recommended_quantity:i.quantity})):recommendations;
+    const provider=await sendSupplierEmail({supplier,items,subject:draft?.subject,message:draft?.message});
     const hash=recommendationHash(items);
-    await adminDb.from('supplier_email_logs').insert({supplier_id:supplier.id,recipient_email:supplier.email,subject:'NPG Autoparts replenishment request',recommendation_hash:hash,item_count:items.length,status:'sent',provider_message_id:provider.messageId||null,sent_by:req.user.id});
+    await adminDb.from('supplier_email_logs').insert({supplier_id:supplier.id,recipient_email:supplier.email,subject:draft?.subject||'NPG Autoparts replenishment request',request_payload:draft,recommendation_hash:hash,item_count:items.length,status:'sent',provider_message_id:provider.messageId||null,sent_by:req.user.id});
     await audit(req,'send_email','supplier',supplier.id,{items:items.length});
     res.json({message:'Supplier email sent.',items:items.length});
   }catch(e){next(e);}

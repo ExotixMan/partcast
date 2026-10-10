@@ -34,3 +34,12 @@ test('automatic email respects cooldown, limits eligible sends and always releas
   assert.equal(rpc.at(-1).name,'release_job');
  }finally{adminDb.from=oldFrom;adminDb.rpc=oldRpc;globalThis.fetch=oldFetch;}
 });
+
+test('edited email sends exact quantities and escapes HTML in every editable field',async()=>{
+ const {sendSupplierEmail}=await import('../src/utils/email.js');const previous=globalThis.fetch;let delivered;
+ globalThis.fetch=async(url,options)=>{delivered=JSON.parse(options.body);return new Response(JSON.stringify({messageId:'fake-id'}),{status:201});};
+ try{
+ await sendSupplierEmail({supplier:{name:'Supplier',email:'supplier@example.test'},subject:'Our order',message:'Please deliver <script>bad</script>\nThank you.',items:[{part_number:'<img>',description:'Brake pad & bolts',current_stock:1,quantity:2.5,recommended_quantity:5}]});
+ assert.equal(delivered.subject,'Our order');assert.equal(delivered.to[0].email,'supplier@example.test');assert.match(delivered.htmlContent,/>2.5</);assert.ok(!delivered.htmlContent.includes('<script>'));assert.match(delivered.htmlContent,/&lt;script&gt;/);assert.match(delivered.htmlContent,/&lt;img&gt;/);assert.match(delivered.htmlContent,/Brake pad &amp; bolts/);assert.match(delivered.htmlContent,/<br>/);
+ }finally{globalThis.fetch=previous;}
+});

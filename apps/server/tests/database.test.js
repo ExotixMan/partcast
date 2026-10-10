@@ -22,7 +22,7 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
  alter table storage.objects enable row level security;
  grant usage on schema public,auth,storage to anon,authenticated,service_role;
  `);
- for(const file of ['0001_schema.sql','0002_rls.sql','0003_training_import.sql','0004_offline_security_notifications.sql']){
+ for(const file of ['0001_schema.sql','0002_rls.sql','0003_training_import.sql','0004_offline_security_notifications.sql','0005_store_workflows.sql']){
   await db.exec(await readFile(new URL(`../../../supabase/migrations/${file}`,import.meta.url),'utf8'));
  }
  // Match Supabase default grants, then reapply the migration's deliberate revocations.
@@ -74,6 +74,46 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
   assert.equal((await db.query('select claim_job($1,$2,120) as claimed',['supplier-email',staff])).rows[0].claimed,false);
   await db.query('select release_job($1,$2)',['supplier-email',operation]);
   assert.equal((await db.query('select claim_job($1,$2,120) as claimed',['supplier-email',staff])).rows[0].claimed,true);
+ });
+ await t.test('baskets, credit and payments are atomic and retry safely',async()=>{
+  await db.exec(`reset role;insert into products(id,description,current_stock)values('99999999-9999-4999-8999-999999999999','Engine oil',3);`);
+  await claims(staff);
+  const batch={kind:'batch',tx_type:'sale',lines:[{product_id:product,quantity:2,unit_price:100},{product_id:'99999999-9999-4999-8999-999999999999',quantity:1,unit_price:50}],customer_name:'Test customer',is_credit:true,paid_amount:100,occurred_at:'2026-01-01T12:00:00Z',due_date:'2026-02-01'};
+  const op='88888888-8888-4888-8888-888888888888';
+  const call=(id,payload)=>db.query('select sync_store_operation($1,$2::jsonb) as result',[id,JSON.stringify(payload)]);
+  const before=(await db.query('select count(*) n from inventory_transactions')).rows[0].n;
+  await assert.rejects(call(op,{...batch,lines:[batch.lines[0],{...batch.lines[1],quantity:4}]}),/Insufficient stock/);
+  assert.equal((await db.query('select count(*) n from inventory_transactions')).rows[0].n,before);
+  assert.equal((await db.query('select count(*) n from stock_batches')).rows[0].n,0);
+  const result=(await call(op,batch)).rows[0].result;
+  assert.equal(result.total,250);assert.equal(result.balance,150);
+  assert.deepEqual((await call(op,batch)).rows[0].result,result);
+  assert.equal((await db.query('select count(*) n from stock_batches')).rows[0].n,1);
+  assert.equal((await db.query('select count(*) n from customer_debts')).rows[0].n,1);
+  await assert.rejects(call(op,{...batch,paid_amount:0}),/different change/);
+  const payment={kind:'payment',debt_id:result.debtId,amount:60,occurred_at:'2026-01-02T12:00:00Z'};
+  const payOp='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  assert.equal((await call(payOp,payment)).rows[0].result.balance,90);
+  await call(payOp,payment);assert.equal((await db.query('select count(*) n from debt_payments')).rows[0].n,1);
+  await assert.rejects(call('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',{...payment,amount:91}),/remaining balance/);
+  await assert.rejects(call('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',{...payment,amount:0.001}),/decimal places/);
+  await assert.rejects(db.query(`insert into debt_payments(debt_id,amount)values('${result.debtId}',100)`),/permission denied/);
+  assert.equal(Number((await db.query('select balance from customer_balances')).rows[0].balance),90);
+  await claims(inactive);assert.equal((await db.query('select * from customer_balances')).rows.length,0);
+  await assert.rejects(call('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',payment),/Not authorized/);
+  await claims(staff);
+  const finished=(await call('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',{...payment,amount:90})).rows[0].result;
+  assert.equal(finished.balance,0);assert.equal((await db.query('select status from customer_balances')).rows[0].status,'paid');
+ });
+ await t.test('existing customer debt can retain a past due date',async()=>{
+  await claims(staff);
+  const payload={kind:'debt',customer_name:'Existing customer',principal:125.5,due_date:'2020-01-01'};
+  const op='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const result=(await db.query('select sync_store_operation($1,$2::jsonb) result',[op,JSON.stringify(payload)])).rows[0].result;
+  const balance=(await db.query('select * from customer_balances where id=$1',[result.debtId])).rows[0];
+  assert.equal(balance.status,'overdue');assert.equal(Number(balance.balance),125.5);
+  const retried=(await db.query('select sync_store_operation($1,$2::jsonb) result',[op,JSON.stringify(payload)])).rows[0].result;
+  assert.deepEqual(retried,result);
  });
  await db.close();
 });

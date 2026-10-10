@@ -1,3 +1,4 @@
+import {normalizeQuestion,isTagalog,explainParts,productTerms} from '../utils/partTerms.js';
 import { adminDb } from '../supabase.js';
 import { config } from '../config.js';
 
@@ -39,7 +40,7 @@ function extractSearchTerm(message) {
     'this', 'that', 'today', 'week', 'month', 'year', 'units', 'unit',
     'reorder', 'restock', 'restocking', 'supplier', 'suppliers', 'demand',
     'expected', 'forecast', 'prediction', 'fast', 'slow', 'moving', 'best',
-    'top', 'current', 'store', 'shop', 'npg'
+    'top', 'current', 'store', 'shop', 'npg','the','are','can','our','quantity','po','ba','ang','ng','natin','ngayon','you','we','are','can','there','any','tayo','kayo','kami','yung','ito','alin','para'
   ]);
 
   return (
@@ -79,8 +80,10 @@ function summarizeSales(rows) {
 }
 
 async function loadContext(message) {
-  const searchTerm = extractSearchTerm(message);
+  const searchTerm = productTerms(message)[0]||extractSearchTerm(normalizeQuestion(message));
   const safeTerm = sanitizeSearchTerm(searchTerm);
+  const terms=(productTerms(message).length?productTerms(message):[safeTerm]).map(sanitizeSearchTerm).filter(Boolean);
+  const searchFilter=terms.flatMap(term=>[`part_number.ilike.%${term}%,description.ilike.%${term}%,brand.ilike.%${term}%,barcode.ilike.%${term}%,alias_text.ilike.%${term}%`]).join(',');
 
   const defaultProducts = adminDb
     .from('inventory_status')
@@ -99,7 +102,7 @@ async function loadContext(message) {
         )
         .eq('active', true)
         .or(
-          `part_number.ilike.%${safeTerm}%,description.ilike.%${safeTerm}%,brand.ilike.%${safeTerm}%`
+          searchFilter
         )
         .limit(8)
     : defaultProducts;
@@ -411,6 +414,7 @@ export function localAnswer(message, context) {
       return `I could not find an active inventory item matching “${context.searchTerm}”. Try the part number, brand, or a word from the item description.`;
     }
 
+    if(context.matchingProducts.length>1)return `I found several matching parts. Confirm the part number and vehicle fit: ${context.matchingProducts.slice(0,6).map(p=>`${p.part_number||'No part number'} – ${p.description}: ${units(p.current_stock)} ${p.unit||'units'}${/price|how much/.test(question)?`, ${money(p.selling_price)} each`:''}${/where|location/.test(question)?`, ${p.location||'location not recorded'}`:''}`).join('; ')}.`;
     const product = context.matchingProducts[0];
 
     if (/price|selling price|how much/.test(question)) {
@@ -445,7 +449,7 @@ export function localAnswer(message, context) {
   return null;
 }
 
-async function geminiAnswer(message, context) {
+async function geminiAnswer(message, context, language) {
   const prompt = `You are the NPG Autoparts Store Assistant speaking directly to the store owner.
 
 The owner is not technical. Use simple business language and short, practical answers.
@@ -470,6 +474,8 @@ When discussing future demand, call it "expected demand", "demand estimate", or 
 Use ONLY the supplied store context. Never invent quantities, prices, sales, suppliers, or demand. If information is unavailable, say that the store records do not currently show enough information.
 
 Do not reveal customer names, supplier email addresses, credentials, secrets, or private technical information.
+
+Reply in ${language==='fil'?'clear Tagalog (common English car-part terms are allowed)':'English'}. Distinguish coolant fluid from the radiator component; do not treat related parts as interchangeable.
 
 STORE CONTEXT:
 ${JSON.stringify(context)}
@@ -534,13 +540,27 @@ export function assistantMode() {
       };
 }
 
-export async function answerAssistant(message) {
-  const context = await loadContext(message);
-  const answer = localAnswer(message,context);
-  if(answer) return {answer,mode:'database',model:null,updatedAt:new Date().toISOString()};
-  if(config.GEMINI_API_KEY) {
-    try {return {answer:await geminiAnswer(message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[email removed]'),context),mode:'gemini',model:config.GEMINI_MODEL};}
-    catch {console.error('Assistant AI unavailable; using store guidance.');}
-  }
-  return {answer:'I can check stock, prices, sales, suppliers and expected demand. Try a part number or ask “Which parts need restocking?”',mode:'database',model:null};
+export function tagalogStoreAnswer(message,context){
+ const q=normalizeQuestion(message),money=n=>`₱${Number(n||0).toFixed(2)}`;
+ let rows,prefix;
+ if(/out of stock/.test(q)){rows=context.lowStock.filter(p=>p.stock_status==='out');prefix='Mga ubos na piyesa';}
+ else if(/low stock/.test(q)){rows=context.lowStock.filter(p=>p.stock_status==='low');prefix='Mga paubos na piyesa';}
+ else if(/restock/.test(q)){rows=context.reorders;prefix='Mga mungkahing idagdag sa stock';}
+ else if(/sales/.test(q)){const data=/today/.test(q)?context.sales.today:/week/.test(q)?context.sales.last7Days:context.sales.last30Days;return `Naitalang benta ${/today/.test(q)?'ngayon':/week/.test(q)?'sa huling 7 araw':'sa huling 30 araw'}: ${money(data.revenue)}, mula sa ${data.quantity} na naibentang yunit.`;}
+ else if(/demand|forecast|prediction/.test(q)){
+ if(!context.demandEstimate.available)return 'Kulang pa ang kasalukuyang datos para sa maaasahang pagtataya ng benta.';
+ rows=context.searchTerm?context.matchingDemand:context.demandLeaders;prefix='Tinatayang benta sa kasalukuyang panahon ng pagpaplano';
+ return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.predicted_quantity} yunit`).join('; '):'Walang sapat na naitalang pagtataya para sa piyesang ito.'}`;
+ }else if(context.searchTerm){rows=context.matchingProducts;prefix='Mula sa tala ng tindahan';}
+ else return null;
+ return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.current_stock} ${p.unit||'yunit'}${/price/.test(q)?`, ${money(p.selling_price)} bawat isa`:''}${/where/.test(q)?`, lokasyon: ${p.location||'hindi pa naitala'}`:''}${/restock/.test(q)?`, mungkahing order: ${Math.ceil(Number(p.recommended_quantity||0))}`:''}`).join('; '):'Walang katugmang piyesa sa mga tala.'}`;
+}
+export async function answerAssistant(message,language) {
+ const fil=language==='fil'||isTagalog(message),definition=explainParts(message,fil);
+ if(definition)return {answer:definition,mode:'local',model:null};
+ const context=await loadContext(message);
+ const answer=fil?tagalogStoreAnswer(message,context):localAnswer(normalizeQuestion(message),context);
+ if(answer)return {answer,mode:'database',model:null,updatedAt:new Date().toISOString()};
+ if(config.GEMINI_API_KEY){try{return {answer:await geminiAnswer(message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[email removed]'),context,fil?'fil':'en'),mode:'gemini',model:config.GEMINI_MODEL};}catch{console.error('Assistant AI unavailable; using store guidance.');}}
+ return {answer:fil?'Maaari kong tingnan ang stock, presyo, benta, supplier, at inaasahang demand. Subukan ang part number o itanong: “Alin ang kailangang dagdagan ng stock?”':'I can check stock, prices, sales, suppliers and expected demand. Try a part number or ask “Which parts need restocking?”',mode:'database',model:null};
 }

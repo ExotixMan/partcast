@@ -1,57 +1,42 @@
-# PartCast Verification Report
+# PartCast verification
 
-## Source checks completed
+This report describes local checks for the bilingual store-workflow update. Test records use synthetic products, suppliers, and customers; no customer sales workbook was newly published.
 
-- All Node.js backend source files passed `node --check` syntax validation.
-- `ml/train_forecast.py` passed Python bytecode compilation.
-- `render.yaml` parsed successfully and contains the Docker API plus static React web service.
-- The distributable package contains no `.env` files, raw `.xlsx`/`.csv` datasets, `node_modules`, or Python cache files.
+## Application and database checks
 
-## Supplied XGBoost dataset test
+- Production Vite build completed and generated the installable PWA/service worker.
+- Server suite: **27 tests passed**, including actual PostgreSQL execution through PGlite with Supabase Auth/Storage scaffolding.
+- Frontend unit suite: **14 tests passed**, including account isolation, persistent outbox/retries, decimal arithmetic, Tagalog terminology, and complete explicit interface-translation key coverage.
+- Production dependency audit: **0 known vulnerabilities** reported for each Node package at the time of this check. This is not a comprehensive security audit.
 
-The improved XGBoost script was executed locally using the uploaded training-ready workbook's **Daily_B_Usable** observations.
+Database checks execute migrations 0001–0005 and verify active-account reads, direct-write denials, stock conflicts, stable retry IDs, atomic multi-item credit sales, payment history, overpayment/precision checks, existing past-due customer balances, stock notifications, and supplier job leases. HTTP checks verify validation before RPC and propagation of the staff token to the authenticated database function.
 
-Input used for the test:
+Server tests generate/reopen real Excel reports to check date boundaries, exact totals and current-stock labels. Image tests decode real JPEG/PNG/WebP bytes, reject invalid/disguised files, enforce bounds, and verify re-encoding/metadata removal. Supplier email tests verify exact edited quantities, HTML escaping, cooldown and lease behavior without sending a real email.
 
-- 411 dated demand observations
-- 22 product part numbers
-- 30-day forecast horizon
+## Browser checks
 
-Successful result:
+Chromium tests run against the production build with mocked Supabase/Auth/API services. They cover phone, tablet and desktop layouts; numbered sale/receive forms; labels and keyboard focus; offline reload/reconnect and account cleanup; multi-item credit sales; partial payments and overpayment refusal; category filters; known/unknown barcode entry; camera permission failure/manual fallback; private-photo upload/gallery/cache/removal; bilingual/dark preferences; supplier draft edits; actual Excel download handling; and email-code expiry/success without public signup.
 
-- 22 products passed forecast eligibility
-- 660 future forecast rows were generated (22 products x 30 days)
-- MAE: 0.0024
-- RMSE: 0.0541
-- R²: 0.7766
-- MAPE: 17.6638%
-- WAPE: 24.2197%
-- Bias: -0.0019
+The final browser suite completed with **30 tests passed**. Together with the server and frontend suites, **71 local tests passed**. API mocks do not establish that the hosted database, Render service, SMTP provider or a physical barcode camera is configured.
 
-This verifies that the Python/XGBoost forecasting pipeline executes end-to-end on the supplied training-ready data. Final production metrics can differ after Supabase product matching, additional real sales, or future data changes.
+## Forecasting interpretation
 
-## Training workbook selection test
+Earlier metrics from the supplied training-ready workbook preceded fixes to demand leakage and data-coverage handling. They must not be used as current production accuracy claims. The original workbook includes inferred/proxy quantities. The raw-data review recovered actual quantities, but the eligible histories remain too old for a current forecast. Current training refuses stale/future histories rather than reporting unsupported current predictions.
 
-The smart training importer scores candidate tables using their actual columns and Tier distribution rather than requiring a specific file name.
+See [Forecasting data](FORECASTING_DATA.md) for provenance, eligibility and historical holdout limitations. Python forecasting code was unchanged by this store-workflow update; this report does not claim a new model training run.
 
-For the supplied training-ready workbook, the selection scores were:
+## Live activation checks
 
-- Daily_B_Usable: 1200.0
-- Daily_BC_Expanded: 673.23
-- Daily_Inferred_Only: 200.0
-- Daily_Hybrid_All: 200.0
+Apply only unapplied migrations through 0005, configure the Supabase numeric-code email template, and deploy both Render services from the saved branch. Follow [Activate and use the new features](STORE_WORKFLOWS.md).
 
-Therefore the importer selects the Tier-B usable table by data quality, not by the uploaded file name.
+After activation:
 
-## Deployment smoke test after Supabase/Render redeploy
+1. Check API `/health`, then sign in and confirm **Inventory saved**.
+2. Request and verify an email code for an existing active staff account.
+3. On test records, save a multi-item sale/delivery and a credit sale; record a partial payment and check the remaining balance.
+4. Save an offline sale, reconnect, and confirm it appears exactly once.
+5. Upload/view photos, scan a known barcode on the actual device, and test manual entry.
+6. Review an edited supplier email and verify delivery to a controlled test supplier address.
+7. Download a dated sales report and compare its gross totals with the test sales.
 
-1. Open API `/health` and confirm `ok: true`.
-2. Sign in to PartCast.
-3. Open Import Data and upload the clean inventory spreadsheet.
-4. Upload the clean customer/reference spreadsheet.
-5. Upload the XGBoost training-ready spreadsheet.
-6. Confirm **Imported training rows** is greater than zero on Demand Forecast.
-7. Click **Train & Forecast**.
-8. Confirm a completed model run appears, forecasted products are listed, and a line chart is shown.
-9. Open PartCast Assistant and ask `Is the XGBoost forecast ready?`.
-10. If Gemini is enabled, confirm the chat header says Gemini-assisted; otherwise Smart Local mode is expected and fully usable.
+No hosted Supabase migration, Render deployment, real staff/supplier email delivery, or physical-camera accuracy was verified during local implementation.

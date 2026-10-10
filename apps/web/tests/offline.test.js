@@ -52,3 +52,42 @@ test('fractional offline sales leave the remaining quantity available without fl
  assert.equal(soldOut.current_stock,0);assert.equal(soldOut.stock_status,'out');
  await removeQueued(first.key);await clearAccount('fractional-staff');
 });
+
+test('offline baskets project every line and retry one stable operation ID',async()=>{
+ await enqueueMovement('basket-staff',{kind:'batch',tx_type:'sale',is_credit:true,lines:[{product_id:'a',quantity:0.2,unit_price:100},{product_id:'b',quantity:2,unit_price:10}]});
+ const rows=projectedProducts([{id:'a',current_stock:0.3,minimum_stock:0},{id:'b',current_stock:5,minimum_stock:1}],await queueItems('basket-staff'));
+ assert.deepEqual(rows.map(r=>r.current_stock),[0.1,3]);let first;
+ await assert.rejects(drainQueue('basket-staff',async p=>{first=p;throw Object.assign(new Error('Offline'),{status:0});}));
+ await drainQueue('basket-staff',async p=>assert.deepEqual(p,first));await clearAccount('basket-staff');
+});
+test('Tagalog terminology finds saved parts and distinguishes related cooling components',async()=>{
+ await saveCache('terms-staff','/api/offline-snapshot',{products:[{id:'oil',description:'Engine oil',part_number:'OIL1',current_stock:2,minimum_stock:0,unit:'bottles',selling_price:250}]});
+ const oil=await answerLocally('Magkano ang langis ng makina?','terms-staff',false,'fil');assert.match(oil.answer,/250.00/);assert.match(oil.answer,/Engine oil/);
+ const cooling=await answerLocally('Pareho ba coolant at radiator?','terms-staff',true,'fil');assert.match(cooling.answer,/magkaibang produkto/);assert.equal(cooling.mode,'local');
+ await clearAccount('terms-staff');
+});
+test('basket amounts use decimal cent arithmetic instead of binary product rounding',async()=>{
+ const {lineCents}=await import('../src/lib/store.js');assert.equal(lineCents(19.9,1.05),2090);assert.equal(lineCents(0.1,0.15),2);assert.ok(Number.isNaN(lineCents(1e308,1)));assert.ok(Number.isNaN(lineCents(-1,10)));
+});
+test('Tagalog availability questions preserve part numbers and fluid names exclude radiator components',async()=>{
+ const {normalizeQuestion,productTerms}=await import('../src/lib/partTerms.js');assert.match(normalizeQuestion('May BP-001 ba tayo?'),/bp-001/);assert.equal(normalizeQuestion('Ilang BP-001?'),'quantity bp-001?');assert.equal(normalizeQuestion('Nasaan BP-001?'),'where bp-001?');assert.ok(!productTerms('Magkano radiator fluid?').includes('radiyador'));
+ await saveCache('availability-staff','/api/offline-snapshot',{products:[{id:'p',part_number:'BP-001',description:'Brake pad',current_stock:3,minimum_stock:1,unit:'pcs'}]});
+ assert.match((await answerLocally('May BP-001 ba tayo?','availability-staff',false,'fil')).answer,/3 pcs/);await clearAccount('availability-staff');
+});
+
+test('retrying an existing outbox entry preserves its order and rejects changed content',async()=>{
+ const payload={kind:'batch',tx_type:'sale',lines:[{product_id:'a',quantity:1,unit_price:100}]};
+ const first=await enqueueMovement('retry-staff',payload);
+ const second=await enqueueMovement('retry-staff',{product_id:'b',tx_type:'stock_in',quantity:2});
+ const retried=await enqueueMovement('retry-staff',{...first.payload,lines:[{unit_price:100,quantity:1,product_id:'a'}]});
+ assert.equal(retried.createdAt,first.createdAt);assert.deepEqual((await queueItems('retry-staff')).map(e=>e.key),[first.key,second.key]);
+ await assert.rejects(enqueueMovement('retry-staff',{...first.payload,lines:[{product_id:'a',quantity:2,unit_price:100}]}),/different change/);
+ assert.equal((await queueItems('retry-staff')).length,2);await clearAccount('retry-staff');
+});
+
+test('quantity and price validation rejects blank, boolean and nonnumeric values',async()=>{
+ const {validAmount}=await import('../src/lib/store.js');
+ for(const value of ['', ' ', null, true, false, {}, [], Infinity, 1e308, -1, 0.001])assert.equal(validAmount(value),false);
+ for(const value of [0,'0',0.29,'19.9',999.99])assert.equal(validAmount(value),true);
+ assert.equal(validAmount(0,true),false);assert.equal(validAmount('0.01',true),true);
+});

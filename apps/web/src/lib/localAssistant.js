@@ -1,7 +1,15 @@
+import {normalizeQuestion,isTagalog,explainParts,productTerms} from './partTerms.js';
 import { readCache, queueItems, projectedProducts } from './offline.js';
 
-export async function answerLocally(message,userId,online) {
- const q=message.toLowerCase().trim();
+export async function answerLocally(message,userId,online,language='en') {
+ const fil=language==='fil'||isTagalog(message),definition=explainParts(message,fil);if(definition)return {answer:definition,mode:'local'};
+ const q=normalizeQuestion(message).trim();
+ if(fil&&/^(kumusta|kamusta|hi|hello|magandang umaga)[! .]*$/.test(q))return {answer:'Kumusta! Magtanong tungkol sa piyesa, dami ng stock, presyo, o pagdagdag ng stock.',mode:'local'};
+ if(fil&&/paano/.test(q)&&/hanap|piyesa/.test(q))return {answer:'Buksan ang Imbentaryo at ilagay ang pangalan, part number, o barcode sa paghahanap. Maaari ring mag-scan ng barcode. Makikita ang dami at lokasyon ng bawat piyesa.',mode:'local'};
+ if(fil&&/walang internet|offline|sync/.test(q))return {answer:'Mag-sign in muna habang may internet para ma-save ang imbentaryo. Hanggang 12 oras ang offline access. Maaaring magtala ng benta o delivery; panatilihing bukas ang PartCast kapag may internet na para maipadala ang mga pagbabago. Huwag mag-sign out habang may hindi pa naipapadalang tala.',mode:'local'};
+ if(fil&&/paano/.test(q)&&/sales|sale|sell/.test(q))return {answer:'Buksan ang Sell or receive, piliin ang mga piyesa, ilagay ang dami at presyo, at piliin ang Confirm sale. Para sa utang, piliin ang Customer will pay later at ilagay ang pangalan ng customer. Naka-save sa device ang offline sales at awtomatikong ipapadala kapag may internet.',mode:'local'};
+ if(fil&&/paano/.test(q)&&/receive|delivery|stock/.test(q))return {answer:'Buksan ang Sell or receive at piliin ang Receive delivery. Piliin ang mga dumating na piyesa, ilagay ang dami at halaga, at piliin ang Confirm delivery.',mode:'local'};
+ if(fil&&/utang/.test(q))return {answer:'Buksan ang Customer utang para makita ang mga balanse at due date. Piliin ang Record payment para sa hulog o buong bayad. Kailangan ng internet para sa bayad; puwedeng magtala ng bagong credit sale offline sa Sell or receive.',mode:'local'};
  if(/^(hi|hello|hey|good morning)[!. ]*$/.test(q))return {answer:'Hello! Ask me about a part, stock levels, prices or restocking. I can also explain how to record a sale.',mode:'local'};
  if(/how (do|can|to).*?(record|add).*sale/.test(q))return {answer:'Open Inventory, find the part and choose Sell. Enter how many you sold, check the remaining stock, then choose Confirm stock change. Offline sales are saved on this device and sent automatically when connected.',mode:'local'};
  if(/how (do|can|to).*?(receive|add).*?(delivery|stock)|how.*delivery/.test(q))return {answer:'Choose Receive stock on Home, or open Inventory and find the part. Choose Receive, enter how many parts arrived, and check the new stock total. You can add supplier details if you need them. Choose Confirm stock change to save the delivery. Offline deliveries send automatically when connected.',mode:'local'};
@@ -10,17 +18,18 @@ export async function answerLocally(message,userId,online) {
  if(/install|download.*app/.test(q))return {answer:'Use Install app when offered, or your browser menu → Install app / Add to Home Screen. On iPhone use Safari → Share → Add to Home Screen. Installation needs a secure HTTPS site and one online visit.',mode:'local'};
  if(online)return null; // Live database facts take precedence whenever connected.
  const snapshot=await readCache(userId,'/api/offline-snapshot');
- if(!snapshot)return {answer:'No inventory is saved on this device yet. Connect and sign in once to prepare offline use.',mode:'local'};
+ if(!snapshot)return {answer:fil?'Walang naka-save na imbentaryo sa device. Kumonekta at mag-sign in muna para maihanda ang offline na paggamit.':'No inventory is saved on this device yet. Connect and sign in once to prepare offline use.',mode:'local'};
  const rows=projectedProducts(snapshot.value.products,await queueItems(userId));
- const prefix=`Saved inventory from ${new Date(snapshot.savedAt).toLocaleString()} (includes unsent stock changes). `;
+ const prefix=fil?`Naka-save na imbentaryo noong ${new Date(snapshot.savedAt).toLocaleString()} (kasama ang hindi pa naipapadalang pagbabago). `:`Saved inventory from ${new Date(snapshot.savedAt).toLocaleString()} (includes unsent stock changes). `;
  let matching;
  if(/out of stock|no stock/.test(q))matching=rows.filter(p=>p.current_stock<=0);
  else if(/low stock|restock|running low/.test(q))matching=rows.filter(p=>p.current_stock<=p.minimum_stock);
  else {
-  const words=q.replace(/[^a-z0-9- ]/g,'').split(/\s+/).filter(w=>w.length>2&&!['what','which','where','have','stock','price','parts','part','much','cost','the','for','available','selling'].includes(w));
-  if(!words.length)return {answer:'Offline, I can check saved inventory, prices and low stock. Sales summaries and new demand estimates need internet.',mode:'local'};
-  matching=rows.filter(p=>words.every(w=>`${p.part_number} ${p.description} ${p.brand}`.toLowerCase().includes(w)));
+  const known=productTerms(message);
+  const words=q.replace(/[^a-z0-9- ]/g,'').split(/\s+/).filter(w=>w.length>2&&!['what','which','where','have','stock','price','parts','part','much','cost','the','for','available','selling','ang','natin','quantity','ngayon','po','ba','you','we','are','can','there','any','tayo','kayo','kami','yung','ito','alin','para'].includes(w));
+  if(!words.length)return {answer:fil?'Maaari kong tingnan ang naka-save na imbentaryo, presyo, at paubos na stock. Kailangan ng internet para sa buod ng benta at bagong pagtataya.':'Offline, I can check saved inventory, prices and low stock. Sales summaries and new demand estimates need internet.',mode:'local'};
+  matching=rows.filter(p=>{const text=`${p.part_number} ${p.description} ${p.brand} ${p.barcode||''} ${(p.search_aliases||[]).join(' ')}`.toLowerCase();return known.length?known.some(w=>text.includes(w)):words.every(w=>text.includes(w));});
  }
- if(!matching.length)return {answer:prefix+'No matching parts found in the saved inventory.',mode:'local'};
+ if(!matching.length)return {answer:prefix+(fil?'Walang katugmang piyesa sa naka-save na imbentaryo.':'No matching parts found in the saved inventory.'),mode:'local'};
  return {answer:prefix+matching.slice(0,6).map(p=>`${p.part_number||'No part number'} · ${p.description}: ${p.current_stock} ${p.unit||'units'}${/price|how much/.test(q)?`, ₱${Number(p.selling_price).toFixed(2)} each`:''}`).join('; ')+(matching.length>6?` (${matching.length} matching parts in total).`:'.'),mode:'local'};
 }

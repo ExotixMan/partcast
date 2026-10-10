@@ -35,3 +35,29 @@
 }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+
+/* Theme tokens apply to every shared control and existing screen. */
+html[data-theme="dark"] { color-scheme: dark; background:#111827; }
+html[data-theme="dark"] body {background:#111827;color:#f1f5f9;}
+html[data-theme="dark"] :is(.bg-white,.panel,.input,.btn-secondary,.skip-link) {background-color:#1f2937;color:#e2e8f0;border-color:#475569;}
+html[data-theme="dark"] [class*="bg-white/"] {background-color:#1f2937;}
+html[data-theme="dark"] :is(.bg-slate-50,.bg-slate-100,.bg-slate-200,[class*="bg-[#f8f9fb]"],[class*="bg-slate-50/"]) {background-color:#111827;}
+html[data-theme="dark"] :is(.text-slate-950,.text-slate-900,.text-slate-800) {color:#f1f5f9;}
+html[data-theme="dark"] :is(.text-slate-700,.text-slate-600,.label) {color:#cbd5e1;}
+html[data-theme="dark"] :is(.text-slate-500,.text-slate-400) {color:#a8b5c7;}
+html[data-theme="dark"] :is(.border-slate-100,.border-slate-200,.border-slate-300) {border-color:#475569;}
+html[data-theme="dark"] :is(.divide-slate-100,.divide-slate-200)>:not(:last-child) {border-color:#475569;}
+html[data-theme="dark"] :is(.bg-red-50,.bg-red-100,[class*="bg-red-50/"]) {background-color:#40252c;}
+html[data-theme="dark"] :is(.text-red-600,.text-red-700,.text-red-800,.text-red-900,.text-red-950) {color:#fca5a5;}
+html[data-theme="dark"] :is(.bg-amber-50,.bg-amber-100) {background-color:#382e1c;}
+html[data-theme="dark"] :is(.text-amber-600,.text-amber-700,.text-amber-800,.text-amber-900,.text-amber-950) {color:#fde68a;}
+html[data-theme="dark"] :is(.bg-emerald-50,.bg-emerald-100) {background-color:#17352e;}
+html[data-theme="dark"] :is(.text-emerald-600,.text-emerald-700,.text-emerald-800,.text-emerald-900) {color:#a7f3d0;}
+html[data-theme="dark"] .input::placeholder {color:#a8b5c7;}
+html[data-theme="dark"] .btn-primary {background:#b91c1c;color:#fff;}
+html[data-theme="dark"] .btn-danger {background:#40252c;color:#fca5a5;border-color:#9f4954;}
+html[data-theme="dark"] :is(.hover\:bg-slate-50,.hover\:bg-slate-100):hover {background-color:#334155;}
+html[data-theme="dark"] .recharts-cartesian-axis-tick text {fill:#cbd5e1;}
+html[data-theme="dark"] .recharts-cartesian-grid line {stroke:#475569;}
+html[data-theme="dark"] .recharts-default-tooltip {background:#1f2937!important;border-color:#475569!important;}
+html[data-theme="dark"] :focus-visible {outline-color:#fca5a5;}

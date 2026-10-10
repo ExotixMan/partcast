@@ -71,7 +71,7 @@ for(const size of [{name:'tablet',width:820,height:1180},{name:'desktop',width:1
   await setup(context);await page.setViewportSize(size);await page.goto('/');
   await expect(page.getByRole('heading',{name:'Hello, Store'})).toBeVisible();
   await page.getByRole('link',{name:/Record a sale/}).click();
-  await expect(page.getByRole('heading',{name:'Inventory',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Sell or receive',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Open Store Assistant'}).click();
   await page.getByRole('textbox',{name:'Message to Store Assistant'}).fill('How do I record a sale?');
   await page.getByRole('button',{name:'Send message'}).click();
@@ -111,7 +111,7 @@ test('sign-in connection failures show a retry action and release the submit but
 test('reports download Excel and reject an HTML page returned by a misconfigured API',async({page,context})=>{
  await setup(context);
  let wrongServer=false;
- await context.route('http://localhost:10000/api/reports/inventory.xlsx',async route=>{
+ await context.route('http://localhost:10000/api/reports/inventory.xlsx**',async route=>{
   await route.fulfill({contentType:wrongServer?'text/html':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body:wrongServer?'<html>Website page</html>':'test-only-report',headers:{'access-control-allow-origin':'*'}});
  });
  await page.goto('/reports');

@@ -21,7 +21,7 @@ Save the settings. Rebuild/redeploy the website after changing any `VITE_` setti
 Check:
 
 1. Open `https://partcast.onrender.com/health`. It should return JSON with `ok: true`. This proves the server is running; it does not establish database access.
-2. Open `https://partcast.onrender.com/setup/status`. It should return JSON containing `needsSetup`. If it fails, check the API service logs for missing/mismatched Supabase settings or missing migrations. Apply only unapplied migrations through `0004_offline_security_notifications.sql`.
+2. Open `https://partcast.onrender.com/setup/status`. It should return JSON containing `needsSetup`. If it fails, check the API service logs for missing/mismatched Supabase settings or missing migrations. Apply only unapplied migrations through `0005_store_workflows.sql`.
 3. Open the website and sign in. If a stale installed copy remains, sync any pending stock changes before accepting an app update. Do not clear browser data or sign out while there are unsent changes.
 
 The application now rejects hosted websites pointing at localhost, insecure/missing API addresses, and API addresses containing `/health`. It checks project/role claims in legacy Supabase JWT configuration, normalizes CORS website addresses, and shows readable network errors with a retry action. These claim checks are configuration checks, not signature verification or a replacement for Supabase authentication.
