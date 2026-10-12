@@ -11,6 +11,8 @@ test('real XGBoost training survives a copied Windows Python path and produces f
  assert.equal(result.forecasts.length,14);assert.equal(new Set(result.forecasts.map(f=>f.product_id)).size,2);
  assert(result.forecasts.every(f=>f.forecast_date>asOfDate&&Number.isFinite(f.predicted_quantity)&&f.predicted_quantity>=0));
  assert.equal(result.metrics.evaluation,'chronological one-day-ahead holdout');assert(Number.isFinite(result.metrics.mae));assert(Number.isFinite(result.metrics.baseline_mae));
+ assert.equal(result.metrics.horizon_validation.horizon_days,7);assert.equal(result.metrics.horizon_validation.origin_count,3);
+ assert.equal(result.metrics.horizon_validation.tested_product_count,2);assert(Number.isFinite(result.metrics.horizon_validation.model.mae));
  assert(JSON.parse(modelBuffer.toString()).learner);assert.equal(result.training_date_max,asOfDate);
 });
 test('old or insufficient sales data returns an actionable validation error without fabricated estimates',async()=>{

@@ -11,6 +11,7 @@ Full-stack capstone system using React + Tailwind CSS, Node.js/Express, Supabase
 - English/Tagalog interface, Tagalog part terminology, light default and optional dark mode.
 - Gmail supplier email drafts with editable rows, units and custom columns; date/category-filtered Excel inventory and sales reports.
 - Restock includes every low/out-of-stock part, including stock exactly at its minimum level.
+- Prediction runs now check their full planning period against unseen sales, disclose baseline/error totals, and batch recursive estimates by date.
 - Required password followed by a Gmail email code, Super Admin/Owner/Cashier permissions, and encrypted Google API settings.
 - Header/mobile-help PartCast chatbot that keeps pagination clear.
 - Works immediately in **Smart Local** mode using live PartCast database facts.
@@ -40,6 +41,8 @@ Apply only unapplied migrations. Existing installations with 0001–0007 need on
 See [Activate and use the new features](docs/STORE_WORKFLOWS.md) for everyday sales/utang workflows and validation limits. See [Required login, roles, Google API setup and Python repair](docs/LOGIN_ROLES_FORECASTING.md) before deploying; configure Gmail first and apply 0006 separately before 0007.
 
 See [Restock, Gmail and supplier table setup](docs/RESTOCK_GMAIL.md) for the latest upgrade, required stock fields and custom email columns. Login codes and all supplier messages share the same secured Gmail connection.
+
+See [measured prediction accuracy and defense/deployment readiness](docs/PREDICTION_READINESS.md) before claiming accurate forecasts. The uploaded extract currently has no fresh eligible product histories; historical quantity error is about 100%. Reimporting stock snapshots cannot fix missing sales history.
 
 For complete files to copy into Supabase SQL Editor, use [Paste-ready SQL and API settings](supabase/paste-ready/README.md). Run the two main files separately, in order. They support fresh and recognized existing PartCast databases and preserve store records; business-table access pauses between the two executions.
 

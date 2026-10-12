@@ -149,19 +149,8 @@ def feature_columns():
     ]
 
 
-def train_model(feature_df, positive_weight=1.0, refit=True):
-    cols = feature_columns()
-    unique_dates = np.array(sorted(feature_df["date"].dt.normalize().unique()))
-    if len(unique_dates) < 10:
-        raise ValueError("Not enough distinct dates for chronological forecast evaluation.")
-    split_index = max(1, int(len(unique_dates) * 0.8))
-    split_date = pd.Timestamp(unique_dates[min(split_index, len(unique_dates) - 1)])
-    train = feature_df[feature_df["date"] < split_date]
-    test = feature_df[feature_df["date"] >= split_date]
-    if len(train) < 20 or len(test) < 5:
-        raise ValueError("Not enough training and test rows for chronological evaluation.")
-
-    model = XGBRegressor(
+def make_model():
+    return XGBRegressor(
         n_estimators=320,
         max_depth=5,
         learning_rate=0.04,
@@ -176,6 +165,20 @@ def train_model(feature_df, positive_weight=1.0, refit=True):
         random_state=42,
         n_jobs=2,
     )
+
+
+def train_model(feature_df, positive_weight=1.0, refit=True):
+    cols = feature_columns()
+    unique_dates = np.array(sorted(feature_df["date"].dt.normalize().unique()))
+    if len(unique_dates) < 10:
+        raise ValueError("Not enough distinct dates for chronological forecast evaluation.")
+    split_index = max(1, int(len(unique_dates) * 0.8))
+    split_date = pd.Timestamp(unique_dates[min(split_index, len(unique_dates) - 1)])
+    train = feature_df[feature_df["date"] < split_date]
+    test = feature_df[feature_df["date"] >= split_date]
+    if len(train) < 20 or len(test) < 5:
+        raise ValueError("Not enough training and test rows for chronological evaluation.")
+    model = make_model()
     # Weighting positive days 4x inflated expected quantities. Equal weights fit
     # the recorded distribution; stockout costs belong in replenishment policy.
     train_weights = np.where(train["y"].to_numpy(dtype=float) > 0, positive_weight, 1.0)
@@ -198,6 +201,8 @@ def train_model(feature_df, positive_weight=1.0, refit=True):
         "mape_percent": round(mape, 4) if mape is not None else None,
         "wape_percent": round(wape, 4) if wape is not None else None,
         "bias": round(float(np.mean(pred - y_true)), 4),
+        "actual_recorded_units": round(float(y_true.sum()), 4),
+        "predicted_units": round(float(pred.sum()), 4),
         "train_rows": int(len(train)),
         "test_rows": int(len(test)),
         "nonzero_train_rows": int((train["y"] > 0).sum()),
@@ -245,6 +250,7 @@ def row_for_next_date(code, history, next_date, days_from_start):
 def forecast(model, cols, series_by_product, product_codes, horizon_days, as_of_date=None):
     results = []
     today = pd.Timestamp(as_of_date).normalize() if as_of_date is not None else pd.Timestamp.today().normalize()
+    states = {}
     for pid, original in series_by_product.items():
         history = original.astype(float).tolist()
         last_date = pd.Timestamp(original.index.max()).normalize()
@@ -252,14 +258,21 @@ def forecast(model, cols, series_by_product, product_codes, horizon_days, as_of_
         gap_days = int((today - last_date).days)
         if gap_days < 0 or gap_days > MAX_FORECAST_GAP_DAYS:
             raise ValueError("Forecast origin is outside the supported history window. Review stale or future-dated sales.")
-        next_date = pd.Timestamp(last_date.to_pydatetime() + timedelta(days=1))
-        base_index = len(history)
-        # A short unobserved gap is estimated recursively, never inserted as
-        # actual zero sales or written back into the observed/training data.
-        for step in range(gap_days + horizon_days):
-            row = row_for_next_date(product_codes[pid], history, next_date, base_index + step)
-            x = pd.DataFrame([row])[cols]
-            yhat = max(0.0, float(model.predict(x)[0]))
+        states[pid] = {"history": history, "next_date": last_date + timedelta(days=1)}
+    if not states:
+        return results
+    # Predict all available parts together on each date. This retains the same
+    # recursive features while avoiding one DataFrame/model call per part/day.
+    first_day = min(state["next_date"] for state in states.values())
+    for next_date in pd.date_range(first_day, today + timedelta(days=horizon_days)):
+        ids = [pid for pid, state in states.items() if state["next_date"] <= next_date]
+        rows = [row_for_next_date(product_codes[pid], states[pid]["history"], next_date,
+                                 len(states[pid]["history"])) for pid in ids]
+        predictions = np.asarray(model.predict(pd.DataFrame(rows)[cols]), dtype=float)
+        if predictions.shape != (len(ids),) or not np.isfinite(predictions).all():
+            raise ValueError("The forecasting model returned invalid estimates. Check the model before ordering stock.")
+        for pid, prediction in zip(ids, predictions):
+            yhat = max(0.0, float(prediction))
             yhat = 0.0 if yhat < 0.005 else yhat
             if next_date > today:
                 results.append({
@@ -267,9 +280,91 @@ def forecast(model, cols, series_by_product, product_codes, horizon_days, as_of_
                     "forecast_date": next_date.date().isoformat(),
                     "predicted_quantity": round(yhat, 4),
                 })
-            history.append(yhat)
-            next_date = pd.Timestamp(next_date.to_pydatetime() + timedelta(days=1))
-    return results
+            # Missing recent days are estimates, never written as actual sales.
+            states[pid]["history"].append(yhat)
+    return sorted(results, key=lambda row: (row["product_id"], row["forecast_date"]))
+
+
+def total_errors(actual, predicted):
+    actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
+    wape = safe_wape(actual, predicted)
+    return {
+        "mae": round(float(np.abs(predicted - actual).mean()), 4),
+        "rmse": round(float(np.sqrt(np.mean((predicted - actual) ** 2))), 4),
+        "wape_percent": round(wape, 4) if wape is not None else None,
+        "bias": round(float((predicted - actual).mean()), 4),
+        "actual_recorded_units": round(float(actual.sum()), 4),
+        "predicted_units": round(float(predicted.sum()), 4),
+    }
+
+
+def evaluate_horizon(series_by_product, horizon_days, max_origins=3):
+    """Refit at each historical origin; an entire future period stays unseen.
+
+    This evaluates recorded quantities under the existing internal-zero coverage
+    assumption. It cannot establish complete demand or deployment readiness.
+    """
+    end = max(series.index.max() for series in series_by_product.values())
+    windows, actual, predicted, baseline = [], [], [], []
+    for offset in range(max_origins, 0, -1):
+        origin = end - timedelta(days=horizon_days * offset)
+        period_end = origin + timedelta(days=horizon_days)
+        history = {}
+        for pid, series in series_by_product.items():
+            before = series.loc[series.index <= origin]
+            # Determine eligibility using past data only, never holdout sales.
+            if (len(before) >= MIN_SPAN_DAYS and int((before > 0).sum()) >= MIN_NONZERO_DAYS
+                    and series.index.max() >= period_end):
+                history[pid] = before
+        if not history:
+            continue
+        try:
+            features, codes = make_features(history)
+        except ValueError:
+            continue
+        if features["date"].nunique() < 10:
+            continue
+        cols = feature_columns()
+        model = make_model()
+        model.fit(features[cols], features["y"])
+        estimates = forecast(model, cols, history, codes, horizon_days, origin)
+        totals = {pid: 0.0 for pid in history}
+        for row in estimates:
+            totals[row["product_id"]] += row["predicted_quantity"]
+        for pid, before in history.items():
+            target = float(series_by_product[pid].loc[
+                (series_by_product[pid].index > origin) & (series_by_product[pid].index <= period_end)
+            ].sum())
+            simple = float(before.tail(28).mean()) * horizon_days
+            actual.append(target); predicted.append(totals[pid]); baseline.append(simple)
+            windows.append({"product_id": pid, "origin": origin.date().isoformat(),
+                            "start": (origin + timedelta(days=1)).date().isoformat(),
+                            "end": period_end.date().isoformat(),
+                            "train_nonzero_days": int((before > 0).sum()),
+                            "actual_recorded_units": round(target, 4),
+                            "predicted_units": round(totals[pid], 4),
+                            "recent_average_units": round(simple, 4)})
+    result = {"evaluation": "rolling-origin recursive planning-period totals", "horizon_days": horizon_days,
+              "window_count": len(windows), "origin_count": len({row["origin"] for row in windows}),
+              "tested_product_count": len({row["product_id"] for row in windows}),
+              "nonzero_window_count": sum(value > 0 for value in actual),
+              "windows": windows, "status": "insufficient_history",
+              "limitations": ["Only recorded quantities are evaluated; missing days and stockouts need coverage review.",
+                              "Historical test results do not guarantee future sales or authorize automatic purchases."]}
+    if not windows:
+        return result
+    result["model"] = total_errors(actual, predicted)
+    result["recent_average"] = total_errors(actual, baseline)
+    result["zero_diagnostic"] = total_errors(actual, np.zeros(len(actual)))
+    if sum(actual) == 0:
+        result["status"] = "no_recorded_test_demand"
+    elif result["model"]["mae"] >= result["zero_diagnostic"]["mae"]:
+        result["status"] = "no_improvement_over_zero"
+    elif result["model"]["mae"] >= result["recent_average"]["mae"]:
+        result["status"] = "no_improvement_over_recent_average"
+    else:
+        result["status"] = "improvement_observed"
+    return result
 
 
 def main():
@@ -301,6 +396,7 @@ def main():
     if any(x.get("source") != "actual_sale" for x in observations):
         metrics["coverage_warning"] = "Imported history may omit sales. Days without records are not verified zero demand; validate coverage before using estimates to order stock."
     metrics["gap_handling"] = "Up to 31 unobserved days estimated recursively; stale products excluded."
+    metrics["horizon_validation"] = evaluate_horizon(series_by_product, horizon)
     model.save_model(args.model_out)
 
     source_dates = pd.to_datetime([x["occurred_on"] for x in observations if str(x.get("product_id")) in series_by_product], errors="coerce").dropna()

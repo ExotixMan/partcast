@@ -1,5 +1,7 @@
 # Preparing the raw PartCast workbooks
 
+See [current measured prediction accuracy and defense/deployment readiness](PREDICTION_READINESS.md). The latest review reproduces poor historical performance and adds application-matching, whole-period evaluation; successful training is not evidence of accurate current-store predictions.
+
 The raw inventory contains current stock and supplier purchase records. Some purchase rows reference an SI# in Notes. The user confirmed that Quantity on those sales-linked rows is the sold quantity. Rows marked STOCK are purchases, and mixed stock/sale allocations need review.
 
 Run from the repository after installing the server and Python dependencies:
@@ -29,5 +31,9 @@ The preparation joins a unique SI# to its invoice date, preserves exact part ide
 The historical benchmark compares equally weighted XGBoost with the previous positive-day weighting, recent averages, Croston-SBA and TSB. It also evaluates full 30-day blocks recursively without using their sales as input. It is exploratory: filling internal missing daily rows with zero is an unverified coverage assumption. It does not select a production method or generate current forecasts. A zero forecast is a diagnostic for sparse data, not a reorder recommendation. Enough eligible history is needed for the benchmark to run.
 
 Production training rejects future dates and excludes eligible products with no usable sale in the past 31 days. This conservative freshness policy should later be replaced by a verified recording window: a slow-moving part can have a recent, complete ledger even with no recent sales. Short unobserved gaps are estimated internally and never written back as observations. Imported coverage warnings are included in metrics. Python's `asOfDate` is available for reproducible historical analysis; the HTTP endpoint keeps the actual current date.
+
+New training runs also save `horizon_validation`: up to three historical origins, each refitted before the chosen planning period. No sale inside the period becomes a training label or recursive input. Only parts already meeting the history minimum before that origin are tested. Report how many parts and positive periods were evaluated, and distinguish this from the older exploratory comparisons. MAE/RMSE are unit errors and WAPE is percentage error, not a percentage of correct forecasts. A no-demand holdout has undefined WAPE. These checks retain the unverified internal-zero coverage limitation; they do not certify production accuracy.
+
+Run `.venv/bin/python ml/evaluate_forecast.py --csv /path/to/actual-demand-daily.csv --output /tmp/prediction-audit.json --as-of YYYY-MM-DD` to reproduce the full historical/eligibility report without changing source data or the database.
 
 For reliable replenishment, record every part/quantity on every sale, separate returns and purchases, verify base units, record stockout periods, and measure supplier lead times. Use a fresh independent holdout with rolling 30-day quantity totals before relying on forecasts for purchases. Do not create artificial transactions to meet the minimum history requirement.

@@ -2,6 +2,16 @@
 
 This report describes local checks for required Gmail login codes, store roles, simpler inventory/sales workflows, the forecasting runtime repair and the subsequent Restock/Gmail supplier-table update. Test records use synthetic products, suppliers, and customers; no customer sales workbook was newly published.
 
+## Prediction follow-up — 12 October 2026
+
+Full server suite **46 passed**; standalone Python suite **22 passed**; frontend unit suite **17 passed**; targeted Chromium planning/responsive suite **7 passed**; production Vite/PWA build passed. These counts are separate from the earlier releases below; targeted suites overlap existing coverage and should not be added to old full-suite totals.
+
+Regression checks verify that older forecast runs cannot mix into/truncate a latest 90-day chart, Cashier restrictions still apply, and malformed IDs are rejected. Python checks show that each part retains its own recursive lag history during batched prediction, invalid model outputs are rejected, eligibility uses only pre-origin records, and changing future holdout quantities cannot alter that period's model fit or predictions. Browser checks display small errors accurately, full-period quantity error and recorded/predicted totals, missing tests and undefined zero-demand percentages on phone/tablet/desktop layouts.
+
+A separate real synthetic 12-part/200-day training case generated 1,080 future 90-day estimates plus a real model artifact in about 2.0 seconds. It is a runtime demonstration, not store accuracy. The actual uploaded quantity history was reprocessed without modifying originals and independently rejected by the current-date training gate as stale, without a model/forecast artifact. Its application-matching 30-day historical WAPE is **100.0345%**: **40 recorded units versus 0.0138 predicted**. There are zero fresh eligible parts. See [prediction accuracy and defense readiness](PREDICTION_READINESS.md) for all metrics, date coverage, data limitations and reimport steps.
+
+Neither Render origin could be reached through the workspace HTTPS proxy (403 CONNECT denial). The cloud's mismatched project keys and too-short private encryption key remain setup blockers; they do not establish Render's configuration. No hosted import, migration, model training or deployment was performed. The new prediction metrics use the existing JSONB column and need no additional SQL migration.
+
 ## Latest Restock and Gmail update
 
 - Full server suite: **45 passed**, including the complete SQL installer checks, real PostgreSQL migration 0008 execution and the existing Node-to-Python forecasting checks.

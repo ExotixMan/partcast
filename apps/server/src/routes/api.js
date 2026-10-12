@@ -326,12 +326,16 @@ router.get('/forecast/products', async (req,res,next) => {
 
 router.get('/forecast/product/:id', async (req,res,next) => {
   try {
+    const productId=z.string().uuid().parse(req.params.id);
+    const {data:latest,error:latestError}=await adminDb.from('latest_completed_forecast_run').select('id').maybeSingle();
+    if(latestError)throw latestError;
+    if(!latest)return res.json({run:null,data:[]});
     const { data, error } = await adminDb.from('demand_forecasts')
-      .select('forecast_date,predicted_quantity,run_id,forecast_runs!inner(status,completed_at)')
-      .eq('product_id',req.params.id).eq('forecast_runs.status','completed')
-      .gte('forecast_date',storeDay()).order('forecast_date').limit(120);
+      .select('forecast_date,predicted_quantity,run_id')
+      .eq('product_id',productId).eq('run_id',latest.id)
+      .gte('forecast_date',storeDay()).order('forecast_date').limit(90);
     if (error) throw error;
-    res.json({ data });
+    res.json({ run:latest,data });
   } catch(e){ next(e); }
 });
 

@@ -3,6 +3,8 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 from train_forecast import add_days_since_demand, make_features, train_model, build_product_series, select_fresh_series, forecast, feature_columns
+from train_forecast import evaluate_horizon, total_errors
+from unittest.mock import patch
 
 class ForecastTests(unittest.TestCase):
     def test_features_cannot_see_current_or_future_demand(self):
@@ -60,6 +62,62 @@ class ForecastTests(unittest.TestCase):
         self.assertEqual(result[0]['forecast_date'], '2026-03-04')
         self.assertEqual(model.inputs[1].iloc[0]['lag_1'], 2.0)
         pd.testing.assert_series_equal(history, original)
+
+    def test_batch_predictions_keep_each_parts_own_history_and_bridge_gaps(self):
+        class LagModel:
+            def __init__(self): self.calls = 0
+            def predict(self, frame):
+                self.calls += 1
+                return frame.lag_1.to_numpy() + 1
+        left = pd.Series([1.0] * 60, index=pd.date_range('2026-01-01', periods=60))
+        right = pd.Series([3.0] * 58, index=pd.date_range('2026-01-01', periods=58))
+        model = LagModel()
+        rows = forecast(model, feature_columns(), {'a': left, 'b': right}, {'a': 0, 'b': 1}, 7, left.index.max())
+        self.assertEqual([r['predicted_quantity'] for r in rows if r['product_id']=='a'], list(range(2, 9)))
+        self.assertEqual([r['predicted_quantity'] for r in rows if r['product_id']=='b'], list(range(6, 13)))
+        self.assertEqual(model.calls, 9)
+        self.assertTrue((left == 1).all()); self.assertTrue((right == 3).all())
+
+    def test_invalid_model_values_cannot_be_presented_as_predictions(self):
+        class InvalidModel:
+            def predict(self, frame): return [np.nan] * len(frame)
+        history = pd.Series([1.0] * 60, index=pd.date_range('2026-01-01', periods=60))
+        with self.assertRaisesRegex(ValueError, 'invalid estimates'):
+            forecast(InvalidModel(), feature_columns(), {'p': history}, {'p': 0}, 7, history.index.max())
+
+    def test_planning_period_predictions_and_fit_cannot_see_their_holdout_sales(self):
+        class Model:
+            def fit(self, x, y):
+                fits.append((x.copy(), y.copy()))
+            def predict(self, frame): return np.ones(len(frame))
+        base = pd.Series([float(i%3==0) for i in range(150)], index=pd.date_range('2026-01-01', periods=150))
+        changed = base.copy(); changed.iloc[-30:] = 1000
+        fits = []
+        with patch('train_forecast.make_model', side_effect=Model):
+            left = evaluate_horizon({'p': base}, 30, max_origins=1)
+            right = evaluate_horizon({'p': changed}, 30, max_origins=1)
+        pd.testing.assert_frame_equal(fits[0][0], fits[1][0]); pd.testing.assert_series_equal(fits[0][1], fits[1][1])
+        self.assertEqual(left['model']['predicted_units'], right['model']['predicted_units'])
+        self.assertNotEqual(left['model']['actual_recorded_units'], right['model']['actual_recorded_units'])
+        self.assertLess(left['windows'][0]['origin'], left['windows'][0]['start'])
+
+    def test_horizon_checks_use_distinct_origins_and_positive_past_eligibility(self):
+        class Model:
+            def fit(self, x, y): pass
+            def predict(self, frame): return np.ones(len(frame))
+        base = pd.Series([float(i%3==0) for i in range(240)], index=pd.date_range('2026-01-01', periods=240))
+        with patch('train_forecast.make_model', side_effect=Model):
+            result = evaluate_horizon({'p': base}, 30)
+        self.assertEqual(result['origin_count'], 3); self.assertEqual(result['window_count'], 3)
+        self.assertEqual(result['tested_product_count'], 1)
+        for window in result['windows']: self.assertGreaterEqual(window['train_nonzero_days'], 5)
+        sparse = base * 0; sparse.iloc[-5:] = 1
+        self.assertEqual(evaluate_horizon({'p': sparse}, 30)['status'], 'insufficient_history')
+        self.assertEqual(evaluate_horizon({'p': base.iloc[:60]}, 90)['status'], 'insufficient_history')
+
+    def test_percentage_error_is_not_fabricated_for_a_zero_demand_holdout(self):
+        self.assertIsNone(total_errors([0, 0], [1, 1])['wape_percent'])
+        self.assertEqual(total_errors([10, 0], [0, 0])['wape_percent'], 100)
 
 if __name__=='__main__':
     unittest.main()

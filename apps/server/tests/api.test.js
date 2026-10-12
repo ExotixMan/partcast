@@ -43,6 +43,40 @@ test('spreadsheet detection is based on headers, preserving all three import typ
  }
 });
 
+test('forecast chart returns the entire latest run without mixing or truncating earlier forecasts',async()=>{
+ const previous={auth:adminDb.auth.getUser,from:adminDb.from};
+ const product='33333333-3333-4333-8333-333333333333',current='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ let role='owner',hasRun=true,forecastReads=0;
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
+ const rows=[];for(let i=1;i<=90;i++){
+  const date=new Date(today+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+i);
+  for(const run_id of ['bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',current])rows.push({product_id:product,run_id,forecast_date:date.toISOString().slice(0,10),predicted_quantity:run_id===current?0.5:99});
+ }
+ adminDb.auth.getUser=async()=>({data:{user:{id:'11111111-1111-4111-8111-111111111111',email:'staff@example.test'}}});
+ adminDb.from=table=>{
+  const filters={};let limit=1000;
+  const result=()=>{
+   if(table==='profiles')return {data:{id:'11111111-1111-4111-8111-111111111111',active:true,role}};
+   if(table==='login_verifications')return {data:{expires_at:'2099-01-01T00:00:00Z'}};
+   if(table==='latest_completed_forecast_run')return {data:hasRun?{id:current}:null};
+   assert.equal(table,'demand_forecasts');forecastReads++;
+   return {data:rows.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v)).slice(0,limit)};
+  };
+  return {select(){return this;},eq(k,v){filters[k]=v;return this;},gte(){return this;},order(){return this;},limit(n){limit=n;return this;},single:async()=>result(),maybeSingle:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
+ };
+ const app=express();app.use('/api',authenticate,router);app.use(errorHandler);
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
+ const url=`http://127.0.0.1:${server.address().port}/api/forecast/product/`,headers={Authorization:`Bearer ${testToken}`};
+ try{
+  let response=await fetch(url+product,{headers});assert.equal(response.status,200);
+  let body=await response.json();assert.equal(body.data.length,90);assert(body.data.every(r=>r.run_id===current&&r.predicted_quantity===0.5));assert.equal(body.run.id,current);
+  response=await fetch(url+'99999999-9999-4999-8999-999999999999',{headers});assert.deepEqual((await response.json()).data,[]);
+  hasRun=false;const reads=forecastReads;response=await fetch(url+product,{headers});body=await response.json();assert.equal(body.run,null);assert.deepEqual(body.data,[]);assert.equal(forecastReads,reads);
+  assert.equal((await fetch(url+'invalid',{headers})).status,400);
+  role='cashier';assert.equal((await fetch(url+product,{headers})).status,403);
+ }finally{adminDb.auth.getUser=previous.auth;adminDb.from=previous.from;await new Promise(resolve=>server.close(resolve));}
+});
+
 test('HTTP basket and customer routes validate before RPC and pass the staff token',async()=>{
  const previous={auth:adminDb.auth.getUser,from:adminDb.from,fetch:globalThis.fetch};
  const requests=[];let active=true;

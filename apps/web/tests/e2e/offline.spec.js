@@ -212,8 +212,8 @@ for(const size of [{name:'small-phone',width:320,height:740},{name:'tablet',widt
  });
 }
 
-async function planningData(context){
- const run={id:'current-run',status:'completed',started_at:'2026-10-09T02:00:00Z',completed_at:'2026-10-09T02:01:00Z',horizon_days:30,training_rows:55,product_count:1,metrics:{mae:0.2,baseline_mae:0.3,coverage_warning:true,stale_product_count:3}};
+async function planningData(context,{metrics={}}={}){
+ const run={id:'current-run',status:'completed',started_at:'2026-10-09T02:00:00Z',completed_at:'2026-10-09T02:01:00Z',horizon_days:30,training_rows:55,product_count:1,metrics:{mae:0.2,baseline_mae:0.3,coverage_warning:true,stale_product_count:3,...metrics}};
  const headers={'access-control-allow-origin':'*'};
  await context.route('http://localhost:10000/api/forecast/**',async route=>{
   if(route.request().method()==='OPTIONS')return route.fallback();
@@ -243,6 +243,23 @@ test('planning explains data limits, lists current estimates, and requires revie
  await page.getByRole('button',{name:'Send email to supplier'}).click();await expect.poll(()=>sent).toBe(1);
  await expect(page.getByRole('dialog')).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('planning shows precise errors and full-period missed demand without presenting an accuracy percentage',async({page,context})=>{
+ await setup(context,{role:'owner'});await planningData(context,{metrics:{mae:0.0177,horizon_validation:{horizon_days:30,window_count:6,tested_product_count:2,nonzero_window_count:1,status:'no_improvement_over_zero',model:{mae:9.166,wape_percent:100.0349,actual_recorded_units:110,predicted_units:0.008},recent_average:{mae:15.6548}}}});
+ await page.setViewportSize({width:390,height:844});await page.goto('/forecast');
+ const accuracy=page.getByRole('region',{name:'How dependable is this estimate?'});
+ await expect(accuracy).toContainText('0.0177 units');await expect(accuracy).toContainText('100.0349%');await expect(accuracy).toContainText('110 / 0.008');await expect(accuracy).toContainText('Checked 6 past periods of 30 days across 2 parts');await expect(accuracy).toContainText('not an accuracy percentage');await expect(accuracy).toContainText('did not beat the zero-sales test');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('planning explains untested periods and undefined percentage errors',async({page,context})=>{
+ await setup(context,{role:'owner'});await planningData(context);await page.goto('/forecast');
+ await expect(page.getByRole('heading',{name:'More sales history is needed'})).toBeVisible();
+ await expect(page.getByText('Full-period accuracy is not available.',{exact:false})).toBeVisible();
+ await planningData(context,{metrics:{horizon_validation:{horizon_days:90,window_count:1,tested_product_count:1,nonzero_window_count:0,status:'no_recorded_test_demand',model:{mae:2,wape_percent:null,actual_recorded_units:0,predicted_units:2},recent_average:{mae:1}}}});await page.reload();
+ const accuracy=page.getByRole('region',{name:'How dependable is this estimate?'});
+ await expect(accuracy).toContainText('Not measurable');await expect(accuracy).toContainText('no recorded sales');await expect(accuracy).not.toContainText('NaN');await expect(accuracy).not.toContainText('null%');
 });
 
 test('staff planning hides management actions and help retains focus during a delayed reply',async({page,context})=>{
