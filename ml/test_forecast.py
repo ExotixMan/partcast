@@ -119,5 +119,12 @@ class ForecastTests(unittest.TestCase):
         self.assertIsNone(total_errors([0, 0], [1, 1])['wape_percent'])
         self.assertEqual(total_errors([10, 0], [0, 0])['wape_percent'], 100)
 
+    def test_unidentified_sales_and_invalid_quantities_are_not_silently_discarded(self):
+        valid=[{'product_id':'identified-part','occurred_on':'2026-01-01','quantity':1}]
+        for field,value in [('product_id',None),('product_id',' '),('quantity',True),
+                            ('quantity',np.inf),('quantity',np.nan),('quantity',-1),('occurred_on','bad-date')]:
+            with self.subTest(field=field,value=value):
+                with self.assertRaises(ValueError):build_product_series([{**valid[0],field:value}])
+
 if __name__=='__main__':
     unittest.main()

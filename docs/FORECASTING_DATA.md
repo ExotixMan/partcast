@@ -2,6 +2,8 @@
 
 See [current measured prediction accuracy and defense/deployment readiness](PREDICTION_READINESS.md). The latest review reproduces poor historical performance and adds application-matching, whole-period evaluation; successful training is not evidence of accurate current-store predictions.
 
+For a reproducible development-only parameter comparison, see [model improvement review](MODEL_IMPROVEMENT_REVIEW.md) and `ml/compare_forecast_candidates.py`. The final period cannot choose a candidate, and an empty development holdout cannot produce an accuracy percentage. Only verified corrections should change real record values; original data is not edited to force a higher score.
+
 The raw inventory contains current stock and supplier purchase records. Some purchase rows reference an SI# in Notes. The user confirmed that Quantity on those sales-linked rows is the sold quantity. Rows marked STOCK are purchases, and mixed stock/sale allocations need review.
 
 Run from the repository after installing the server and Python dependencies:

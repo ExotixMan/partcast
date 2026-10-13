@@ -40,15 +40,33 @@ export async function forecastingStatus() {
   try{await resolveForecastRuntime();return {ready:true,message:'The forecasting engine is ready.'};}
   catch(e){return {ready:false,message:e.message};}
 }
+export function validateForecastResult(result,payload){
+  const invalid=()=>{throw Object.assign(new Error('The forecasting engine returned invalid estimates. Ask the Super Admin to check the forecasting installation.'),{status:503,safe:true});};
+  const horizon=Math.min(90,Math.max(7,Math.trunc(Number(payload.horizonDays??30))));
+  const known=new Set((payload.observations||[]).map(row=>row.product_id));
+  const origin=new Date(payload.asOfDate+'T00:00:00Z');
+  if(!Number.isFinite(origin.getTime())||!Number.isInteger(horizon))invalid();
+  const dates=new Set();
+  for(let i=1;i<=horizon;i++){const day=new Date(origin);day.setUTCDate(day.getUTCDate()+i);dates.add(day.toISOString().slice(0,10));}
+  if(!Array.isArray(result?.forecasts)||!result.forecasts.length)invalid();
+  const seen=new Set(),parts=new Map();
+  for(const row of result.forecasts){
+    if(!row||typeof row.product_id!=='string'||!row.product_id.trim()||!known.has(row.product_id)||!dates.has(row.forecast_date)||!Number.isFinite(row.predicted_quantity)||row.predicted_quantity<0)invalid();
+    const key=row.product_id+'|'+row.forecast_date;if(seen.has(key))invalid();seen.add(key);
+    parts.set(row.product_id,(parts.get(row.product_id)||0)+1);
+  }
+  if(result.forecast_product_count!==parts.size||result.forecast_horizon_days!==horizon||[...parts.values()].some(n=>n!==horizon))invalid();
+}
 export async function runForecastPython(payload) {
   const runtime=await resolveForecastRuntime();
   const tmp=await mkdtemp(path.join(os.tmpdir(),'partcast-ml-'));
   const input=path.join(tmp,'input.json'),output=path.join(tmp,'output.json'),model=path.join(tmp,'xgboost-model.json');
   try{
-    await writeFile(input,JSON.stringify({asOfDate:new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date()),...payload}),'utf8');
+    const request={asOfDate:new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date()),...payload};
+    await writeFile(input,JSON.stringify(request),'utf8');
     await processOutput(runtime.python,[runtime.script,'--input',input,'--output',output,'--model-out',model],120000);
     const result=JSON.parse(await readFile(output,'utf8'));
-    if(!Array.isArray(result.forecasts)||!result.forecasts.length||result.forecasts.some(f=>!Number.isFinite(f.predicted_quantity)||f.predicted_quantity<0))throw Object.assign(new Error('The forecasting engine returned invalid estimates. Ask the Super Admin to check the forecasting installation.'),{status:503,safe:true});
+    validateForecastResult(result,request);
     const modelBuffer=await readFile(model);return {result,modelBuffer};
   }finally{await rm(tmp,{recursive:true,force:true});}
 }

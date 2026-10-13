@@ -1017,5 +1017,10 @@
   "Past test results do not guarantee future sales. Check that sales records are complete and review stock before purchasing.": "Hindi garantiya ng susunod na benta ang mga nakaraang resulta. Tiyaking kumpleto ang tala ng benta at suriin ang stock bago bumili.",
   "Overall quantity error (WAPE)": "Kabuuang pagkakamali sa dami (WAPE)",
   "Inventory imports replace saved stock counts with spreadsheet quantities. Use current shelf counts and back up first. Import sales quantities separately for forecasting.": "Pinapalitan ng inventory import ang naka-save na dami ng stock gamit ang dami sa spreadsheet. Gamitin ang kasalukuyang bilang sa istante at gumawa muna ng backup. Hiwalay na i-import ang dami ng nabenta para sa pagtataya.",
-  "A forecasting import replaces previously imported training history. Include the full history you want to keep.": "Pinapalitan ng forecasting import ang dating na-import na kasaysayan para sa modelo. Isama ang buong kasaysayang nais mong panatilihin."
+  "A forecasting import replaces previously imported training history. Include the full history you want to keep.": "Pinapalitan ng forecasting import ang dating na-import na kasaysayan para sa modelo. Isama ang buong kasaysayang nais mong panatilihin.",
+  "Each sale needs an identified part. Review missing part identifiers before training.": "Kailangan ng kilalang piyesa sa bawat benta. Suriin muna ang mga talang walang pagkakakilanlan ng piyesa bago sanayin ang modelo.",
+  "Sold quantities must be finite non-negative numbers, not true/false values.": "Dapat wastong bilang na zero o higit pa ang dami ng nabenta, hindi true o false.",
+  "Each sale needs a valid date. Review invalid dates instead of silently omitting sales.": "Kailangan ng wastong petsa sa bawat benta. Suriin ang maling petsa sa halip na alisin ang benta nang walang paliwanag.",
+  "Sold quantities must be finite non-negative numbers. Review invalid quantities before training.": "Dapat wastong bilang na zero o higit pa ang dami ng nabenta. Suriin muna ang maling dami bago sanayin ang modelo.",
+  "The forecasting engine returned invalid estimates. Ask the Super Admin to check the forecasting installation.": "Nagbalik ang sistema ng pagtataya ng hindi wastong resulta. Ipasuri sa Super Admin ang naka-install na forecasting engine."
 }

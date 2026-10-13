@@ -2,6 +2,14 @@
 
 This report describes local checks for required Gmail login codes, store roles, simpler inventory/sales workflows, the forecasting runtime repair and the subsequent Restock/Gmail supplier-table update. Test records use synthetic products, suppliers, and customers; no customer sales workbook was newly published.
 
+## Model integrity follow-up — 14 October 2026
+
+Full server suite **47 passed**, Python suite **26 passed**, frontend unit suite **17 passed**, production Vite/PWA build passed. The three affected Node ML tests were rerun after the final output-guard change. These counts replace the corresponding earlier suite counts for this revision; browser flows were not rerun for translated error strings.
+
+Input checks now reject unidentified sales, invalid dates, boolean/nonfinite/negative quantities. Returned forecasts must use identified input parts and contain exactly the full future horizon, with unique dates and truthful product/horizon counts; malformed outputs are rejected before storage. Tests include real Python training, candidate selection unchanged by altered synthetic final-period labels, and refusal to rank candidates from zero-demand development periods.
+
+The current Tweedie and two regularized XGBoost candidates were compared on pre-final-period data only. No development period has positive recorded demand, so no winner or high-accuracy result is asserted and production parameters remain unchanged. Original workbooks and the accepted 757-row/709-part extract retain their SHA-256 fingerprints. See [model improvement review](MODEL_IMPROVEMENT_REVIEW.md). No new part, hosted import, deployment or SQL migration was created.
+
 ## Prediction follow-up — 12 October 2026
 
 Full server suite **46 passed**; standalone Python suite **22 passed**; frontend unit suite **17 passed**; targeted Chromium planning/responsive suite **7 passed**; production Vite/PWA build passed. These counts are separate from the earlier releases below; targeted suites overlap existing coverage and should not be added to old full-suite totals.

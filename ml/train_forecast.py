@@ -67,9 +67,17 @@ def build_product_series(observations):
     if not required.issubset(df.columns):
         raise ValueError("Demand observations are missing required fields.")
 
+    if df["product_id"].map(lambda value: not isinstance(value, str) or not value.strip()).any():
+        raise ValueError("Each sale needs an identified part. Review missing part identifiers before training.")
+    if df["quantity"].map(lambda value: isinstance(value, (bool, np.bool_))).any():
+        raise ValueError("Sold quantities must be finite non-negative numbers, not true/false values.")
+
     df["occurred_on"] = pd.to_datetime(df["occurred_on"], errors="coerce")
     df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce")
-    df = df.dropna(subset=["product_id", "occurred_on", "quantity"])
+    if df["occurred_on"].isna().any():
+        raise ValueError("Each sale needs a valid date. Review invalid dates instead of silently omitting sales.")
+    if not np.isfinite(df["quantity"].to_numpy(dtype=float)).all() or (df["quantity"] < 0).any():
+        raise ValueError("Sold quantities must be finite non-negative numbers. Review invalid quantities before training.")
     df = df[df["quantity"] > 0]
     daily = df.groupby(["product_id", "occurred_on"], as_index=False)["quantity"].sum()
 
@@ -298,7 +306,7 @@ def total_errors(actual, predicted):
     }
 
 
-def evaluate_horizon(series_by_product, horizon_days, max_origins=3):
+def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_factory=None):
     """Refit at each historical origin; an entire future period stays unseen.
 
     This evaluates recorded quantities under the existing internal-zero coverage
@@ -325,7 +333,7 @@ def evaluate_horizon(series_by_product, horizon_days, max_origins=3):
         if features["date"].nunique() < 10:
             continue
         cols = feature_columns()
-        model = make_model()
+        model = (model_factory or make_model)()
         model.fit(features[cols], features["y"])
         estimates = forecast(model, cols, history, codes, horizon_days, origin)
         totals = {pid: 0.0 for pid in history}
