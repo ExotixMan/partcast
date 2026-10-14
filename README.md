@@ -44,6 +44,8 @@ See [Restock, Gmail and supplier table setup](docs/RESTOCK_GMAIL.md) for the lat
 
 See [measured prediction accuracy and defense/deployment readiness](docs/PREDICTION_READINESS.md) before claiming accurate forecasts. The uploaded extract currently has no fresh eligible product histories; historical quantity error is about 100%. Reimporting stock snapshots cannot fix missing sales history.
 
+For a separate exercise using existing catalog items and entirely generated demand, see the [labelled simulated training demo](docs/SIMULATED_DEMO.md). It trains and evaluates XGBoost locally without Supabase and keeps simulated performance separate from actual-store accuracy.
+
 For complete files to copy into Supabase SQL Editor, use [Paste-ready SQL and API settings](supabase/paste-ready/README.md). Run the two main files separately, in order. They support fresh and recognized existing PartCast databases and preserve store records; business-table access pauses between the two executions.
 
 ## Recommended dataset import order
