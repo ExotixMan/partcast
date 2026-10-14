@@ -7,37 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from train_forecast import build_product_series, make_features, train_model, row_for_next_date, safe_wape
-
-
-def croston_sba(history, alpha=0.1):
-    events = np.flatnonzero(np.asarray(history) > 0)
-    if not len(events):
-        return 0.0
-    if len(events) == 1:
-        # The extract starts at a sale; its first index is not a measured
-        # interarrival. With one event, use exposure instead of claiming daily demand.
-        return (1 - alpha / 2) * float(history[events[0]]) / len(history)
-    size, interval = float(history[events[0]]), float(events[1] - events[0])
-    previous = events[0]
-    for event in events[1:]:
-        size += alpha * (float(history[event]) - size)
-        interval += alpha * (float(event - previous) - interval)
-        previous = event
-    return (1 - alpha / 2) * size / interval
-
-
-def tsb(history, size_alpha=0.1, probability_alpha=0.01):
-    events = np.flatnonzero(np.asarray(history) > 0)
-    if not len(events):
-        return 0.0
-    first = events[0]
-    size, probability = float(history[first]), 1.0 / (first + 1)
-    for value in history[first + 1:]:
-        event = float(value > 0)
-        probability += probability_alpha * (event - probability)
-        if event:
-            size += size_alpha * (float(value) - size)
-    return size * probability
+from intermittent import croston_sba, tsb
 
 
 def errors(actual, predicted):
@@ -91,13 +61,15 @@ def benchmark(csv_path):
                       'Croston_SBA': croston_sba(history) * 30, 'TSB': tsb(history) * 30, 'zero_diagnostic': 0.0}
             for label, model in fitted.items():
                 buffer, forecast_total = history.copy(), 0.0
+                events = (np.asarray(history) > 0).astype(float).tolist()
                 for step in range(30):
                     day = pd.Timestamp(start.to_pydatetime() + timedelta(days=step))
-                    x = pd.DataFrame([row_for_next_date(codes[pid], buffer, day, len(history) + step)])[cols]
+                    x = pd.DataFrame([row_for_next_date(codes[pid], buffer, day, len(history) + step, events)])[cols]
                     prediction = max(0.0, float(model.predict(x)[0]))
                     prediction = 0.0 if prediction < 0.005 else prediction
                     forecast_total += prediction
                     buffer.append(prediction)
+                    events.append(0.0)
                 values[label] = forecast_total
             for label, prediction in values.items():
                 totals[label].append(prediction)

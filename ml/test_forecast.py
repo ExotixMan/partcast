@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from train_forecast import add_days_since_demand, make_features, train_model, build_product_series, select_fresh_series, forecast, feature_columns
 from train_forecast import evaluate_horizon, total_errors
+from train_forecast import row_for_next_date
 from unittest.mock import patch
 
 class ForecastTests(unittest.TestCase):
@@ -85,6 +86,33 @@ class ForecastTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'invalid estimates'):
             forecast(InvalidModel(), feature_columns(), {'p': history}, {'p': 0}, 7, history.index.max())
 
+    def test_future_point_estimates_do_not_become_observed_sale_events(self):
+        class ConstantModel:
+            def __init__(self): self.inputs = []
+            def predict(self, frame):
+                self.inputs.append(frame.copy())
+                return np.full(len(frame), 0.5)
+        history = pd.Series([0.0] * 59 + [10.0], index=pd.date_range('2026-01-01', periods=60))
+        original = history.copy()
+        model = ConstantModel()
+        forecast(model, feature_columns(), {'p': history}, {'p': 0}, 10, history.index.max())
+        self.assertEqual(model.inputs[0].iloc[0]['days_since_demand'], 0)
+        self.assertEqual(model.inputs[1].iloc[0]['days_since_demand'], 1)
+        self.assertEqual(model.inputs[1].iloc[0]['event_count_7'], 1)
+        self.assertEqual(model.inputs[7].iloc[0]['event_count_7'], 0)
+        self.assertEqual(model.inputs[7].iloc[0]['lag_1'], 0.5)
+        pd.testing.assert_series_equal(history, original)
+
+    def test_prediction_event_features_match_training_at_an_observed_origin(self):
+        history = pd.Series([float(i % 5 == 0) * 3 for i in range(100)],
+                            index=pd.date_range('2026-01-01', periods=100))
+        features, _ = make_features({'p': history})
+        before = history.iloc[:-1]
+        row = row_for_next_date(0, before.tolist(), history.index[-1], len(before),
+                                (before.to_numpy() > 0).astype(float).tolist())
+        np.testing.assert_allclose([row[c] for c in feature_columns()],
+                                   features.iloc[-1][feature_columns()].to_numpy(dtype=float))
+
     def test_planning_period_predictions_and_fit_cannot_see_their_holdout_sales(self):
         class Model:
             def fit(self, x, y):
@@ -99,6 +127,8 @@ class ForecastTests(unittest.TestCase):
         pd.testing.assert_frame_equal(fits[0][0], fits[1][0]); pd.testing.assert_series_equal(fits[0][1], fits[1][1])
         self.assertEqual(left['model']['predicted_units'], right['model']['predicted_units'])
         self.assertNotEqual(left['model']['actual_recorded_units'], right['model']['actual_recorded_units'])
+        for method in ['croston_sba', 'tsb']:
+            self.assertEqual(left[method]['predicted_units'], right[method]['predicted_units'])
         self.assertLess(left['windows'][0]['origin'], left['windows'][0]['start'])
 
     def test_horizon_checks_use_distinct_origins_and_positive_past_eligibility(self):

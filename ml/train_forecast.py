@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from xgboost import XGBRegressor
+from intermittent import daily_rate
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -229,8 +230,11 @@ def current_days_since_demand(history):
     return len(history)
 
 
-def row_for_next_date(code, history, next_date, days_from_start):
+def row_for_next_date(code, history, next_date, days_from_start, event_history=None):
     values = np.asarray(history, dtype=float)
+    # Expected quantities can enter quantity lags, but do not confirm a sale.
+    # Keep observed events separate throughout multi-step prediction.
+    events = np.asarray(event_history if event_history is not None else values > 0, dtype=float)
     row = {
         "product_code": code,
         "dow": next_date.dayofweek,
@@ -239,7 +243,7 @@ def row_for_next_date(code, history, next_date, days_from_start):
         "week": int(next_date.isocalendar().week),
         "is_weekend": int(next_date.dayofweek >= 5),
         "days_from_start": float(days_from_start),
-        "days_since_demand": float(current_days_since_demand(history)),
+        "days_since_demand": float(current_days_since_demand(events)),
     }
     for lag in LAGS:
         row[f"lag_{lag}"] = float(values[-lag]) if len(values) >= lag else 0.0
@@ -248,10 +252,9 @@ def row_for_next_date(code, history, next_date, days_from_start):
         row[f"roll_mean_{window}"] = float(np.mean(tail)) if len(tail) else 0.0
         row[f"roll_std_{window}"] = float(np.std(tail)) if len(tail) else 0.0
     for window in EVENT_WINDOWS:
-        tail = values[-window:] if len(values) >= window else values
-        events = (tail > 0).astype(float) if len(tail) else np.asarray([], dtype=float)
-        row[f"event_count_{window}"] = float(events.sum()) if len(events) else 0.0
-        row[f"event_rate_{window}"] = float(events.mean()) if len(events) else 0.0
+        tail = events[-window:]
+        row[f"event_count_{window}"] = float(tail.sum()) if len(tail) else 0.0
+        row[f"event_rate_{window}"] = float(tail.mean()) if len(tail) else 0.0
     return row
 
 
@@ -266,7 +269,8 @@ def forecast(model, cols, series_by_product, product_codes, horizon_days, as_of_
         gap_days = int((today - last_date).days)
         if gap_days < 0 or gap_days > MAX_FORECAST_GAP_DAYS:
             raise ValueError("Forecast origin is outside the supported history window. Review stale or future-dated sales.")
-        states[pid] = {"history": history, "next_date": last_date + timedelta(days=1)}
+        states[pid] = {"history": history, "events": (original.to_numpy() > 0).astype(float).tolist(),
+                       "next_date": last_date + timedelta(days=1)}
     if not states:
         return results
     # Predict all available parts together on each date. This retains the same
@@ -275,7 +279,7 @@ def forecast(model, cols, series_by_product, product_codes, horizon_days, as_of_
     for next_date in pd.date_range(first_day, today + timedelta(days=horizon_days)):
         ids = [pid for pid, state in states.items() if state["next_date"] <= next_date]
         rows = [row_for_next_date(product_codes[pid], states[pid]["history"], next_date,
-                                 len(states[pid]["history"])) for pid in ids]
+                                 len(states[pid]["history"]), states[pid]["events"]) for pid in ids]
         predictions = np.asarray(model.predict(pd.DataFrame(rows)[cols]), dtype=float)
         if predictions.shape != (len(ids),) or not np.isfinite(predictions).all():
             raise ValueError("The forecasting model returned invalid estimates. Check the model before ordering stock.")
@@ -290,6 +294,10 @@ def forecast(model, cols, series_by_product, product_codes, horizon_days, as_of_
                 })
             # Missing recent days are estimates, never written as actual sales.
             states[pid]["history"].append(yhat)
+            # Future sale events are unknown. Count only observed events; this
+            # is not evidence that future demand is zero (quantity lags above
+            # still carry estimates). A point estimate is not a simulated sale.
+            states[pid]["events"].append(0.0)
     return sorted(results, key=lambda row: (row["product_id"], row["forecast_date"]))
 
 
@@ -306,14 +314,14 @@ def total_errors(actual, predicted):
     }
 
 
-def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_factory=None):
+def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_factory=None, period_forecaster=None):
     """Refit at each historical origin; an entire future period stays unseen.
 
     This evaluates recorded quantities under the existing internal-zero coverage
     assumption. It cannot establish complete demand or deployment readiness.
     """
     end = max(series.index.max() for series in series_by_product.values())
-    windows, actual, predicted, baseline = [], [], [], []
+    windows, actual, predicted, baseline, sba, tsb = [], [], [], [], [], []
     for offset in range(max_origins, 0, -1):
         origin = end - timedelta(days=horizon_days * offset)
         period_end = origin + timedelta(days=horizon_days)
@@ -333,9 +341,12 @@ def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_facto
         if features["date"].nunique() < 10:
             continue
         cols = feature_columns()
-        model = (model_factory or make_model)()
-        model.fit(features[cols], features["y"])
-        estimates = forecast(model, cols, history, codes, horizon_days, origin)
+        if period_forecaster is not None:
+            estimates = period_forecaster(history, horizon_days, origin)
+        else:
+            model = (model_factory or make_model)()
+            model.fit(features[cols], features["y"])
+            estimates = forecast(model, cols, history, codes, horizon_days, origin)
         totals = {pid: 0.0 for pid in history}
         for row in estimates:
             totals[row["product_id"]] += row["predicted_quantity"]
@@ -344,25 +355,33 @@ def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_facto
                 (series_by_product[pid].index > origin) & (series_by_product[pid].index <= period_end)
             ].sum())
             simple = float(before.tail(28).mean()) * horizon_days
+            sba_units = round(daily_rate(before.to_numpy(), "croston_sba"), 4) * horizon_days
+            tsb_units = round(daily_rate(before.to_numpy(), "tsb"), 4) * horizon_days
             actual.append(target); predicted.append(totals[pid]); baseline.append(simple)
+            sba.append(sba_units); tsb.append(tsb_units)
             windows.append({"product_id": pid, "origin": origin.date().isoformat(),
                             "start": (origin + timedelta(days=1)).date().isoformat(),
                             "end": period_end.date().isoformat(),
                             "train_nonzero_days": int((before > 0).sum()),
                             "actual_recorded_units": round(target, 4),
                             "predicted_units": round(totals[pid], 4),
-                            "recent_average_units": round(simple, 4)})
-    result = {"evaluation": "rolling-origin recursive planning-period totals", "horizon_days": horizon_days,
+                            "recent_average_units": round(simple, 4),
+                            "croston_sba_units": round(sba_units, 4), "tsb_units": round(tsb_units, 4)})
+    result = {"evaluation": "rolling-origin recursive planning-period totals" if period_forecaster is None else "rolling-origin planning-period totals",
+              "horizon_days": horizon_days,
               "window_count": len(windows), "origin_count": len({row["origin"] for row in windows}),
               "tested_product_count": len({row["product_id"] for row in windows}),
               "nonzero_window_count": sum(value > 0 for value in actual),
               "windows": windows, "status": "insufficient_history",
+              "reference_parameters": {"croston_sba_alpha": 0.1, "tsb_size_alpha": 0.1, "tsb_probability_alpha": 0.01},
               "limitations": ["Only recorded quantities are evaluated; missing days and stockouts need coverage review.",
                               "Historical test results do not guarantee future sales or authorize automatic purchases."]}
     if not windows:
         return result
     result["model"] = total_errors(actual, predicted)
     result["recent_average"] = total_errors(actual, baseline)
+    result["croston_sba"] = total_errors(actual, sba)
+    result["tsb"] = total_errors(actual, tsb)
     result["zero_diagnostic"] = total_errors(actual, np.zeros(len(actual)))
     if sum(actual) == 0:
         result["status"] = "no_recorded_test_demand"
@@ -404,12 +423,13 @@ def main():
     if any(x.get("source") != "actual_sale" for x in observations):
         metrics["coverage_warning"] = "Imported history may omit sales. Days without records are not verified zero demand; validate coverage before using estimates to order stock."
     metrics["gap_handling"] = "Up to 31 unobserved days estimated recursively; stale products excluded."
+    metrics["recursive_event_handling"] = "Quantity lags include estimates; event counts and event age use observed sales only. Future event features are uncertain."
     metrics["horizon_validation"] = evaluate_horizon(series_by_product, horizon)
     model.save_model(args.model_out)
 
     source_dates = pd.to_datetime([x["occurred_on"] for x in observations if str(x.get("product_id")) in series_by_product], errors="coerce").dropna()
     output = {
-        "model_version": f"xgb-intermittent-{pd.Timestamp.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
+        "model_version": f"xgb-observed-events-{pd.Timestamp.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
         "metrics": metrics,
         "training_date_min": source_dates.min().date().isoformat() if len(source_dates) else None,
         "training_date_max": source_dates.max().date().isoformat() if len(source_dates) else None,

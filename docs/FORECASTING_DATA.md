@@ -1,5 +1,7 @@
 # Preparing the raw PartCast workbooks
 
+See [the latest sparse-demand correction and measured comparison](SPARSE_DEMAND_REVIEW.md). New recursive runs count only observed sale events, and full-period metrics also include Croston-SBA and TSB reference errors. The change did not lower WAPE on the reviewed extract.
+
 See [current measured prediction accuracy and defense/deployment readiness](PREDICTION_READINESS.md). The latest review reproduces poor historical performance and adds application-matching, whole-period evaluation; successful training is not evidence of accurate current-store predictions.
 
 For a reproducible development-only parameter comparison, see [model improvement review](MODEL_IMPROVEMENT_REVIEW.md) and `ml/compare_forecast_candidates.py`. The final period cannot choose a candidate, and an empty development holdout cannot produce an accuracy percentage. Only verified corrections should change real record values; original data is not edited to force a higher score.

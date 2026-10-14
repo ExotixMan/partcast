@@ -1,5 +1,7 @@
 # Model improvement review — 14 October 2026
 
+Later follow-up: [recursive sale-event features were corrected and intermittent references were evaluated](SPARSE_DEMAND_REVIEW.md). The same historical WAPE rose to 100.3285%; no accuracy improvement is claimed. The figures below describe the earlier implementation at commit `b21867266d7b0e39c1e0cded1520869e697a429a`.
+
 **No reliable high-accuracy model can be selected from the present extract. No actual sales records were changed and no new parts were introduced.** The existing forecasting parameters remain in production code; the current historical quantity error remains about 100% as documented in [prediction readiness](PREDICTION_READINESS.md).
 
 Improvement requires verified records and measured performance. Changing quantities/dates to obtain a favorable score would not measure the store's demand. Ambiguous STOCK/SI# allocations and invoices without an exact identified part remain in review rather than becoming invented training data.

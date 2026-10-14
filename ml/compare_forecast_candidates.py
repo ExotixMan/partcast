@@ -9,9 +9,11 @@ import hashlib
 import json
 from datetime import timedelta
 from pathlib import Path
+from functools import partial
 import pandas as pd
 from xgboost import XGBRegressor
 from train_forecast import build_product_series, evaluate_horizon, make_model
+from intermittent import forecast_intermittent
 
 MIN_POSITIVE_DEVELOPMENT_WINDOWS = 3
 
@@ -27,13 +29,23 @@ def candidate_models():
     }
 
 
-def development_comparison(series, horizon_days=30, factories=None):
-    factories = factories or candidate_models()
+def development_comparison(series, horizon_days=30, factories=None, period_forecasters=None):
+    if factories is None:
+        factories = candidate_models()
+        if period_forecasters is None:
+            period_forecasters = {name: partial(forecast_intermittent, method=name)
+                                  for name in ("croston_sba", "tsb")}
+    period_forecasters = period_forecasters or {}
+    if set(factories) & set(period_forecasters):
+        raise ValueError('Each candidate needs a unique name.')
     last = max(s.index.max() for s in series.values())
     cutoff = pd.Timestamp(last.to_pydatetime() - timedelta(days=horizon_days))
     development = {pid: s.loc[s.index <= cutoff] for pid, s in series.items() if s.index.min() <= cutoff}
     checks = {name: evaluate_horizon(development, horizon_days, model_factory=factory)
               for name, factory in factories.items()} if development else {}
+    if development:
+        checks.update({name: evaluate_horizon(development, horizon_days, period_forecaster=forecaster)
+                       for name, forecaster in period_forecasters.items()})
     positive_windows = min((r.get('nonzero_window_count', 0) for r in checks.values()), default=0)
     selected = None
     reason = 'Too few development periods contain recorded demand to select a model reliably.'
@@ -45,7 +57,8 @@ def development_comparison(series, horizon_days=30, factories=None):
             reason = 'Lowest development-period MAE; final-period labels did not affect selection.'
     # Never run every candidate on the final period to pick a favorable score.
     final = evaluate_horizon(series, horizon_days, max_origins=1,
-                             model_factory=factories[selected]) if selected else None
+                             model_factory=factories.get(selected),
+                             period_forecaster=period_forecasters.get(selected)) if selected else None
     return {
         'horizon_days': horizon_days,
         'development_ends': cutoff.date().isoformat(),

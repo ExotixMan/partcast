@@ -1,5 +1,7 @@
 # Prediction accuracy and defense readiness — 12 October 2026
 
+Latest follow-up: [the 14 October sparse-demand correction](SPARSE_DEMAND_REVIEW.md) separates expected quantities from observed sale events. On the identical 30-day periods, WAPE is now 100.3285%, compared with the earlier 100.0345% below. This does not establish improved accuracy or change the readiness conclusion. Earlier figures remain historical snapshots.
+
 Follow-up on 14 October: [three candidate model profiles were compared using development data](MODEL_IMPROVEMENT_REVIEW.md). There were no positive development periods, so no replacement or high-accuracy claim was selected. Actual records and identified parts remain unchanged; input and output integrity checks were strengthened. The results below remain the earlier measured historical diagnostics.
 
 **The forecasting software runs, but accurate current-store forecasting has not been established. The uploaded quantity history is insufficient for reliable deployment of prediction-based purchasing.** A capstone demonstration can show the working pipeline and honest evaluation; it must not claim a high accuracy percentage from these records.
