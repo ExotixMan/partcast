@@ -141,6 +141,17 @@ def prepare(payload):
             issue('sales', invoice['Source Sheet'], invoice['Source Row'], 'possible_day_month_swap', f"Original {original}; candidate {alternative}. Needs confirmation; not changed.")
 
     catalog = defaultdict(list)
+    # A blank primary ID can be resolved only by an exact existing SKU in Sub#
+    # independently corroborated by its linked invoice. Never forward-fill IDs.
+    known_snapshot_parts = set()
+    for sheet in payload['inventory']['sheets']:
+        if sheet['name'].lower() != 'inventory':
+            continue
+        header = header_index(sheet['rows'], {'quantity', 'brand'})
+        if header is not None:
+            for row in sheet['rows'][header + 1:]:
+                if len(row) > 4 and numeric(row[4]) is not None and numeric(row[4]) >= 0 and part_key(row[0]):
+                    known_snapshot_parts.add(part_key(row[0]))
     for sheet in payload['inventory']['sheets']:
         header = header_index(sheet['rows'], {'quantity', 'brand'})
         if header is None:
@@ -161,7 +172,7 @@ def prepare(payload):
             desc = text(row[2])
             record = {'Part Number': primary or None, 'Original Part Number': text(row[0]), 'Sub#': sub or None,
                       'Description': desc, 'Brand': text(row[3]), 'Quantity': qty, 'Source Sheet': sheet['name'], 'Source Row': row_number}
-            if not primary:
+            if not primary and is_snapshot:
                 issue('inventory', sheet['name'], row_number, 'missing_part_number', 'No automatic forward-fill: adjacent rows can be different products.')
             if qty < 0:
                 issue('inventory', sheet['name'], row_number, 'negative_quantity', 'Retained for review; excluded from sold demand.')
@@ -186,10 +197,26 @@ def prepare(payload):
             if status:
                 issue('inventory', sheet['name'], row_number, status, 'Purchase date preserved; sale date must come from linked invoice.')
             if not refs:
+                if not primary:
+                    issue('inventory', sheet['name'], row_number, 'missing_part_number', 'No automatic forward-fill: adjacent rows can be different products.')
                 continue
             counts['sales_linked_rows'] += 1
             reason = None
             matches = lookup.get(refs[0], []) if len(refs) == 1 else []
+            identity_source = 'primary_column'
+            if (not primary and sub in known_snapshot_parts and len(sub) >= 4 and re.search(r'\d', sub)
+                    and len(matches) == 1 and matches[0]['Date Status'] == 'valid'
+                    and matches[0]['Amount'] is not None and matches[0]['Amount'] > 0
+                    and qty > 0 and not stock_note
+                    and re.search(r'(?<![A-Z0-9./_-])' + re.escape(sub) + r'(?![A-Z0-9./_-])', part_key(matches[0]['Items']))):
+                primary = sub
+                record['Part Number'] = primary
+                identity_source = 'sub_exact_catalog_and_invoice_match'
+                counts['documented_identifier_recoveries'] += 1
+                issue('inventory', sheet['name'], row_number, 'documented_identifier_recovery',
+                      f'Blank primary ID resolved from exact Sub# {sub}; same existing SKU appears on {refs[0]} at sales {matches[0]["Source Sheet"]} row {matches[0]["Source Row"]}. Original cells unchanged.')
+            if not primary:
+                issue('inventory', sheet['name'], row_number, 'missing_part_number', 'No automatic forward-fill: adjacent rows can be different products.')
             if len(refs) != 1:
                 reason = 'multiple_sales_references'
             elif stock_note:
@@ -210,6 +237,7 @@ def prepare(payload):
                 reason = 'quantity_meaning_not_confirmed'
             candidate = {'Date': matches[0]['Date'] if len(matches) == 1 else None, 'Part Number': primary or None,
                          'Demand Quantity': qty, 'Description': desc, 'Brand': record['Brand'], 'Sales Reference': refs[0] if len(refs) == 1 else ' / '.join(refs),
+                         'Original Part Number': text(row[0]), 'Source Sub#': sub or None, 'Part Identification': identity_source,
                          'Source': 'confirmed_sales_linked_quantity', 'Inventory Sheet': sheet['name'], 'Inventory Row': row_number,
                          'Sales Sheet': matches[0]['Source Sheet'] if len(matches) == 1 else None,
                          'Sales Row': matches[0]['Source Row'] if len(matches) == 1 else None, 'Status': reason or 'accepted'}
@@ -316,10 +344,11 @@ def main():
     out = Path(args.out)
     summary, invoices, stock, purchases, candidates, daily, eligible, coverage, issues = prepare(payload)
     issue_fields = ['Workbook', 'Sheet', 'Source Row', 'Issue', 'Detail']
-    provenance_fields = ['Date', 'Part Number', 'Demand Quantity', 'Description', 'Brand', 'Sales Reference', 'Source', 'Inventory Sheet', 'Inventory Row', 'Sales Sheet', 'Sales Row', 'Status']
+    provenance_fields = ['Date', 'Part Number', 'Demand Quantity', 'Description', 'Brand', 'Sales Reference', 'Source', 'Inventory Sheet', 'Inventory Row', 'Sales Sheet', 'Sales Row', 'Status', 'Original Part Number', 'Source Sub#', 'Part Identification']
     daily_fields = ['Date', 'Part Number', 'Demand Quantity', 'Tier', 'Coverage']
     readme = [['Topic', 'Details'], ['Purpose', 'Actual quantities linked to sale invoices. Original workbooks are unchanged.'],
               ['Quantity meaning', 'User confirmed inventory Quantity on SI# notes is quantity sold; STOCK rows are purchases.'],
+              ['Identifier recovery', 'A blank primary ID is recoverable only when Sub# exactly matches an existing inventory SKU and the same SKU is explicitly present on its unique valid invoice. Original fields and row references remain in Quantity_Provenance.'],
               ['Dates', 'Sale date comes from invoice, not purchase date. Ambiguous, future and suspicious day/month dates require review.'],
               ['Coverage', summary['coverage_warning']],
               ['Inventory prerequisite', 'Training import matches current inventory part numbers. Historical-only parts need a reviewed product catalog.'],
@@ -334,7 +363,7 @@ def main():
             'Monthly_Coverage': rows_table(coverage, list(coverage[0]) if coverage else ['Month']), 'Review_Issues': rows_table(issues, issue_fields)},
         'Inventory_Cleaned.xlsx': {
             'Inventory': rows_table(stock, ['Part Number', 'Sub#', 'Description', 'Brand', 'Quantity', 'Unit', 'Location', 'U. cost', 'Price', 'Amount', 'Original Part Number', 'Source Sheet', 'Source Row']),
-            'PurchaseHistory': rows_table(purchases, ['Part Number', 'Sub#', 'Description', 'Brand', 'Quantity', 'Unit cost', 'Amount', 'Purchase Reference', 'Purchase Date', 'Supplier', 'Notes', 'Classification', 'Sales Reference', 'Purchase Date Status', 'Source Sheet', 'Source Row']),
+            'PurchaseHistory': rows_table(purchases, ['Part Number', 'Sub#', 'Description', 'Brand', 'Quantity', 'Unit cost', 'Amount', 'Purchase Reference', 'Purchase Date', 'Supplier', 'Notes', 'Classification', 'Sales Reference', 'Purchase Date Status', 'Source Sheet', 'Source Row', 'Original Part Number']),
             'DataQuality': rows_table([item for item in issues if item['Workbook'] == 'inventory'], issue_fields)},
         'Sales_Cleaned.xlsx': {'InvoiceLedger': rows_table(invoices, ['Reference', 'Date', 'Original Date', 'Amount', 'Items', 'Date Status', 'Source Sheet', 'Source Row']),
                               'Accepted_Quantity_Lines': rows_table([item for item in candidates if item['Status'] == 'accepted'], provenance_fields),

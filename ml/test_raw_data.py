@@ -34,6 +34,34 @@ class RawDataTests(unittest.TestCase):
         self.assertEqual(result[5], [])
         self.assertEqual(result[0]['review_issue_counts']['possible_duplicate_sale_line'], 2)
 
+    def test_blank_primary_id_is_recovered_only_from_catalog_and_invoice_evidence(self):
+        row = self.row(part=None); row[1] = 'ABC-123'
+        result = prepare(self.fixture([row]))
+        self.assertEqual(result[5][0]['Part Number'], 'ABC-123')
+        self.assertEqual(result[5][0]['Demand Quantity'], 2)
+        self.assertEqual(result[4][0]['Part Identification'], 'sub_exact_catalog_and_invoice_match')
+        self.assertEqual(result[4][0]['Original Part Number'], '')
+        self.assertEqual(result[4][0]['Inventory Row'], 2)
+        self.assertEqual(result[4][0]['Sales Row'], 2)
+        self.assertIsNone(row[0])
+
+    def test_sub_identifier_needs_an_exact_known_part_and_corresponding_invoice(self):
+        cases = [('UNIDENTIFIED-123', 'UNIDENTIFIED-123'), ('ABC-123', 'Different part'),
+                 ('ABC-123', 'ABC-1234'), ('ABC-123', 'XABC-123'),
+                 ('ABC-123', 'ABC-123/ALT'), ('ABC-123', 'ABC-123-4')]
+        for sub, description in cases:
+            row = self.row(part=None); row[1] = sub
+            with self.subTest(sub=sub, description=description):
+                result = prepare(self.fixture([row], [['123', '2026-01-19', 'omit', 500, description]]))
+                self.assertEqual(result[5], [])
+
+    def test_identifier_recovery_does_not_override_date_or_quantity_review(self):
+        row = self.row(part=None); row[1] = 'ABC-123'
+        for day, description in [('5/6/2026', 'ABC-123'), ('2026-01-19', 'ABC-123 3 PCS')]:
+            with self.subTest(day=day, description=description):
+                result = prepare(self.fixture([row], [['123', day, 'omit', 500, description]]))
+                self.assertEqual(result[5], [])
+
     def test_date_ambiguity_and_future_dates_are_not_repaired(self):
         self.assertEqual(parse_date('5/6/2026', date(2026, 10, 9)), ('2026-05-06', 'ambiguous_text_date'))
         self.assertEqual(parse_date('2026-12-05', date(2026, 10, 9)), ('2026-12-05', 'future_date'))
