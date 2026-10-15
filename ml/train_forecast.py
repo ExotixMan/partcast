@@ -60,7 +60,7 @@ def safe_wape(y_true, y_pred):
     return float(np.abs(y_true - y_pred).sum() / denom * 100)
 
 
-def build_product_series(observations):
+def daily_demand(observations):
     df = pd.DataFrame(observations)
     if df.empty:
         raise ValueError("No demand observations were provided.")
@@ -80,7 +80,11 @@ def build_product_series(observations):
     if not np.isfinite(df["quantity"].to_numpy(dtype=float)).all() or (df["quantity"] < 0).any():
         raise ValueError("Sold quantities must be finite non-negative numbers. Review invalid quantities before training.")
     df = df[df["quantity"] > 0]
-    daily = df.groupby(["product_id", "occurred_on"], as_index=False)["quantity"].sum()
+    return df.groupby(["product_id", "occurred_on"], as_index=False)["quantity"].sum()
+
+
+def build_product_series(observations):
+    daily = daily_demand(observations)
 
     series = {}
     skipped = []
@@ -176,8 +180,7 @@ def make_model():
     )
 
 
-def train_model(feature_df, positive_weight=1.0, refit=True):
-    cols = feature_columns()
+def chronological_split(feature_df):
     unique_dates = np.array(sorted(feature_df["date"].dt.normalize().unique()))
     if len(unique_dates) < 10:
         raise ValueError("Not enough distinct dates for chronological forecast evaluation.")
@@ -187,6 +190,73 @@ def train_model(feature_df, positive_weight=1.0, refit=True):
     test = feature_df[feature_df["date"] >= split_date]
     if len(train) < 20 or len(test) < 5:
         raise ValueError("Not enough training and test rows for chronological evaluation.")
+    return train, test
+
+
+def assess_readiness(observations, as_of_date):
+    """Use the training engine's own gates without fitting or changing any data."""
+    origin = pd.Timestamp(as_of_date).normalize()
+    report = {
+        "ready": False, "as_of_date": origin.date().isoformat(),
+        "record_count": len(observations), "part_count": 0,
+        "eligible_part_count": 0, "current_part_count": 0,
+        "latest_sale_date": None, "feature_rows": 0, "products": [],
+        "requirements": {"sale_days": MIN_NONZERO_DAYS, "calendar_days": MIN_SPAN_DAYS,
+                         "maximum_age_days": MAX_FORECAST_GAP_DAYS, "feature_rows": 30},
+    }
+    if not observations:
+        return {**report, "status": "no_observations", "message": "No actual sales quantities are available. Import verified dated quantities or record sales in Sell or receive."}
+    try:
+        daily = daily_demand(observations)
+        # Validate all dates, including explicit zero rows, as main() does.
+        if pd.to_datetime([row["occurred_on"] for row in observations]).max().normalize() > origin:
+            raise ValueError("Demand contains future dates. Review the invoice dates before training.")
+    except ValueError as error:
+        return {**report, "status": "invalid_observations", "message": str(error)}
+    if len(daily):
+        report["latest_sale_date"] = daily["occurred_on"].max().date().isoformat()
+    for product_id, group in daily.groupby("product_id"):
+        first, last = group["occurred_on"].min(), group["occurred_on"].max()
+        span, sale_days = int((last - first).days) + 1, len(group)
+        age = int((origin - last.normalize()).days)
+        reasons = []
+        if sale_days < MIN_NONZERO_DAYS:
+            reasons.append("too_few_sale_days")
+        if span < MIN_SPAN_DAYS:
+            reasons.append("short_history")
+        history_eligible = not reasons
+        if age > MAX_FORECAST_GAP_DAYS:
+            reasons.append("old_history")
+        report["eligible_part_count"] += int(history_eligible)
+        report["current_part_count"] += int(not reasons)
+        report["products"].append({
+            "product_id": str(product_id), "sale_days": sale_days, "calendar_days": span,
+            "first_sale_date": first.date().isoformat(), "last_sale_date": last.date().isoformat(),
+            "age_days": age, "reasons": reasons,
+        })
+    report["part_count"] = len(report["products"])
+    if not report["eligible_part_count"]:
+        return {**report, "status": "no_eligible_parts", "message": "No part has at least 5 distinct sale days across 35 calendar days. Import complete actual sales history for matching parts; adding unrelated items or duplicate same-day rows does not meet this requirement."}
+    if not report["current_part_count"]:
+        return {**report, "status": "stale_history", "message": "Parts with enough history have no usable sale within 31 days. Import recent actual sales; missing dates are not confirmed zero-sale days."}
+    series, _ = build_product_series(observations)
+    series, _ = select_fresh_series(series, origin)
+    try:
+        features, _ = make_features(series)
+        report["feature_rows"] = len(features)
+    except ValueError as error:
+        return {**report, "status": "insufficient_feature_rows", "message": str(error)}
+    try:
+        train, test = chronological_split(features)
+    except ValueError as error:
+        return {**report, "status": "insufficient_evaluation_rows", "message": str(error)}
+    return {**report, "ready": True, "status": "ready", "train_rows": len(train), "test_rows": len(test),
+            "message": "Sales history meets the engine's minimum training requirements. This does not establish forecast accuracy or complete sales coverage."}
+
+
+def train_model(feature_df, positive_weight=1.0, refit=True):
+    cols = feature_columns()
+    train, test = chronological_split(feature_df)
     model = make_model()
     # Weighting positive days 4x inflated expected quantities. Equal weights fit
     # the recorded distribution; stockout costs belong in replenishment policy.
@@ -398,7 +468,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--model-out", required=True)
+    parser.add_argument("--model-out")
+    parser.add_argument("--check-data", action="store_true")
     args = parser.parse_args()
 
     payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
@@ -406,6 +477,11 @@ def main():
     horizon = min(90, max(7, horizon))
     observations = payload.get("observations", [])
     origin = pd.Timestamp(payload.get("asOfDate", pd.Timestamp.today().date().isoformat())).normalize()
+    if args.check_data:
+        Path(args.output).write_text(json.dumps(assess_readiness(observations, origin)), encoding="utf-8")
+        return
+    if not args.model_out:
+        parser.error("--model-out is required when training")
     raw_dates = pd.to_datetime([x.get("occurred_on") for x in observations], errors="coerce").dropna()
     if len(raw_dates) and raw_dates.max().normalize() > origin:
         raise ValueError("Demand contains future dates. Review the invoice dates before training.")

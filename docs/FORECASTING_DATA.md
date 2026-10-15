@@ -2,6 +2,8 @@
 
 For the new explicitly simulated capstone workbook, use the separate [website XGBoost demo and measured comparison](DEMO_WORKBOOK_REVIEW.md). Its results are not actual-store accuracy. Regular forecasting imports reject declared simulated demand before changing store history.
 
+For the "not enough usable observations" message, see [the per-part readiness checks and owner-labelled workbook review](FORECAST_READINESS.md). The website now checks the Python engine's actual eligibility rules instead of rejecting every dataset with fewer than 30 input records.
+
 See [the latest sparse-demand correction and measured comparison](SPARSE_DEMAND_REVIEW.md). New recursive runs count only observed sale events, and full-period metrics also include Croston-SBA and TSB reference errors. The change did not lower WAPE on the reviewed extract.
 
 See [current measured prediction accuracy and defense/deployment readiness](PREDICTION_READINESS.md). The latest review reproduces poor historical performance and adds application-matching, whole-period evaluation; successful training is not evidence of accurate current-store predictions.

@@ -4,10 +4,47 @@ import numpy as np
 import pandas as pd
 from train_forecast import add_days_since_demand, make_features, train_model, build_product_series, select_fresh_series, forecast, feature_columns
 from train_forecast import evaluate_horizon, total_errors
-from train_forecast import row_for_next_date
+from train_forecast import row_for_next_date, assess_readiness
 from unittest.mock import patch
 
 class ForecastTests(unittest.TestCase):
+    def test_readiness_uses_sale_days_span_and_recency_without_fitting(self):
+        origin = pd.Timestamp('2026-10-15')
+        rows = [{'product_id':'test-part','occurred_on':(origin-pd.Timedelta(days=offset)).date().isoformat(),'quantity':1}
+                for offset in [70,50,30,10,0]]
+        with patch('train_forecast.make_model', side_effect=AssertionError('Readiness must not fit')):
+            report = assess_readiness(rows, origin)
+        self.assertTrue(report['ready'])  # Five observed rows can produce enough lag-feature rows.
+        self.assertEqual(report['record_count'],5)
+        self.assertEqual(report['products'][0]['sale_days'],5)
+        self.assertEqual(report['feature_rows'],43)
+        self.assertGreaterEqual(report['train_rows'],20)
+        self.assertGreaterEqual(report['test_rows'],5)
+        repeated = assess_readiness([rows[-1]]*40, origin)
+        self.assertFalse(repeated['ready'])
+        self.assertEqual(repeated['products'][0]['sale_days'],1)
+        self.assertIn('too_few_sale_days',repeated['products'][0]['reasons'])
+        old = [{**row,'occurred_on':(pd.Timestamp(row['occurred_on'])-pd.Timedelta(days=90)).date().isoformat()} for row in rows]
+        report = assess_readiness(old+[{'product_id':'another-part','occurred_on':'2026-10-15','quantity':1}],origin)
+        self.assertEqual(report['status'],'stale_history')  # An unrelated new sale cannot refresh the old part.
+        self.assertEqual(report['eligible_part_count'],1)
+        self.assertEqual(report['current_part_count'],0)
+
+    def test_readiness_preserves_feature_evaluation_and_invalid_data_gates(self):
+        origin='2026-10-15'
+        self.assertEqual(assess_readiness([],origin)['status'],'no_observations')
+        short=[{'product_id':'test-part','occurred_on':(pd.Timestamp(origin)-pd.Timedelta(days=offset)).date().isoformat(),'quantity':1}
+               for offset in [34,25,15,7,0]]
+        self.assertEqual(assess_readiness(short,origin)['status'],'insufficient_feature_rows')
+        same_dates=[{**row,'product_id':f'test-part-{part}'} for part in range(5) for row in short]
+        # Enough pooled feature rows still cannot replace distinct evaluation dates.
+        self.assertEqual(assess_readiness(same_dates,origin)['status'],'insufficient_evaluation_rows')
+        for field,value in [('quantity',True),('quantity',-1),('occurred_on','bad-date'),('occurred_on','2026-10-16')]:
+            with self.subTest(field=field,value=value):
+                report=assess_readiness([{**short[0],field:value}],origin)
+                self.assertFalse(report['ready'])
+                self.assertEqual(report['status'],'invalid_observations')
+
     def test_features_cannot_see_current_or_future_demand(self):
         base = pd.Series([1.0 if i % 3 == 0 else 0.0 for i in range(120)], index=pd.date_range('2025-01-01',periods=120))
         changed = base.copy()

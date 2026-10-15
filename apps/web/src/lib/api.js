@@ -9,7 +9,7 @@ export const apiConnectionIssue = connection.error || null;
 let currentSession = null;
 let syncing = null;
 export function setApiSession(session) { currentSession = session; }
-const cacheable = path => !path.startsWith('/api/forecast/demo') && /^\/api\/(me|dashboard|products(?:\?|\/|$)|suppliers$|reorder|forecast\/|data-quality|notifications$|debts(?:\/|$)|barcode\/)/.test(path);
+const cacheable = path => !/^\/api\/forecast\/(demo|readiness)/.test(path) && /^\/api\/(me|dashboard|products(?:\?|\/|$)|suppliers$|reorder|forecast\/|data-quality|notifications$|debts(?:\/|$)|barcode\/)/.test(path);
 export class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
 
 function checkConnection() {
@@ -41,6 +41,7 @@ async function networkRequest(path, options = {}) {
     const body = json ? await res.json().catch(() => ({})) : {};
     const error = new ApiError(body.error || `Request failed (${res.status})`, res.status);
     error.code = body.code;
+    error.readiness = body.readiness;
     if (res.status === 428) window.dispatchEvent(new Event('partcast:verify-email'));
     throw error;
   }

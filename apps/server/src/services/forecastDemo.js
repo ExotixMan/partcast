@@ -12,7 +12,7 @@ const script = fileURLToPath(new URL('../../../../ml/evaluate_demo_workbook.py',
 const bad = message => Object.assign(new Error(message), {status:422, safe:true});
 const scalar = value => value && typeof value === 'object' && 'result' in value ? value.result : value;
 const label = value => String(scalar(value) ?? '').trim();
-const marker = value => /(?:synthetic|simulat(?:ed|ion)|(?:^|[_\s-])demo(?:$|[_\s-]))/i.test(label(value));
+const marker = value => /(?:synthetic|simulat(?:ed|ion)|(?:^|[_\s-])(?:demo|modeled|modelled|owner[_\s-]informed[_\s-]model)(?:$|[_\s-]))/i.test(label(value));
 
 export function containsSimulatedDemand(workbook) {
   for (const sheet of workbook.worksheets) {
@@ -55,8 +55,8 @@ export async function demoWorkbookPayload(buffer, filename) {
       const date = rawDate instanceof Date ? rawDate.toISOString().slice(0,10) : typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : null;
       if (!date || !excelDate(date)) throw bad('Use unambiguous YYYY-MM-DD demo dates.');
       const tier = label(raw('tier')).toLowerCase();
-      if (!['synthetic_simulated','simulated_demo'].includes(tier)) throw bad('Keep actual sales separate. Every row in a demo split must be explicitly labelled synthetic_simulated or simulated_demo.');
-      splits[name].push({date, part_number:label(raw('part number')), quantity, tier});
+      if (!['synthetic_simulated','simulated_demo','owner_informed_model'].includes(tier)) throw bad('Keep actual sales separate. Every row in a demo split must be explicitly labelled synthetic_simulated, simulated_demo or owner_informed_model.');
+      splits[name].push({date, part_number:label(raw('part number')), quantity, tier:tier==='owner_informed_model'?'simulated_demo':tier, source_tier:tier});
     }
   }
   return {dataset_type:'SIMULATED_DEMO', filename:path.basename(filename), source_sha256:crypto.createHash('sha256').update(buffer).digest('hex'), splits};

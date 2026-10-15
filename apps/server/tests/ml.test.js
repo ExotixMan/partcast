@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 Object.assign(process.env,{SUPABASE_URL:'http://127.0.0.1:9',SUPABASE_ANON_KEY:'test-only-public-key-12345',SUPABASE_SERVICE_ROLE_KEY:'test-only-service-key-12345',SETUP_SECRET:'test-only-setup-secret',CRON_SECRET:'test-only-cron-secret-long-enough',IP_HASH_SECRET:'test-only-hash-secret',PYTHON_BIN:'C:/Users/Admin/Downloads/PartCast_NPG_Deployable/partcast/.venv/Scripts/python.exe',ML_SCRIPT_PATH:'C:/OldComputer/partcast/ml/train_forecast.py'});
-const {runForecastPython,resolveForecastRuntime,forecastingStatus,validateForecastResult}=await import('../src/utils/ml.js');
+const {runForecastPython,resolveForecastRuntime,forecastingStatus,validateForecastResult,checkForecastReadiness}=await import('../src/utils/ml.js');
 const asOfDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const observations=[];
 for(const part of ['synthetic-brake','synthetic-oil'])for(let i=0;i<120;i++){const date=new Date(asOfDate+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-119+i);observations.push({product_id:part,occurred_on:date.toISOString().slice(0,10),quantity:i%3===0?i%5+1:0,source:'actual_sale'});}
@@ -22,6 +22,13 @@ test('old or insufficient sales data returns an actionable validation error with
  await assert.rejects(runForecastPython({observations:[observations[0]],asOfDate,horizonDays:7}),e=>e.status===422&&/enough usable history/.test(e.message));
  const old=observations.map(o=>({...o,occurred_on:'2020'+o.occurred_on.slice(4)}));
  await assert.rejects(runForecastPython({observations:old,asOfDate,horizonDays:7}),e=>e.status===422&&/stale sales history/.test(e.message));
+});
+test('the Python readiness CLI distinguishes sparse, stale and trainable observed rows without a model artifact',async()=>{
+ const sparse=await checkForecastReadiness({observations:[observations[0]],asOfDate});
+ assert.equal(sparse.ready,false);assert.equal(sparse.status,'no_eligible_parts');assert.equal(sparse.products[0].sale_days,1);
+ const enough=[70,50,30,10,0].map(offset=>{const date=new Date(asOfDate+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-offset);return {product_id:'test-part',occurred_on:date.toISOString().slice(0,10),quantity:1};});
+ const ready=await checkForecastReadiness({observations:enough,asOfDate});
+ assert.equal(ready.ready,true);assert.equal(ready.record_count,5);assert.equal(ready.current_part_count,1);
 });
 
 test('forecast results cannot invent parts, repeat dates, shorten the horizon or claim false counts',()=>{

@@ -14,6 +14,7 @@ async function fixture(context,{role='owner'}={}){
  if(req.method()==='OPTIONS'){await route.fulfill({status:204,headers:{...headers,'access-control-allow-methods':'GET,POST,PATCH,DELETE,OPTIONS','access-control-allow-headers':'authorization,content-type'}});return;}
  let body={data:[]};
  if(url.pathname==='/api/me')body={user:{id:userId,full_name:'Store Staff',role,active:true,session_id:sid,verification_expires_at:'2099-01-01T00:00:00Z'}};
+ else if(url.pathname==='/api/forecast/readiness')body={ready:false,status:'no_observations',record_count:0,current_part_count:0,latest_sale_date:null,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}};
  else if(url.pathname==='/api/offline-snapshot')body={products,suppliers:[{id:supplier,name:'Parts supplier'}]};
  else if(url.pathname==='/api/products'&&req.method()==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category');const data=products.filter(p=>`${p.description} ${p.barcode} ${p.search_aliases.join(' ')}`.toLowerCase().includes(q)&&(!category||category==='all'||p.category===category));body={data,count:data.length};}
  else if(url.pathname==='/api/products'&&req.method()==='POST'){const payload=req.postDataJSON();productWrites.push(payload);body={product:{...payload,id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'}};}
@@ -117,6 +118,37 @@ test('imports guide a simulated workbook to an open demo and treat timeouts as u
  expect(uploads).toBe(2);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+test('forecast history checks explain missing sales and enable updates only after usable history is verified',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:390,height:844});
+ let ready=false;const posted=[];
+ await context.route('http://localhost:10000/api/forecast/readiness**',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  const lastSale=ready?'2026-10-15':'2024-05-17';
+  await route.fulfill({json:{ready,status:ready?'ready':'stale_history',record_count:23,current_part_count:ready?1:0,latest_sale_date:lastSale,requirements:{sale_days:5,calendar_days:35,maximum_age_days:31},products:[{product_id:p1,part_number:'BP-001',description:'Toyota brake pad',sale_days:7,calendar_days:1537,last_sale_date:lastSale,reasons:ready?[]:['old_history']}]},headers:{'access-control-allow-origin':'*'}});
+ });
+ await context.route('http://localhost:10000/api/forecast/train',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  posted.push(route.request().postDataJSON());await route.fulfill({json:{forecastCount:7},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/forecast');
+ await expect(page.getByRole('heading',{name:'Can these sales train XGBoost?'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
+ await expect(page.getByText('Recent sales are missing for parts with enough history.')).toBeVisible();
+ await page.getByText('See what each part is missing',{exact:true}).click();
+ await expect(page.getByText('Latest sale is more than 31 days old',{exact:true})).toBeVisible();
+ await expect(page.getByRole('link',{name:'Import actual sales',exact:true})).toHaveAttribute('href','/imports');
+ await page.getByLabel('Website language').selectOption('fil');
+ await expect(page.getByRole('heading',{name:'Sapat ba ang mga benta para sanayin ang XGBoost?'})).toBeVisible();
+ await expect(page.getByText('Mahigit 31 araw na ang huling benta',{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.getByLabel('Wika ng website').selectOption('en');
+ ready=true;await page.getByRole('button',{name:'Check sales history again',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'Update demand estimate',exact:true}).click();
+ await expect.poll(()=>posted.length).toBe(1);expect(posted[0]).toEqual({horizonDays:30,includeProxy:false});
+ await expect(page.getByText(/Demand estimate updated/)).toBeVisible();
+});
+
 test('simulated XGBoost demo shows its own metrics and leaves real forecasts unchanged',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:390,height:844});
  const calls=[];

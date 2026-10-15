@@ -10,6 +10,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import Toast from '../components/Toast.jsx';
 import ForecastAccuracy from '../components/ForecastAccuracy.jsx';
 import ForecastDemo from '../components/ForecastDemo.jsx';
+import ForecastReadiness from '../components/ForecastReadiness.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 const units = value => Number(value || 0).toLocaleString(undefined, {
   maximumFractionDigits: 1
@@ -45,6 +46,8 @@ export default function ForecastPage() {
   const [horizon, setHorizon] = useState(30);
   const [view, setView] = useState('chart');
   const [toast, setToast] = useState(null);
+  const [readiness,setReadiness] = useState(null);
+  const [readinessRefresh,setReadinessRefresh] = useState(0);
   async function load() {
     setLoading(true);
     setLoadError('');
@@ -102,7 +105,9 @@ export default function ForecastPage() {
         message: `Demand estimate updated. ${Number(result.forecastCount || 0).toLocaleString()} daily estimates are ready to review.`
       });
       await load();
+      setReadinessRefresh(value=>value+1);
     } catch (error) {
+      if(error.code==='FORECAST_DATA_NOT_READY')setReadinessRefresh(value=>value+1);
       setToast({
         type: 'error',
         message: error.message
@@ -123,9 +128,11 @@ export default function ForecastPage() {
     <section className="panel p-5 sm:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700"><CalendarDays size={16} />{t("Sales estimates")}</div><h2 className="text-lg font-bold text-slate-950">{t("A guide for your next stock order")}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t("PartCast uses recorded sales and imported sales history to estimate demand. Check your shelves and recent sales before ordering. Estimates are not guaranteed sales.")}</p><p className="mt-3 text-sm text-slate-500">{t("Last completed update: ")}<span className="font-medium text-slate-700">{time(latest?.completed_at || latest?.started_at)}</span></p></div>
-        {canTrain ? <div className="w-full rounded-xl border border-slate-200 bg-slate-50 p-4 lg:max-w-sm"><label className="label" htmlFor="planning-days">{t("How far ahead do you want to plan?")}</label><select id="planning-days" className="input" value={horizon} onChange={event => setHorizon(event.target.value)} disabled={training}><option value="14">{t("Next 14 days")}</option><option value="30">{t("Next 30 days")}</option><option value="60">{t("Next 60 days")}</option><option value="90">{t("Next 90 days")}</option></select><button className="btn-primary mt-3 w-full" disabled={training || Boolean(loadError) || runtime?.ready===false} onClick={train}><RefreshCw size={17} className={training ? 'animate-spin' : ''} />{training ? t('Updating estimates…') : t('Update demand estimate')}</button><p className="mt-2 text-xs leading-5 text-slate-500">{t("Uses the sales records already saved in PartCast. This can take a moment.")}</p></div> : <div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 lg:max-w-xs">{t("Your store manager can update these estimates. You can review the available results below.")}</div>}
+        {canTrain ? <div className="w-full rounded-xl border border-slate-200 bg-slate-50 p-4 lg:max-w-sm"><label className="label" htmlFor="planning-days">{t("How far ahead do you want to plan?")}</label><select id="planning-days" className="input" value={horizon} onChange={event => setHorizon(event.target.value)} disabled={training}><option value="14">{t("Next 14 days")}</option><option value="30">{t("Next 30 days")}</option><option value="60">{t("Next 60 days")}</option><option value="90">{t("Next 90 days")}</option></select><button className="btn-primary mt-3 w-full" disabled={training || Boolean(loadError) || runtime?.ready===false || readiness?.ready!==true} onClick={train}><RefreshCw size={17} className={training ? 'animate-spin' : ''} />{training ? t('Updating estimates…') : t('Update demand estimate')}</button><p className="mt-2 text-xs leading-5 text-slate-500">{readiness?.ready===false?t('Review the sales history checks below before updating.'):t("Uses the sales records already saved in PartCast. This can take a moment.")}</p></div> : <div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 lg:max-w-xs">{t("Your store manager can update these estimates. You can review the available results below.")}</div>}
       </div>
     </section>
+
+    {canTrain&&<ForecastReadiness includeProxy={includeProxy} refreshKey={readinessRefresh} onChange={setReadiness} />}
 
     <div className="mt-5 grid gap-3 sm:grid-cols-3">
       <div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Parts with current estimates")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{forecastProducts.length.toLocaleString()}</p><p className="mt-1 text-sm text-slate-500">{t("From the latest completed update")}</p></div>

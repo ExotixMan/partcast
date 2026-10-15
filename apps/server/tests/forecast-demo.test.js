@@ -51,6 +51,21 @@ test('simulation detection scans beyond the scoring sample and accepts unmarked 
   assert.equal(containsSimulatedDemand(actual),false);
 });
 
+test('owner-informed modeled labels remain separate from actual quantities after workbook relabeling',async()=>{
+ const book=workbook('owner_informed_model');
+ for(const sheet of book.worksheets)for(const row of [2,3])sheet.getCell(`E${row}`).value='MODELED_DAILY_HISTORY';
+ assert.equal(containsSimulatedDemand(book),true);
+ const bytes=Buffer.from(await book.xlsx.writeBuffer());
+ const payload=await demoWorkbookPayload(bytes,'owner-labels.xlsx');
+ assert.equal(payload.dataset_type,'SIMULATED_DEMO');
+ assert.equal(payload.splits.train[0].tier,'simulated_demo');
+ assert.equal(payload.splits.train[0].source_tier,'owner_informed_model');
+ assert.equal(payload.splits.train[0].quantity,0);
+ const original=adminDb.from;let calls=0;adminDb.from=()=>{calls++;throw new Error('No data writes');};
+ try{await assert.rejects(importDemandTrainingWorkbook(bytes,'owner-labels.xlsx','test-user'),e=>e.code==='SIMULATED_DEMAND');assert.equal(calls,0);}
+ finally{adminDb.from=original;}
+});
+
 test('automatic actual-data imports parse the workbook once; declared simulations never reach database calls',async()=>{
   const book=new ExcelJS.Workbook();book.addWorksheet('Daily_B_Usable').addRows([['Date','Part Number','Demand Quantity','Tier'],['2026-01-01','00123',2,'actual_quantity']]);
   const bytes=Buffer.from(await book.xlsx.writeBuffer()),prototype=Object.getPrototypeOf(book.xlsx),originalLoad=prototype.load,originalFrom=adminDb.from;

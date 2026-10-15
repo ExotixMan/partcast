@@ -40,6 +40,18 @@ export async function forecastingStatus() {
   try{const runtime=await resolveForecastRuntime();return {ready:true,message:'The forecasting engine is ready.',runtime_versions:runtime.versions};}
   catch(e){return {ready:false,message:e.message};}
 }
+export async function checkForecastReadiness(payload) {
+  const runtime = await resolveForecastRuntime();
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'partcast-readiness-'));
+  try {
+    const input = path.join(tmp, 'input.json'), output = path.join(tmp, 'readiness.json');
+    await writeFile(input, JSON.stringify(payload), {mode:0o600});
+    await processOutput(runtime.python, [runtime.script, '--input', input, '--output', output, '--check-data'], 30000);
+    return JSON.parse(await readFile(output, 'utf8'));
+  } finally {
+    await rm(tmp, {recursive:true, force:true});
+  }
+}
 export function validateForecastResult(result,payload){
   const invalid=()=>{throw Object.assign(new Error('The forecasting engine returned invalid estimates. Ask the Super Admin to check the forecasting installation.'),{status:503,safe:true});};
   const horizon=Math.min(90,Math.max(7,Math.trunc(Number(payload.horizonDays??30))));

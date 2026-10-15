@@ -9,7 +9,7 @@ import { audit } from '../utils/audit.js';
 import { fetchAll, cleanText } from '../utils/helpers.js';
 import { importInventoryWorkbook, importLegacySalesWorkbook, importDemandTrainingWorkbook, importSpreadsheetAuto, isSupportedSpreadsheetName } from '../services/importers.js';
 import { buildReportWorkbook } from '../utils/excel.js';
-import { runForecastPython,forecastingStatus } from '../utils/ml.js';
+import { runForecastPython,forecastingStatus,checkForecastReadiness } from '../utils/ml.js';
 import { createDemoJobs } from '../services/forecastDemo.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
 
@@ -355,20 +355,30 @@ router.get('/forecast/demo/jobs/:id', rolesAdmin, (req,res,next)=>{
   catch(error) {next(error);}
 });
 
+async function demandForForecast(includeProxy) {
+  return fetchAll(() => adminDb.from('demand_observations')
+    .select('product_id,occurred_on,quantity,source,product:products(part_number,description)')
+    .in('source', includeProxy ? ['actual_sale','imported_training_data','legacy_transaction_proxy'] : ['actual_sale','imported_training_data'])
+    .order('occurred_on'));
+}
+router.get('/forecast/readiness', rolesAdmin, async (req,res,next) => {
+  try {
+    const includeProxy = z.enum(['true','false']).default('false').parse(req.query.includeProxy) === 'true';
+    const observations = await demandForForecast(includeProxy);
+    const report = await checkForecastReadiness({observations,asOfDate:storeDay()});
+    const products = new Map(observations.map(row=>[row.product_id,row.product]));
+    res.json({...report, products:report.products.map(row=>({...row,...products.get(row.product_id)}))});
+  } catch(error) {next(error);}
+});
+
 router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
   try {
     const body = z.object({ horizonDays:z.coerce.number().int().min(7).max(90).default(30), includeProxy:z.boolean().default(false) }).parse(req.body || {});
     const runId = crypto.randomUUID();
-    const observations = await fetchAll(() => {
-      let q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source');
-      q = body.includeProxy
-        ? q.in('source',['actual_sale','imported_training_data','legacy_transaction_proxy'])
-        : q.in('source',['actual_sale','imported_training_data']);
-      return q.order('occurred_on');
-    });
-    if (observations.length < 30) return res.status(422).json({ error: 'Not enough usable demand observations for XGBoost. Import the training-ready spreadsheet or record more actual sales.' });
-
-    const runtime=await forecastingStatus();if(!runtime.ready)return res.status(503).json({error:runtime.message});
+    const observations = await demandForForecast(body.includeProxy);
+    const asOfDate = storeDay();
+    const readiness = await checkForecastReadiness({observations,asOfDate});
+    if (!readiness.ready) return res.status(422).json({error:readiness.message,code:'FORECAST_DATA_NOT_READY',readiness});
     const productIds = [...new Set(observations.map(o=>o.product_id))];
     const { data: created, error: runError } = await adminDb.from('forecast_runs').insert({
       id:runId,status:'running',horizon_days:body.horizonDays,include_proxy:body.includeProxy,
@@ -377,7 +387,6 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
     if (runError) throw runError;
 
     try {
-      const asOfDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       const { result, modelBuffer } = await runForecastPython({ observations, horizonDays:body.horizonDays,asOfDate });
       const modelPath = `models/${runId}.json`;
       const upload = await adminDb.storage.from('partcast-models').upload(modelPath, modelBuffer, { contentType:'application/json', upsert:true });
