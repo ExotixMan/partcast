@@ -6,7 +6,7 @@ const asOfDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(
 const observations=[];
 for(const part of ['synthetic-brake','synthetic-oil'])for(let i=0;i<120;i++){const date=new Date(asOfDate+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-119+i);observations.push({product_id:part,occurred_on:date.toISOString().slice(0,10),quantity:i%3===0?i%5+1:0,source:'actual_sale'});}
 test('real XGBoost training survives a copied Windows Python path and produces future estimates plus an artifact',async()=>{
- const runtime=await resolveForecastRuntime();assert.notEqual(runtime.python,process.env.PYTHON_BIN);assert.equal((await forecastingStatus()).ready,true);
+ const runtime=await resolveForecastRuntime();assert.notEqual(runtime.python,process.env.PYTHON_BIN);const status=await forecastingStatus();assert.equal(status.ready,true);assert.equal(typeof status.runtime_versions.xgboost,'string');assert.equal(status.runtime_versions.python,runtime.versions.python);
  const {result,modelBuffer}=await runForecastPython({observations,asOfDate,horizonDays:7});
  assert.equal(result.forecasts.length,14);assert.equal(new Set(result.forecasts.map(f=>f.product_id)).size,2);
  assert(result.forecasts.every(f=>f.forecast_date>asOfDate&&Number.isFinite(f.predicted_quantity)&&f.predicted_quantity>=0));

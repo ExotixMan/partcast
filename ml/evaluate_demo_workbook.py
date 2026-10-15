@@ -2,10 +2,12 @@
 import argparse
 from datetime import timedelta
 import json
+import platform
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import xgboost
 
 from direct_period_demo import forecast_direct_period
 from train_forecast import feature_columns, forecast, make_features, make_model, total_errors
@@ -131,6 +133,7 @@ def evaluate_workbook(payload, forecasters=None, include_future=True):
                    'end': (origin + timedelta(days=HORIZON)).date().isoformat(),
                    'predicted_units': round(totals[pid], 4)} for pid in sorted(totals)]
     return {'dataset_type': 'SIMULATED_DEMO', 'filename': payload.get('filename'), 'source_sha256': payload.get('source_sha256'),
+            'runtime_versions': {'python': platform.python_version(), 'numpy': np.__version__, 'pandas': pd.__version__, 'xgboost': xgboost.__version__},
             'horizon_days': HORIZON, 'part_count': len(full), 'parts': sorted(full),
             'split_summary': {name: {'rows': sum(len(s) for s in series.values()),
                                     'start': next(iter(series.values())).index.min().date().isoformat(),

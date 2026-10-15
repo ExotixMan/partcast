@@ -25,19 +25,19 @@ export async function resolveForecastRuntime() {
   if(cachedRuntime?.key===key&&Date.now()-cachedRuntime.checkedAt<300000)return cachedRuntime;
   const configured=String(config.PYTHON_BIN||'').trim().replace(/^"(.*)"$/,'$1');
   const candidates=[configured,path.join(root,'.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python'),'/opt/partcast-venv/bin/python','python3','python'].filter(Boolean);
-  let python;
+  let python,versions;
   for(const candidate of [...new Set(candidates)]){
-    try{await processOutput(candidate,['-c','import numpy,pandas,sklearn,xgboost; print("partcast-ready")']);python=candidate;break;}catch{/* Try a runtime installed on this machine. */}
+    try{const output=await processOutput(candidate,['-c','import json,platform,numpy,pandas,sklearn,xgboost; print(json.dumps({"python":platform.python_version(),"numpy":numpy.__version__,"pandas":pandas.__version__,"scikit_learn":sklearn.__version__,"xgboost":xgboost.__version__}))']);versions=JSON.parse(output.trim().split('\n').at(-1));python=candidate;break;}catch{/* Try a runtime installed on this machine. */}
   }
   if(!python)throw Object.assign(new Error('Demand prediction needs Python with numpy, pandas, scikit-learn and xgboost. Ask the Super Admin to run the project setup and restart the API.'),{status:503,safe:true});
   let script=defaultScript;
   const requested=String(config.ML_SCRIPT_PATH||'').trim();
   for(const candidate of requested?[path.resolve(requested),path.resolve(root,requested)]:[]){if(await exists(candidate)){script=candidate;break;}}
   if(!await exists(script))throw Object.assign(new Error('The forecasting script is missing. Redeploy the complete PartCast API, including its ml folder.'),{status:503,safe:true});
-  cachedRuntime={key,checkedAt:Date.now(),python,script};return cachedRuntime;
+  cachedRuntime={key,checkedAt:Date.now(),python,script,versions};return cachedRuntime;
 }
 export async function forecastingStatus() {
-  try{await resolveForecastRuntime();return {ready:true,message:'The forecasting engine is ready.'};}
+  try{const runtime=await resolveForecastRuntime();return {ready:true,message:'The forecasting engine is ready.',runtime_versions:runtime.versions};}
   catch(e){return {ready:false,message:e.message};}
 }
 export function validateForecastResult(result,payload){

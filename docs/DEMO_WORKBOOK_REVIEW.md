@@ -2,7 +2,7 @@
 
 The supplied `PartCast_Capstone_Forecasting_Improved.xlsx` contains explicitly simulated demand for nine source-identified part numbers. The workbook's approximate 12.30% test WAPE belongs to a 365-day moving average, not XGBoost. Its synthetic schedules and zero-demand days do not establish actual store sales or operational forecasting accuracy. The raw upload remains private and unchanged.
 
-## Measured comparison
+## Workspace comparison
 
 The new experiment actually fits both XGBoost strategies with the repository's fixed model parameters. It uses the workbook's exact chronological splits, preserves explicit zero days, and rejects missing calendars, duplicate part/date rows, different part sets, invalid quantities, mixed actual/synthetic tiers and overlapping dates.
 
@@ -24,6 +24,21 @@ The XGBoost strategy is selected by validation WAPE before evaluating the test p
 Each period is fitted using only earlier dates. A completed period can enter history before the following period begins. The final demonstration model is fitted on all supplied synthetic history after evaluation, and produces nine 30-day totals for 15 October–13 November 2026. Daily sale timing and statistical confidence intervals are not claimed.
 
 This is a reproducible simulation comparison. The workbook and test outcomes have already been inspected; these are not fresh independent real-store results. The 365-day average still performs better than XGBoost on the test set and remains visible. There was no search over generated quantities, dates, random seeds or XGBoost parameters to force a target score. Earlier 100.33% actual-extract and 104.39% hosted-store errors use different data and cannot be presented as before/after improvements from this simulation.
+
+## Hosted result
+
+The actual workbook also completed on Render through the authenticated background-job API. Upload admission returned HTTP 202 in approximately one second; the full hosted run completed in approximately 74 seconds. Its source hash and all split dates/counts matched the workspace experiment.
+
+| Method | Hosted test WAPE |
+| --- | ---: |
+| **Direct 30-day XGBoost** | **16.6227%** |
+| Recursive daily XGBoost | 42.4564% |
+| Recent 28-day average | 21.1573% |
+| 365-day average | 12.3028% |
+
+Hosted direct-XGBoost validation WAPE was 8.5405%, test MAE 2.9182, and test RMSE 4.9279 over the same 18 simulated part-periods. It predicted 290.668 units versus 316 supplied test units. Source records, inventory counts for all 1,506 current products and the latest production forecast run were unchanged after the demo.
+
+The XGBoost results differ between environments, while the moving-average results match. Dependency requirements currently permit version ranges; the workspace used Python 3.12.14, XGBoost 3.4.1, NumPy 2.5.3 and pandas 2.3.3. Runtime versions are now returned by the authenticated forecasting status endpoint and recorded in new demo results. Record the runtime with any report; matching input data alone is insufficient to claim identical fitted-model outputs across builds. No runtime/version or parameter was chosen to obtain the better hosted score.
 
 Source SHA-256: `786f986ec476fdec7747ada97d42ced708ff230a44bae87ac227b5b4a4a12ec4`.
 
