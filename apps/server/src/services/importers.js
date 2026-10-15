@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { loadSpreadsheet } from '../utils/spreadsheet.js';
 import { containsSimulatedDemand } from './forecastDemo.js';
+import { simulatedDemandError } from '../utils/simulationData.js';
 
 import { adminDb } from '../supabase.js';
 import { cleanText, excelDate, numberOr, fetchAll } from '../utils/helpers.js';
@@ -1300,12 +1301,14 @@ function inventorySheets(
 
 export async function detectSpreadsheetType(
   buffer,
-  fileName
+  fileName,
+  parsedWorkbook = null
 ) {
   const workbook =
-    await loadSpreadsheet(
+    parsedWorkbook ?? await loadSpreadsheet(
       buffer,
-      fileName
+      fileName,
+      {rejectSimulated:true}
     );
 
   const demand =
@@ -1363,7 +1366,8 @@ export async function detectSpreadsheetType(
 export async function importInventoryWorkbook(
   buffer,
   fileName,
-  userId
+  userId,
+  parsedWorkbook = null
 ) {
   const fileSha256 =
     spreadsheetHash(
@@ -1377,9 +1381,10 @@ export async function importInventoryWorkbook(
   );
 
   const workbook =
-    await loadSpreadsheet(
+    parsedWorkbook ?? await loadSpreadsheet(
       buffer,
-      fileName
+      fileName,
+      {rejectSimulated:true}
     );
 
   const {
@@ -1983,7 +1988,8 @@ export async function importLegacySalesWorkbook(
   buffer,
   fileName,
   userId,
-  useProxy = false
+  useProxy = false,
+  parsedWorkbook = null
 ) {
   const fileSha256 =
     spreadsheetHash(
@@ -1997,9 +2003,10 @@ export async function importLegacySalesWorkbook(
   );
 
   const workbook =
-    await loadSpreadsheet(
+    parsedWorkbook ?? await loadSpreadsheet(
       buffer,
-      fileName
+      fileName,
+      {rejectSimulated:true}
     );
 
   const batch =
@@ -2489,7 +2496,8 @@ function bestDemandSheet(
 export async function importDemandTrainingWorkbook(
   buffer,
   fileName,
-  userId
+  userId,
+  parsedWorkbook = null
 ) {
   const fileSha256 =
     spreadsheetHash(
@@ -2497,13 +2505,14 @@ export async function importDemandTrainingWorkbook(
     );
 
   const workbook =
-    await loadSpreadsheet(
+    parsedWorkbook ?? await loadSpreadsheet(
       buffer,
-      fileName
+      fileName,
+      {rejectSimulated:true}
     );
 
   if (containsSimulatedDemand(workbook)) {
-    throw Object.assign(new Error('This workbook contains simulated demand. Use the labelled forecasting demo on Plan ahead. Store training history was not changed.'), {status:422, safe:true});
+    throw simulatedDemandError();
   }
 
   const selected =
@@ -2862,11 +2871,14 @@ export async function importSpreadsheetAuto(
   requestedType = 'auto',
   useProxy = false
 ) {
+  const workbook = await loadSpreadsheet(buffer,fileName,{rejectSimulated:true});
+  if(containsSimulatedDemand(workbook))throw simulatedDemandError();
   const type =
     requestedType === 'auto'
       ? await detectSpreadsheetType(
           buffer,
-          fileName
+          fileName,
+          workbook
         )
       : requestedType;
 
@@ -2876,7 +2888,8 @@ export async function importSpreadsheetAuto(
     return importInventoryWorkbook(
       buffer,
       fileName,
-      userId
+      userId,
+      workbook
     );
   }
 
@@ -2890,7 +2903,8 @@ export async function importSpreadsheetAuto(
       buffer,
       fileName,
       userId,
-      useProxy
+      useProxy,
+      workbook
     );
   }
 
@@ -2903,7 +2917,8 @@ export async function importSpreadsheetAuto(
     return importDemandTrainingWorkbook(
       buffer,
       fileName,
-      userId
+      userId,
+      workbook
     );
   }
 

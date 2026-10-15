@@ -5,7 +5,7 @@ import {containsSimulatedDemand,demoWorkbookPayload,createDemoJobs} from '../src
 
 Object.assign(process.env,{SUPABASE_URL:'http://127.0.0.1:9',SUPABASE_ANON_KEY:'test-only-public-key-12345',SUPABASE_SERVICE_ROLE_KEY:'test-only-service-key-12345',SETUP_SECRET:'test-only-setup-secret',CRON_SECRET:'test-only-cron-secret-long-enough',IP_HASH_SECRET:'test-only-hash-secret',INTEGRATION_ENCRYPTION_KEY:'test-only-encryption-key-32-characters'});
 const {adminDb} = await import('../src/supabase.js');
-const {importDemandTrainingWorkbook} = await import('../src/services/importers.js');
+const {importDemandTrainingWorkbook,importSpreadsheetAuto} = await import('../src/services/importers.js');
 
 function workbook(tier='synthetic_simulated') {
   const book = new ExcelJS.Workbook();
@@ -47,6 +47,25 @@ test('simulation detection scans beyond the scoring sample and accepts unmarked 
   assert.equal(containsSimulatedDemand(book),true);
   sheet.getRow(1).values=['Transaction Date','SKU','Units Sold','Training Tier','Coverage'];
   assert.equal(containsSimulatedDemand(book),true);
+  const actual=new ExcelJS.Workbook();actual.addWorksheet('Synthetic Oil').addRows([['Date','Part Number','Demand Quantity','Tier'],['2026-01-01','OIL-001',2,'actual_quantity']]);
+  assert.equal(containsSimulatedDemand(actual),false);
+});
+
+test('automatic actual-data imports parse the workbook once; declared simulations never reach database calls',async()=>{
+  const book=new ExcelJS.Workbook();book.addWorksheet('Daily_B_Usable').addRows([['Date','Part Number','Demand Quantity','Tier'],['2026-01-01','00123',2,'actual_quantity']]);
+  const bytes=Buffer.from(await book.xlsx.writeBuffer()),prototype=Object.getPrototypeOf(book.xlsx),originalLoad=prototype.load,originalFrom=adminDb.from;
+  let loads=0,dbCalls=0;
+  prototype.load=async function(...args){loads++;return originalLoad.apply(this,args);};
+  adminDb.from=()=>{dbCalls++;throw new Error('Stop at the first database call.');};
+  try {
+    await assert.rejects(importSpreadsheetAuto(bytes,'actual.xlsx','owner'),/Stop at the first database call/);
+    assert.equal(loads,1);assert.equal(dbCalls,1);
+    const simulated=workbook();simulated.getWorksheet('IMPORT_Train_5Col').name='CAPSTONE_SYNTHETIC_ALL';
+    const simBytes=Buffer.from(await simulated.xlsx.writeBuffer());
+    loads=0;dbCalls=0;
+    for(const type of ['auto','demand-training','inventory','legacy-sales'])await assert.rejects(importSpreadsheetAuto(simBytes,'renamed_actual.xlsx','owner',type),e=>e.code==='SIMULATED_DEMAND');
+    assert.equal(loads,0);assert.equal(dbCalls,0);
+  } finally {prototype.load=originalLoad;adminDb.from=originalFrom;}
 });
 
 test('HTTP demo requires verified manager access and simulated imports fail before any store mutation',async()=>{
@@ -73,7 +92,7 @@ test('HTTP demo requires verified manager access and simulated imports fail befo
     role='owner';verified=false;assert.equal((await fetch(base+'/api/forecast/demo/jobs',{method:'POST',headers})).status,428);
     verified=true;const form=new FormData();form.append('file',new Blob([await workbook().xlsx.writeBuffer()]),'renamed-actual.xlsx');
     const response=await fetch(base+'/api/imports/demand-training',{method:'POST',headers,body:form});
-    assert.equal(response.status,422);assert.match((await response.json()).error,/simulated demand/);
+    assert.equal(response.status,422);const rejected=await response.json();assert.match(rejected.error,/simulated demand/);assert.equal(rejected.code,'SIMULATED_DEMAND');
     assert(tables.every(table=>['profiles','login_verifications'].includes(table)));
   } finally {adminDb.from=originalFrom;adminDb.auth.getUser=originalUser;await new Promise(resolve=>server.close(resolve));}
 });

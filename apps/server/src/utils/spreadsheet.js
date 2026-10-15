@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { Readable } from 'node:stream';
 import path from 'node:path';
 import { SaxesParser } from 'saxes';
+import {isSimulationWorksheetName,simulatedDemandError} from './simulationData.js';
 
 const MAIN_NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const xmlEscape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\"','&quot;');
@@ -26,7 +27,7 @@ export function normalizeSpreadsheetXml(xml,relationshipsBase=null){
 }
 
 // Bound decompressed uploads before parsing. Never evaluate formulas or macros.
-export async function loadSpreadsheet(buffer,fileName='') {
+export async function loadSpreadsheet(buffer,fileName='',{rejectSimulated=false}={}) {
   const extension=path.extname(fileName).toLowerCase();
   if(!Buffer.isBuffer(buffer)||!buffer.length)throw Object.assign(new Error('The spreadsheet is empty.'),{status:400});
   if(!['.xlsx','.xlsm','.csv'].includes(extension))throw Object.assign(new Error('Use an .xlsx, .xlsm or .csv spreadsheet.'),{status:415});
@@ -40,6 +41,20 @@ export async function loadSpreadsheet(buffer,fileName='') {
       const entries=Object.values(archive.files);
       const expanded=entries.reduce((total,file)=>total+(file._data?.uncompressedSize||0),0);
       if(entries.length>5000||expanded>80*1024*1024)throw new Error('The expanded workbook is too large. Split it into smaller files.');
+      // Read only the bounded workbook manifest before materializing large demo
+      // sheets. This declaration also survives renaming the uploaded file.
+      if(rejectSimulated&&archive.file('xl/workbook.xml')){
+        let simulated=false;
+        const parser=new SaxesParser({xmlns:true});
+        parser.on('opentag',tag=>{
+          if(tag.uri===MAIN_NS&&tag.local==='sheet'){
+            const name=Object.values(tag.attributes).find(attribute=>attribute.local==='name')?.value;
+            if(isSimulationWorksheetName(name))simulated=true;
+          }
+        });
+        parser.write(await archive.file('xl/workbook.xml').async('string')).close();
+        if(simulated)throw simulatedDemandError();
+      }
       // Normalize only spreadsheet namespaces; relationship attributes remain intact.
       for(const entry of entries){
         if(entry.name.startsWith('xl/')&&entry.name.endsWith('.xml')){
@@ -60,5 +75,5 @@ export async function loadSpreadsheet(buffer,fileName='') {
     }
     if(cells>2000000)throw new Error('Too many cells. Split the spreadsheet into smaller files.');
     return workbook;
-  }catch(error){throw Object.assign(new Error(`Unable to read spreadsheet: ${error.message}`),{status:422});}
+  }catch(error){if(error?.code==='SIMULATED_DEMAND')throw error;throw Object.assign(new Error(`Unable to read spreadsheet: ${error.message}`),{status:422});}
 }

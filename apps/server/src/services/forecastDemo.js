@@ -6,6 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {loadSpreadsheet} from '../utils/spreadsheet.js';
 import {excelDate} from '../utils/helpers.js';
+import {isSimulationWorksheetName} from '../utils/simulationData.js';
 
 const script = fileURLToPath(new URL('../../../../ml/evaluate_demo_workbook.py', import.meta.url));
 const bad = message => Object.assign(new Error(message), {status:422, safe:true});
@@ -22,7 +23,7 @@ export function containsSimulatedDemand(workbook) {
       const partHeader = headers.some(value=>value.includes('part number')||['part no','part no.','part #','part#','partnumber','sku','product code'].includes(value));
       const quantityHeader = headers.some(value=>['demand quantity','demand qty','quantity sold','sales quantity','units sold','qty sold','demand'].includes(value));
       if (!dateHeader || !partHeader || !quantityHeader) continue;
-      if (marker(sheet.name)) return true;
+      if (isSimulationWorksheetName(sheet.name)) return true;
       const columns = headers.flatMap((value, index) => ['tier','source','data type','dataset type','data_type','dataset_type','coverage'].includes(value)||value.includes('training tier')||value.includes('demand source') ? [index] : []);
       for (let index = r + 1; index <= sheet.rowCount; index++) {
         if (columns.some(column => marker(sheet.getRow(index).getCell(column).value))) return true;

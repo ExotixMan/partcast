@@ -1,5 +1,6 @@
 import {useState} from 'react';
 import {FlaskConical, RefreshCw} from 'lucide-react';
+import {useLocation} from 'react-router-dom';
 import {api} from '../lib/api.js';
 import {t, useLocale} from '../context/LocaleContext.jsx';
 
@@ -14,6 +15,8 @@ function methodName(method) {
 
 export default function ForecastDemo() {
   useLocale();
+  const location = useLocation();
+  const [expanded,setExpanded] = useState(()=>new URLSearchParams(location.search).get('demo')==='1');
   const [file,setFile] = useState(null), [busy,setBusy] = useState(false);
   const [result,setResult] = useState(null), [error,setError] = useState('');
   async function run() {
@@ -36,7 +39,7 @@ export default function ForecastDemo() {
   }
   const selected = result?.selected_method;
   const tested = selected ? result.test[selected] : null;
-  return <details className="panel mb-5 overflow-hidden">
+  return <details className="panel mb-5 overflow-hidden" open={expanded} onToggle={event=>setExpanded(event.currentTarget.open)}>
     <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"><FlaskConical size={18} className="mr-2 inline" aria-hidden="true" />{t('Forecasting demo · simulated data')}</summary>
     <div className="border-t border-slate-200 p-5 sm:p-6">
       <h2 className="text-lg font-bold text-slate-950">{t('Test XGBoost with your demo workbook')}</h2>

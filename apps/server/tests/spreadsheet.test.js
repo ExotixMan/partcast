@@ -35,3 +35,16 @@ test('standard namespace prefixes and absolute relationship targets are normaliz
  const result=await loadSpreadsheet(await z.generateAsync({type:'nodebuffer'}),'inventory.xlsx');
  assert.equal(result.worksheets[0].getCell('A2').value,'00123');assert.equal(result.worksheets[0].getCell('B2').value,'Brake & disc');
 });
+test('declared demo manifests are rejected before reading worksheets, while real synthetic oil records remain usable',async()=>{
+ const book=new ExcelJS.Workbook();book.addWorksheet('CAPSTONE_SYNTHETIC_ALL').addRow(['Date','Part Number','Demand Quantity']);
+ const zip=await JSZip.loadAsync(await book.xlsx.writeBuffer());
+ zip.file('xl/worksheets/sheet1.xml','not worksheet XML');
+ const bytes=await zip.generateAsync({type:'nodebuffer'});
+ await assert.rejects(loadSpreadsheet(bytes,'renamed_actual.xlsx',{rejectSimulated:true}),e=>e.code==='SIMULATED_DEMAND'&&e.status===422);
+ const actual=new ExcelJS.Workbook();actual.addWorksheet('Synthetic Oil').addRows([['Date','Part Number','Demand Quantity','Tier'],['2026-01-01','OIL-001',2,'actual_quantity']]);
+ const parsed=await loadSpreadsheet(Buffer.from(await actual.xlsx.writeBuffer()),'oil.xlsx',{rejectSimulated:true});
+ assert.equal(parsed.getWorksheet('Synthetic Oil').getCell('C2').value,2);
+ // The same simulation remains readable by the separately labelled demo.
+ const demo=await loadSpreadsheet(Buffer.from(await book.xlsx.writeBuffer()),'demo.xlsx');
+ assert.equal(demo.getWorksheet('CAPSTONE_SYNTHETIC_ALL').getCell('A1').value,'Date');
+});

@@ -1,6 +1,7 @@
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useState } from 'react';
 import { FileSpreadsheet, UploadCloud, TriangleAlert, CheckCircle2 } from 'lucide-react';
+import {Link} from 'react-router-dom';
 import { api } from '../lib/api.js';
 import PageHeader from '../components/PageHeader.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -62,15 +63,18 @@ export default function ImportPage() {
           done.push({
             file: file.name,
             ok: false,
-            error: cause.message
+            error: cause.message,
+            code: cause.code,
+            unconfirmed: (!cause.status || cause.status>=500) && cause.code !== 'configuration'
           });
         }
       }
       setResults(done);
       const successful = done.filter(result => result.ok).length;
+      const unconfirmed = done.some(result => result.unconfirmed);
       setToast({
         type: successful === done.length ? 'success' : 'error',
-        message: `${successful} of ${done.length} files imported. Review the results below.`
+        message: unconfirmed ? t('Import status is unconfirmed. Check Past imports before trying again.') : `${successful} of ${done.length} files imported. Review the results below.`
       });
       load();
     } finally {
@@ -79,6 +83,11 @@ export default function ImportPage() {
   }
   return <>
     <PageHeader title={t("Import spreadsheets")} subtitle={t("Add existing stock or sales records from an Excel or CSV file.")} />
+    <section className="mb-5 rounded-xl border border-sky-200 bg-sky-50 p-5" aria-label={t('Choose the right place for your workbook')}>
+      <h2 className="font-bold text-slate-950">{t('Using the capstone demo workbook?')}</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-700">{t('PartCast_Capstone_Forecasting_Improved.xlsx contains simulated demand. Open the forecasting demo and choose that file there. Use the form below for actual stock and customer sales.')}</p>
+      <Link className="btn-secondary mt-3" to="/forecast?demo=1">{t('Open forecasting demo')}</Link>
+    </section>
     <section className="panel p-5 sm:p-6"><div className="grid gap-6 lg:grid-cols-2">
       <div><div className="flex items-start gap-3"><div className="rounded-xl bg-emerald-50 p-3 text-emerald-700"><FileSpreadsheet size={23} aria-hidden="true" /></div><div><h2 className="text-lg font-bold">{t("1. Choose your files")}</h2><p id="import-file-help" className="mt-1 text-sm leading-6 text-slate-600">{t("Supported files: Excel (.xlsx or .xlsm) and CSV (.csv).")}</p></div></div>
         <label className="mt-5 block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 p-6 text-center hover:border-emerald-500 hover:bg-emerald-50 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-emerald-700" htmlFor="import-files"><UploadCloud className="mx-auto text-slate-500" size={30} aria-hidden="true" /><span className="mt-3 block font-semibold text-slate-900">{t("Choose spreadsheet files")}</span><span className="mt-2 block text-sm leading-6 text-slate-600">{t("You can select more than one file.")}</span><input id="import-files" type="file" multiple disabled={busy} aria-describedby="import-file-help" accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" className="sr-only" onChange={event => setFiles([...event.target.files])} /></label>
@@ -100,7 +109,7 @@ export default function ImportPage() {
                 v0: result.selectedSheet
               }) : ''}{result.snapshotSheet ? t(" Stock sheet: {v0}.", {
                 v0: result.snapshotSheet
-              }) : ''}</p> : <p className="mt-2 text-sm leading-6 text-red-700">{t("Not imported: ")}{result.error}</p>}</div></div>)}</div></section>}
+              }) : ''}</p> : <><p className="mt-2 text-sm leading-6 text-red-700">{result.unconfirmed?t('Import status unconfirmed: '):t("Not imported: ")}{t(result.error)}</p>{result.unconfirmed&&<p className="mt-2 text-sm leading-6 text-slate-600">{t('A slow or interrupted connection does not confirm whether records were saved. Check Past imports and your inventory before submitting the same file again.')}</p>}{result.code==='SIMULATED_DEMAND'&&<Link className="btn-secondary mt-3" to="/forecast?demo=1">{t('Open forecasting demo')}</Link>}</>}</div></div>)}</div></section>}
     <div className="mt-5 flex gap-3 rounded-xl border border-slate-200 bg-white p-4"><TriangleAlert className="mt-0.5 shrink-0 text-slate-600" size={21} aria-hidden="true" /><p className="text-sm leading-6 text-slate-600"><span className="font-semibold text-slate-900">{t("For better forecasts:")}</span>{t(" import inventory first, then past sales, then your prepared forecasting spreadsheet. Use actual quantities sold, dates, and matching part numbers.")}</p></div>
     <section className="panel mt-5 overflow-hidden" aria-busy={historyLoading}><div className="panel-header"><h2 className="font-bold">{t("Past imports")}</h2></div>
       {historyLoading ? <Loading label={t("Loading past imports…")} /> : historyError ? <div className="space-y-3 p-5" role="alert"><h3 className="font-semibold">{t("Past imports could not be loaded")}</h3><p className="text-sm text-red-700">{historyError}</p><button className="btn-secondary" onClick={load}>{t("Try again")}</button></div> : !history.length ? <EmptyState title={t("No files imported yet")} text={t("Choose your first spreadsheet above. Its import result will be recorded here.")} /> : <>

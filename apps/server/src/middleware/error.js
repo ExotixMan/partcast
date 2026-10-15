@@ -13,6 +13,8 @@ export function errorHandler(err, req, res, next) {
     return res.status(400).json({ error: `${field}${first?.message || 'Invalid request data.'}` });
   }
 
+  if (err?.code === 'SIMULATED_DEMAND') return res.status(422).json({error:err.message,code:'SIMULATED_DEMAND'});
+
   if (err?.code === '23505') return res.status(409).json({ error: 'A record with the same unique value already exists.' });
   if (err?.code === '23503') return res.status(409).json({ error: 'This record is still referenced by another record.' });
   if (err?.code === '23514' || err?.code === '22P02') return res.status(422).json({ error: 'The supplied value is not valid for this operation.' });

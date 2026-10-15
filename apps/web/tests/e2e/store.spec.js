@@ -93,6 +93,30 @@ test('part photos validate upload and show saved images',async({page,context})=>
  await page.locator('input[type=file]').setInputFiles({name:'bad.txt',mimeType:'text/plain',buffer:Buffer.from('not an image')});await expect(page.getByRole('alert')).toContainText('JPEG');expect(api.photoUploads).toHaveLength(0);
  await page.locator('input[type=file]').setInputFiles({name:'part.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});await expect.poll(()=>api.photoUploads.length).toBe(1);await expect(page.getByRole('dialog').locator('img')).toBeVisible();await page.getByRole('button',{name:'Remove photo'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(0);
 });
+test('imports guide a simulated workbook to an open demo and treat timeouts as unconfirmed',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:390,height:844});let failNetwork=false,uploads=0;
+ await context.route('http://localhost:10000/api/imports/spreadsheet',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  uploads++;
+  if(failNetwork)return route.abort('timedout');
+  await route.fulfill({status:422,json:{code:'SIMULATED_DEMAND',error:'This workbook contains simulated demand. Use the labelled forecasting demo on Plan ahead. Store training history was not changed.'},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/imports');
+ await expect(page.getByRole('heading',{name:'Using the capstone demo workbook?'})).toBeVisible();
+ await page.getByLabel('Choose spreadsheet files').setInputFiles({name:'PartCast_Capstone_Forecasting_Improved.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('stubbed-upload')});
+ await page.getByRole('button',{name:'Import 1 file',exact:true}).click();
+ await expect(page.getByRole('region',{name:'Latest import results'})).toContainText('simulated demand');
+ await page.getByRole('region',{name:'Latest import results'}).getByRole('link',{name:'Open forecasting demo'}).click();
+ await expect(page).toHaveURL(/\/forecast\?demo=1$/);
+ await expect(page.getByLabel('Choose the capstone demo workbook')).toBeVisible();
+ await page.goto('/imports');failNetwork=true;
+ await page.getByLabel('Choose spreadsheet files').setInputFiles({name:'actual-sales.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('stubbed-upload')});
+ await page.getByRole('button',{name:'Import 1 file',exact:true}).click();
+ await expect(page.getByRole('region',{name:'Latest import results'})).toContainText('Import status unconfirmed:');
+ await expect(page.getByRole('region',{name:'Latest import results'})).toContainText('Check Past imports');
+ expect(uploads).toBe(2);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
 test('simulated XGBoost demo shows its own metrics and leaves real forecasts unchanged',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:390,height:844});
  const calls=[];
