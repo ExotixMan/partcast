@@ -85,6 +85,76 @@ class RawDataTests(unittest.TestCase):
         payload['linked_quantity_is_sold'] = False
         self.assertEqual(prepare(payload)[5], [])
 
+    def test_explicit_customer_split_preserves_total_and_uses_invoice_date(self):
+        for note in ['1 STOCK1 CUSTOMER SI#123 500', '1 CUSTOMER SI#123 500 1 STOCK',
+                     '1STOCK / 1 CUSTOMER SI#123', '1 STOCK 1CUSTOMER SI#123',
+                     '1 STOCK 1 CUSTOMER SI#123 500/PC', '1 STOCK 1 CUSTOMER SI#123 500/SET']:
+            with self.subTest(note=note):
+                row = self.row(qty=2, note=note)
+                payload = self.fixture([row])
+                payload['customer_allocation_is_sold'] = True
+                result = prepare(payload)
+                self.assertEqual(result[5][0]['Demand Quantity'], 1)
+                self.assertEqual(result[5][0]['Date'], '2026-01-19')
+                candidate = result[4][0]
+                self.assertEqual(candidate['Original Row Quantity'], 2)
+                self.assertEqual(candidate['Explicit Sold Allocation'], 1)
+                self.assertEqual(candidate['Explicit Stock Allocation'], 1)
+                self.assertEqual(candidate['Source'], 'confirmed_explicit_customer_allocation')
+                self.assertEqual(result[3][0]['Quantity'], 2)
+                self.assertEqual(row[4], 2)
+                self.assertEqual(result[0]['accepted_explicit_customer_allocations'], 1)
+
+    def test_mixed_notes_need_two_explicit_matching_counts_and_confirmed_meaning(self):
+        notes = ['CUSTOMER SI#123 500 1 STOCK', '1 STOCK CUSTOMER SI#123',
+                 '1 STOCK 2 CUSTOMER SI#123', '1 STOCK 1 CUSTOMER SI#123 1 STOCK',
+                 '1 STOCK 1 CUSTOMER SI#123 SI#124', '1 STOCK -1 CUSTOMER SI#123',
+                 '1 STOCK 1.5 CUSTOMER SI#123', '1 CUSTOMER SI#123 500.1STOCK',
+                 '1 STOCK 1 123 SHOP SI#123', '1 STOCK 1 PAMALIT CUSTOMER SI#123',
+                 '1 STOCK 1 CUSTOMER SI#123 WARRANTY', '1 PC STOCK 1 CUSTOMER SI#123',
+                 '1 STOCK 1 SET CUSTOMER SI#123']
+        for note in notes:
+            with self.subTest(note=note):
+                payload = self.fixture([self.row(note=note)])
+                payload['customer_allocation_is_sold'] = True
+                self.assertEqual(prepare(payload)[5], [])
+        payload = self.fixture([self.row(note='1 STOCK 1 CUSTOMER SI#123')])
+        self.assertEqual(prepare(payload)[5], [])
+        payload['customer_allocation_is_sold'] = True
+        payload['linked_quantity_is_sold'] = False
+        self.assertEqual(prepare(payload)[5], [])
+
+    def test_customer_allocation_keeps_identity_invoice_and_duplicate_guards(self):
+        note = '1 STOCK 1 CUSTOMER SI#123'
+        for part in [None, 'RADIATOR', 'COOLANT']:
+            with self.subTest(part=part):
+                payload = self.fixture([self.row(note=note, part=part)])
+                payload['customer_allocation_is_sold'] = True
+                self.assertEqual(prepare(payload)[5], [])
+        # An explicitly identified historical part is retained exactly, even
+        # when it has no current snapshot match. Never merge a slash variant.
+        payload = self.fixture([self.row(note=note, part='ABC-123/ALT')])
+        payload['customer_allocation_is_sold'] = True
+        result = prepare(payload)
+        self.assertEqual(result[5][0]['Part Number'], 'ABC-123/ALT')
+        self.assertFalse(result[6][0]['In Current Inventory'])
+        for day, amount, description in [('5/6/2026', 500, 'ABC-123'),
+                                         ('2026-01-19', 0, 'ABC-123'),
+                                         ('2026-01-19', 500, 'ABC-123 2 PCS')]:
+            with self.subTest(day=day, amount=amount, description=description):
+                payload = self.fixture([self.row(note=note)], [['123', day, 'omit', amount, description]])
+                payload['customer_allocation_is_sold'] = True
+                self.assertEqual(prepare(payload)[5], [])
+        # Invoice explicitly says one sold piece, not the two-unit purchase total.
+        payload = self.fixture([self.row(note=note)], [['123', '2026-01-19', 'omit', 500, 'ABC-123 1 PC']])
+        payload['customer_allocation_is_sold'] = True
+        self.assertEqual(prepare(payload)[5][0]['Demand Quantity'], 1)
+        payload = self.fixture([self.row(qty=1), self.row(note=note)])
+        payload['customer_allocation_is_sold'] = True
+        result = prepare(payload)
+        self.assertEqual(result[5], [])
+        self.assertTrue(all(row['Status'] == 'possible_duplicate_sale_line' for row in result[4]))
+
 
 if __name__ == '__main__':
     unittest.main()

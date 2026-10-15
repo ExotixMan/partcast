@@ -12,7 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const option = name => args[args.indexOf(name) + 1];
 if (!args.includes('--sales') || !args.includes('--inventory') || !args.includes('--out')) {
-  throw new Error('Usage: node scripts/prepare-forecasting-data.mjs --sales sales.xlsx --inventory inventory.xlsx --out DIRECTORY --as-of YYYY-MM-DD [--linked-quantity-is-sold]');
+  throw new Error('Usage: node scripts/prepare-forecasting-data.mjs --sales sales.xlsx --inventory inventory.xlsx --out DIRECTORY --as-of YYYY-MM-DD [--linked-quantity-is-sold] [--customer-allocation-is-sold]');
 }
 const out = path.resolve(option('--out'));
 await mkdir(out, { recursive: true, mode: 0o700 });
@@ -26,7 +26,11 @@ const scalar = value => {
   }
   return value ?? null;
 };
-const payload = { as_of: args.includes('--as-of') ? option('--as-of') : new Date().toISOString().slice(0, 10), linked_quantity_is_sold: args.includes('--linked-quantity-is-sold') };
+const payload = {
+  as_of: args.includes('--as-of') ? option('--as-of') : new Date().toISOString().slice(0, 10),
+  linked_quantity_is_sold: args.includes('--linked-quantity-is-sold'),
+  customer_allocation_is_sold: args.includes('--customer-allocation-is-sold')
+};
 for (const name of ['sales', 'inventory']) {
   const source = path.resolve(option(`--${name}`));
   const bytes = await readFile(source);

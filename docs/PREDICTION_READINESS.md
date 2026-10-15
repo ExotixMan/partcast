@@ -1,6 +1,6 @@
 # Prediction accuracy and defense readiness — 12 October 2026
 
-15 October reconciliation: [one documented missing sale was recovered](SALES_RECONCILIATION.md), bringing the extract to 758 daily observations for the same 709 identified parts. Same-period WAPE remains 100.3285%, and no eligible history is current. Earlier dataset counts below describe the original review.
+15 October customer-allocation follow-up: [16 additional documented sales lines were recovered](CUSTOMER_ALLOCATION_REVIEW.md), bringing the extract to 774 daily observations for 723 source-identified parts. All 758 earlier observations are preserved. Same-period WAPE remains 100.3285%, and no eligible history is current. Earlier dataset counts below describe previous reviews.
 
 Latest follow-up: [the 14 October sparse-demand correction](SPARSE_DEMAND_REVIEW.md) separates expected quantities from observed sale events. On the identical 30-day periods, WAPE is now 100.3285%, compared with the earlier 100.0345% below. This does not establish improved accuracy or change the readiness conclusion. Earlier figures remain historical snapshots.
 

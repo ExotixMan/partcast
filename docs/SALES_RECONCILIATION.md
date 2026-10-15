@@ -1,5 +1,7 @@
 # Verified-sales reconciliation — 15 October 2026
 
+Later follow-up: [customer/stock allocation reconciliation](CUSTOMER_ALLOCATION_REVIEW.md) adds 16 documented sales lines and 30 units. The extract now has 774 daily observations for 723 source-identified parts. WAPE on the same periods remains 100.3285%. The counts below describe the earlier identifier-only correction.
+
 **One previously excluded actual sale was recovered from the existing workbooks.** It adds four recorded units for an already identified part. No sale dates or quantities were invented, no new part identifiers were added, and no existing accepted daily rows were changed or removed.
 
 The inventory source row has a blank primary part number. Its `Sub#` contains an exact existing catalog SKU, and that same SKU is written on the uniquely linked sales invoice. The sale date and quantity come from the existing source rows. This is independently corroborated identifier recovery, rather than filling a blank cell from its neighboring row. The raw uploads remain unchanged.

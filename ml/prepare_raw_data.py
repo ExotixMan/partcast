@@ -29,6 +29,45 @@ def numeric(value):
         return None
 
 
+def explicit_customer_allocation(notes, total):
+    """Read two written counts, never calculate sold units as total minus stock.
+
+    This deliberately supports only bare-count prefixes such as "2 STOCK 1
+    CUSTOMER SI#123" or "1 CUSTOMER SI#123 ... 2 STOCK". Other note formats,
+    prices, unit conversions and returns need a person to reconcile them.
+    """
+    note = text(notes).upper()
+    if total is None or total <= 0 or total != int(total):
+        return None
+    if re.search(r'\b(?:RETURN\w*|REPLAC\w*|WARRANT\w*|EXCHANGE\w*|REFUND\w*|'
+                 r'CANCEL\w*|VOID\w*|DAMAG\w*|BALIK|PALIT|PAMALIT|IPINALIT|PINALIT|SINOLI|SAULI|ISINAULI)\b', note):
+        return None
+    stock_markers = list(re.finditer(r'(?<![A-Z])STOCKS?(?![A-Z])', note))
+    refs = list(re.finditer(r'\bSI\s*#\s*\d+', note))
+    stocks = list(re.finditer(r'(?<![A-Z0-9.,/#-])([1-9]\d*)\s*STOCKS?(?![A-Z])', note))
+    if len(stock_markers) != 1 or len(refs) != 1 or len(stocks) != 1:
+        return None
+    stock = stocks[0]
+    # A customer label starts with a letter. Numeric business names and extra
+    # quantities stay in review rather than allowing a digit to become a name.
+    customer_prefix = r'([1-9]\d*)\s*([A-Z][A-Z .&\'()/-]*?)\s*SI\s*#\s*\d+'
+    if stock.start() == 0:
+        customer = re.match(r'\s*[/,;]?\s*' + customer_prefix, note[stock.end():])
+    else:
+        customer = re.match(r'\s*' + customer_prefix, note)
+        if customer and customer.end() > stock.start():
+            return None
+    if not customer:
+        return None
+    if re.search(r'\b(?:SETS?|BOX(?:ES)?|PACKS?|PCS?|PIECES?|LITERS?|LITRES?|LTRS?|ML|KG)\b', customer[2]):
+        return None
+    sold, kept = int(customer[1]), int(stock[1])
+    if sold + kept != total:
+        return None
+    return {'sold': sold, 'stock': kept,
+            'evidence': 'Two explicit bare counts in customer/SI# and STOCK notes; sum equals original row quantity.'}
+
+
 def parse_date(value, as_of):
     raw = text(value)
     if not raw:
@@ -203,6 +242,9 @@ def prepare(payload):
             counts['sales_linked_rows'] += 1
             reason = None
             matches = lookup.get(refs[0], []) if len(refs) == 1 else []
+            allocation = (explicit_customer_allocation(notes, qty)
+                          if stock_note and payload.get('customer_allocation_is_sold') else None)
+            sold_qty = allocation['sold'] if allocation else qty
             identity_source = 'primary_column'
             if (not primary and sub in known_snapshot_parts and len(sub) >= 4 and re.search(r'\d', sub)
                     and len(matches) == 1 and matches[0]['Date Status'] == 'valid'
@@ -219,7 +261,7 @@ def prepare(payload):
                 issue('inventory', sheet['name'], row_number, 'missing_part_number', 'No automatic forward-fill: adjacent rows can be different products.')
             if len(refs) != 1:
                 reason = 'multiple_sales_references'
-            elif stock_note:
+            elif stock_note and not allocation:
                 reason = 'conflicting_stock_and_sale_notes'
             elif len(matches) != 1:
                 reason = 'missing_or_duplicate_invoice'
@@ -236,9 +278,13 @@ def prepare(payload):
             elif not payload.get('linked_quantity_is_sold'):
                 reason = 'quantity_meaning_not_confirmed'
             candidate = {'Date': matches[0]['Date'] if len(matches) == 1 else None, 'Part Number': primary or None,
-                         'Demand Quantity': qty, 'Description': desc, 'Brand': record['Brand'], 'Sales Reference': refs[0] if len(refs) == 1 else ' / '.join(refs),
+                         'Demand Quantity': sold_qty, 'Description': desc, 'Brand': record['Brand'], 'Sales Reference': refs[0] if len(refs) == 1 else ' / '.join(refs),
                          'Original Part Number': text(row[0]), 'Source Sub#': sub or None, 'Part Identification': identity_source,
-                         'Source': 'confirmed_sales_linked_quantity', 'Inventory Sheet': sheet['name'], 'Inventory Row': row_number,
+                         'Original Row Quantity': qty, 'Explicit Sold Allocation': allocation['sold'] if allocation else None,
+                         'Explicit Stock Allocation': allocation['stock'] if allocation else None,
+                         'Quantity Evidence': allocation['evidence'] if allocation else None,
+                         'Source': 'confirmed_explicit_customer_allocation' if allocation else 'confirmed_sales_linked_quantity',
+                         'Inventory Sheet': sheet['name'], 'Inventory Row': row_number,
                          'Sales Sheet': matches[0]['Source Sheet'] if len(matches) == 1 else None,
                          'Sales Row': matches[0]['Source Row'] if len(matches) == 1 else None, 'Status': reason or 'accepted'}
             if reason:
@@ -293,6 +339,7 @@ def prepare(payload):
         candidates.append(item)
     demand = [item for item in demand if item['Status'] == 'accepted']
 
+    counts['accepted_explicit_customer_allocations'] = sum(item['Source'] == 'confirmed_explicit_customer_allocation' for item in demand)
     aggregate = defaultdict(float)
     for item in demand:
         aggregate[(item['Date'], item['Part Number'])] += item['Demand Quantity']
@@ -321,6 +368,7 @@ def prepare(payload):
     coverage = [{'Month': month, **vals, 'Invoice Coverage Percent': round(100 * vals['Invoices With Accepted Quantities'] / vals['Invoices'], 2),
                  'Meaning': 'An invoice can still have other unlinked items.'} for month, vals in sorted(monthly.items())]
     summary = {'as_of': payload['as_of'], 'originals_modified': False, 'linked_quantity_is_sold': payload.get('linked_quantity_is_sold', False),
+               'customer_allocation_is_sold': payload.get('customer_allocation_is_sold', False),
                'source_files': {key: {k: payload[key][k] for k in ('filename', 'sha256')} for key in ('sales', 'inventory')},
                'invoice_rows': len(invoices), 'unique_invoice_references': len(lookup), 'inventory_snapshot_rows': len(stock),
                'purchase_or_sales_linked_rows': len(purchases), **dict(counts), 'accepted_quantity_lines': len(demand),
@@ -344,10 +392,11 @@ def main():
     out = Path(args.out)
     summary, invoices, stock, purchases, candidates, daily, eligible, coverage, issues = prepare(payload)
     issue_fields = ['Workbook', 'Sheet', 'Source Row', 'Issue', 'Detail']
-    provenance_fields = ['Date', 'Part Number', 'Demand Quantity', 'Description', 'Brand', 'Sales Reference', 'Source', 'Inventory Sheet', 'Inventory Row', 'Sales Sheet', 'Sales Row', 'Status', 'Original Part Number', 'Source Sub#', 'Part Identification']
+    provenance_fields = ['Date', 'Part Number', 'Demand Quantity', 'Description', 'Brand', 'Sales Reference', 'Source', 'Inventory Sheet', 'Inventory Row', 'Sales Sheet', 'Sales Row', 'Status', 'Original Part Number', 'Source Sub#', 'Part Identification', 'Original Row Quantity', 'Explicit Sold Allocation', 'Explicit Stock Allocation', 'Quantity Evidence']
     daily_fields = ['Date', 'Part Number', 'Demand Quantity', 'Tier', 'Coverage']
     readme = [['Topic', 'Details'], ['Purpose', 'Actual quantities linked to sale invoices. Original workbooks are unchanged.'],
               ['Quantity meaning', 'User confirmed inventory Quantity on SI# notes is quantity sold; STOCK rows are purchases.'],
+              ['Mixed notes', 'Customer allocation recovery enabled: ' + str(summary['customer_allocation_is_sold']) + '. Only two explicit positive counts that sum to the original total qualify; quantity, date, ID, duplicate and invoice checks still apply. Original row quantity is preserved.'],
               ['Identifier recovery', 'A blank primary ID is recoverable only when Sub# exactly matches an existing inventory SKU and the same SKU is explicitly present on its unique valid invoice. Original fields and row references remain in Quantity_Provenance.'],
               ['Dates', 'Sale date comes from invoice, not purchase date. Ambiguous, future and suspicious day/month dates require review.'],
               ['Coverage', summary['coverage_warning']],
@@ -359,6 +408,7 @@ def main():
     tables = {
         'PartCast_Actual_Quantity_Training.xlsx': {
             'README': readme, 'Daily_B_Usable': rows_table(daily, daily_fields), 'Quantity_Provenance': rows_table(candidates, provenance_fields),
+            'Recovered_Allocations': rows_table([item for item in candidates if item['Status'] == 'accepted' and item['Source'] == 'confirmed_explicit_customer_allocation'], provenance_fields),
             'Product_Eligibility': rows_table(eligible, list(eligible[0]) if eligible else ['Part Number']),
             'Monthly_Coverage': rows_table(coverage, list(coverage[0]) if coverage else ['Month']), 'Review_Issues': rows_table(issues, issue_fields)},
         'Inventory_Cleaned.xlsx': {
