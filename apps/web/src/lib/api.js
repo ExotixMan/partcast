@@ -9,7 +9,7 @@ export const apiConnectionIssue = connection.error || null;
 let currentSession = null;
 let syncing = null;
 export function setApiSession(session) { currentSession = session; }
-const cacheable = path => /^\/api\/(me|dashboard|products(?:\?|\/|$)|suppliers$|reorder|forecast\/|data-quality|notifications$|debts(?:\/|$)|barcode\/)/.test(path);
+const cacheable = path => !path.startsWith('/api/forecast/demo') && /^\/api\/(me|dashboard|products(?:\?|\/|$)|suppliers$|reorder|forecast\/|data-quality|notifications$|debts(?:\/|$)|barcode\/)/.test(path);
 export class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
 
 function checkConnection() {
@@ -35,7 +35,7 @@ async function networkRequest(path, options = {}) {
   const headers = { ...(options.headers || {}), Authorization: `Bearer ${session.access_token}` };
   if (!(options.body instanceof FormData) && options.body !== undefined) headers['Content-Type'] = 'application/json';
   let res;
-  res = await fetchApi(path, { ...fetchOptions, headers, signal: options.signal || AbortSignal.timeout(['/api/forecast/train','/api/forecast/demo'].includes(path) ? 180000 : 20000) });
+  res = await fetchApi(path, { ...fetchOptions, headers, signal: options.signal || AbortSignal.timeout(['/api/forecast/train','/api/forecast/demo/jobs'].includes(path) ? 180000 : 20000) });
   const json = (res.headers.get('content-type') || '').includes('application/json');
   if (!res.ok) {
     const body = json ? await res.json().catch(() => ({})) : {};

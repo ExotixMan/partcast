@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
-import {containsSimulatedDemand,demoWorkbookPayload} from '../src/services/forecastDemo.js';
+import {containsSimulatedDemand,demoWorkbookPayload,createDemoJobs} from '../src/services/forecastDemo.js';
 
 Object.assign(process.env,{SUPABASE_URL:'http://127.0.0.1:9',SUPABASE_ANON_KEY:'test-only-public-key-12345',SUPABASE_SERVICE_ROLE_KEY:'test-only-service-key-12345',SETUP_SECRET:'test-only-setup-secret',CRON_SECRET:'test-only-cron-secret-long-enough',IP_HASH_SECRET:'test-only-hash-secret',INTEGRATION_ENCRYPTION_KEY:'test-only-encryption-key-32-characters'});
 const {adminDb} = await import('../src/supabase.js');
@@ -67,13 +67,33 @@ test('HTTP demo requires verified manager access and simulated imports fail befo
   const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
   const base='http://127.0.0.1:'+server.address().port,headers={Authorization:'Bearer '+token};
   try {
-    assert.equal((await fetch(base+'/api/forecast/demo',{method:'POST'})).status,401);
-    assert.equal((await fetch(base+'/api/forecast/demo',{method:'POST',headers})).status,400);
-    role='cashier';assert.equal((await fetch(base+'/api/forecast/demo',{method:'POST',headers})).status,403);
-    role='owner';verified=false;assert.equal((await fetch(base+'/api/forecast/demo',{method:'POST',headers})).status,428);
+    assert.equal((await fetch(base+'/api/forecast/demo/jobs',{method:'POST'})).status,401);
+    assert.equal((await fetch(base+'/api/forecast/demo/jobs',{method:'POST',headers})).status,400);
+    role='cashier';assert.equal((await fetch(base+'/api/forecast/demo/jobs',{method:'POST',headers})).status,403);
+    role='owner';verified=false;assert.equal((await fetch(base+'/api/forecast/demo/jobs',{method:'POST',headers})).status,428);
     verified=true;const form=new FormData();form.append('file',new Blob([await workbook().xlsx.writeBuffer()]),'renamed-actual.xlsx');
     const response=await fetch(base+'/api/imports/demand-training',{method:'POST',headers,body:form});
     assert.equal(response.status,422);assert.match((await response.json()).error,/simulated demand/);
     assert(tables.every(table=>['profiles','login_verifications'].includes(table)));
   } finally {adminDb.from=originalFrom;adminDb.auth.getUser=originalUser;await new Promise(resolve=>server.close(resolve));}
+});
+
+test('background demos return immediately, isolate accounts, reject overlap, expire and recover after failure',async()=>{
+  let finish,clock=0;
+  const jobs=createDemoJobs({runner:()=>new Promise(resolve=>{finish=resolve;}),now:()=>clock,ttlMs:100});
+  const task=jobs.start(Buffer.from('demo'),'demo.xlsx','owner-A');
+  assert.equal(task.status,'running');
+  assert.throws(()=>jobs.start(Buffer.from('other'),'demo.xlsx','owner-A'),e=>e.status===409);
+  assert.throws(()=>jobs.get(task.id,'owner-B'),e=>e.status===404);
+  await new Promise(resolve=>setImmediate(resolve));finish({dataset_type:'SIMULATED_DEMO'});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(jobs.get(task.id,'owner-A').status,'completed');
+  clock=101;assert.throws(()=>jobs.get(task.id,'owner-A'),e=>e.status===404);
+  const failed=createDemoJobs({runner:async()=>{throw Object.assign(new Error('Invalid synthetic tier.'),{safe:true});}});
+  const id=failed.start(Buffer.from('bad'),'bad.xlsx','owner-A').id;
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(failed.get(id,'owner-A').status,'failed');
+  assert.equal(failed.get(id,'owner-A').error,'Invalid synthetic tier.');
+  assert.equal(failed.start(Buffer.from('retry'),'bad.xlsx','owner-A').status,'running');
+  await new Promise(resolve=>setImmediate(resolve));
 });

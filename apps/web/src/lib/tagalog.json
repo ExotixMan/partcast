@@ -1049,6 +1049,8 @@
   "Test WAPE": "WAPE sa test",
   "Selected XGBoost": "Napiling XGBoost",
   "Method": "Paraan",
+  "The demo is taking longer than expected. Try again shortly.": "Mas matagal kaysa inaasahan ang demo. Subukan muli makalipas ang ilang sandali.",
+  "Refresh PartCast, then use the background forecasting demo.": "I-refresh ang PartCast, pagkatapos ay gamitin ang forecasting demo na tumatakbo sa background.",
   "Date range": "Saklaw ng petsa",
   "Estimated units": "Tinatayang dami",
   "Lower WAPE means lower quantity error. A moving average may perform better than XGBoost. The test period cannot choose the XGBoost strategy.": "Mas mababang WAPE ang ibig sabihin ng mas maliit na pagkakaiba sa dami. Maaaring mas mahusay ang moving average kaysa XGBoost. Hindi ginagamit ang resulta ng test para piliin ang paraan ng XGBoost.",

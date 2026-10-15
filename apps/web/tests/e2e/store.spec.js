@@ -98,10 +98,13 @@ test('simulated XGBoost demo shows its own metrics and leaves real forecasts unc
  const calls=[];
  const metric={wape_percent:17.5,mae:3.07,rmse:5.08};
  const methods=Object.fromEntries(['direct_period_xgboost','recursive_xgboost','recent_average_28','sma_365'].map(m=>[m,{metrics:{...metric,wape_percent:m==='sma_365'?12.3:m==='recursive_xgboost'?47.36:17.5},window_count:18}]));
- await context.route('http://localhost:10000/api/forecast/demo',async route=>{
+ await context.route('http://localhost:10000/api/forecast/demo/jobs**',async route=>{
   if(route.request().method()==='OPTIONS')return route.fallback();
-  calls.push(route.request().postDataBuffer());
-  await route.fulfill({json:{dataset_type:'SIMULATED_DEMO',filename:'demo.xlsx',selected_method:'direct_period_xgboost',part_count:9,split_summary:{train:{start:'2024-10-15',end:'2026-06-16'},test:{start:'2026-08-16',end:'2026-10-14'}},validation:methods,test:methods,future_periods:[{part_number:'BP-001',start:'2026-10-15',end:'2026-11-13',predicted_units:3.5}]},headers:{'access-control-allow-origin':'*'}});
+  if(route.request().method()==='POST'){
+   calls.push(route.request().postDataBuffer());
+   await route.fulfill({status:202,json:{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',status:'running'},headers:{'access-control-allow-origin':'*'}});return;
+  }
+  await route.fulfill({json:{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',status:'completed',result:{dataset_type:'SIMULATED_DEMO',filename:'demo.xlsx',selected_method:'direct_period_xgboost',part_count:9,split_summary:{train:{start:'2024-10-15',end:'2026-06-16'},test:{start:'2026-08-16',end:'2026-10-14'}},validation:methods,test:methods,future_periods:[{part_number:'BP-001',start:'2026-10-15',end:'2026-11-13',predicted_units:3.5}]}},headers:{'access-control-allow-origin':'*'}});
  });
  await page.goto('/forecast');
  await page.getByText('Forecasting demo · simulated data',{exact:true}).click();

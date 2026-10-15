@@ -86,3 +86,32 @@ export async function runDemoWorkbook(buffer, filename) {
     await rm(directory, {recursive:true, force:true});
   }
 }
+
+export function createDemoJobs({runner=runDemoWorkbook, now=Date.now, ttlMs=30*60*1000}={}) {
+  const jobs = new Map();
+  let busy = false;
+  function prune() {
+    for (const [id, job] of jobs) if (job.status !== 'running' && now()-job.updatedAt > ttlMs) jobs.delete(id);
+    const completed = [...jobs.values()].filter(job=>job.status !== 'running');
+    for (const job of completed.slice(0,Math.max(0,completed.length-8))) jobs.delete(job.id);
+  }
+  return {
+    start(buffer, filename, userId) {
+      prune();
+      if (busy) throw Object.assign(new Error('Another forecasting demo is running. Try again shortly.'),{status:409,safe:true});
+      const id=crypto.randomUUID(), job={id,userId,status:'running',updatedAt:now()};
+      jobs.set(id,job);busy=true;
+      Promise.resolve().then(()=>runner(buffer,filename)).then(result=>{
+        Object.assign(job,{status:'completed',result,updatedAt:now()});
+      }).catch(error=>{
+        Object.assign(job,{status:'failed',error:error.safe?error.message:'The demo calculation could not finish. Try again or check the forecasting engine.',updatedAt:now()});
+      }).finally(()=>{busy=false;});
+      return {id,status:job.status};
+    },
+    get(id,userId) {
+      prune();const job=jobs.get(id);
+      if (!job || job.userId !== userId) throw Object.assign(new Error('This demo result is unavailable or expired. Run the demo again.'),{status:404,safe:true});
+      return {id:job.id,status:job.status,...(job.result?{result:job.result}:{}),...(job.error?{error:job.error}:{})};
+    }
+  };
+}

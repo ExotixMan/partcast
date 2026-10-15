@@ -10,7 +10,7 @@ import { fetchAll, cleanText } from '../utils/helpers.js';
 import { importInventoryWorkbook, importLegacySalesWorkbook, importDemandTrainingWorkbook, importSpreadsheetAuto, isSupportedSpreadsheetName } from '../services/importers.js';
 import { buildReportWorkbook } from '../utils/excel.js';
 import { runForecastPython,forecastingStatus } from '../utils/ml.js';
-import { runDemoWorkbook } from '../services/forecastDemo.js';
+import { createDemoJobs } from '../services/forecastDemo.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
 
 import storeRoutes from './store.js';
@@ -343,14 +343,16 @@ router.get('/forecast/product/:id', async (req,res,next) => {
 router.get('/forecast/status',async(req,res,next)=>{try{res.json(await forecastingStatus());}catch(e){next(e);}});
 
 const demoLimiter = rateLimit({windowMs:15*60*1000,limit:4,keyGenerator:req=>req.user.id,standardHeaders:'draft-8',legacyHeaders:false});
-let demoBusy = false;
-router.post('/forecast/demo', rolesAdmin, demoLimiter, upload.single('file'), async(req,res,next)=>{
+const demoJobs = createDemoJobs();
+router.post('/forecast/demo', rolesAdmin, (req,res)=>res.status(409).json({error:'Refresh PartCast, then use the background forecasting demo.'}));
+router.post('/forecast/demo/jobs', rolesAdmin, demoLimiter, upload.single('file'), (req,res,next)=>{
   if (!req.file) return res.status(400).json({error:'Choose a labelled demo workbook first.'});
-  if (demoBusy) return res.status(409).json({error:'Another forecasting demo is running. Try again shortly.'});
-  demoBusy = true;
-  try { res.json(await runDemoWorkbook(req.file.buffer, req.file.originalname)); }
+  try { res.status(202).json(demoJobs.start(req.file.buffer, req.file.originalname, req.user.id)); }
   catch(error) { next(error); }
-  finally { demoBusy = false; }
+});
+router.get('/forecast/demo/jobs/:id', rolesAdmin, (req,res,next)=>{
+  try {res.json(demoJobs.get(z.string().uuid().parse(req.params.id),req.user.id));}
+  catch(error) {next(error);}
 });
 
 router.post('/forecast/train', rolesAdmin, async (req, res, next) => {

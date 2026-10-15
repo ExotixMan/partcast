@@ -23,7 +23,14 @@ export default function ForecastDemo() {
     setBusy(true);
     try {
       const body = new FormData(); body.append('file',file);
-      setResult(await api.post('/api/forecast/demo',body));
+      let task = await api.post('/api/forecast/demo/jobs',body);
+      const deadline = Date.now()+170000;
+      while (task.status === 'running' && Date.now() < deadline) {
+        await new Promise(resolve=>setTimeout(resolve,2000));
+        task = await api.get('/api/forecast/demo/jobs/'+task.id);
+      }
+      if (task.status !== 'completed' || !task.result) throw new Error(task.error || t('The demo is taking longer than expected. Try again shortly.'));
+      setResult(task.result);
     } catch (cause) {setError(cause.message);}
     finally {setBusy(false);}
   }
