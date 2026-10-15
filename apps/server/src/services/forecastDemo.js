@@ -17,10 +17,13 @@ export function containsSimulatedDemand(workbook) {
   for (const sheet of workbook.worksheets) {
     for (let r = 1; r <= Math.min(30, sheet.rowCount); r++) {
       const row = sheet.getRow(r);
-      const headers = row.values.map(value => label(value).toLowerCase());
-      if (!headers.includes('date') || !headers.includes('part number') || !headers.includes('demand quantity')) continue;
+      const headers = row.values.map(value => label(value).toLowerCase().replace(/\s+/g,' '));
+      const dateHeader = headers.some(value=>['date','sale date','demand date','transaction date'].includes(value));
+      const partHeader = headers.some(value=>value.includes('part number')||['part no','part no.','part #','part#','partnumber','sku','product code'].includes(value));
+      const quantityHeader = headers.some(value=>['demand quantity','demand qty','quantity sold','sales quantity','units sold','qty sold','demand'].includes(value));
+      if (!dateHeader || !partHeader || !quantityHeader) continue;
       if (marker(sheet.name)) return true;
-      const columns = headers.flatMap((value, index) => ['tier','source','data type','dataset type','coverage','demand source'].includes(value) ? [index] : []);
+      const columns = headers.flatMap((value, index) => ['tier','source','data type','dataset type','data_type','dataset_type','coverage'].includes(value)||value.includes('training tier')||value.includes('demand source') ? [index] : []);
       for (let index = r + 1; index <= sheet.rowCount; index++) {
         if (columns.some(column => marker(sheet.getRow(index).getCell(column).value))) return true;
       }

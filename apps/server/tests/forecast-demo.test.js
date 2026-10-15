@@ -45,6 +45,8 @@ test('simulation detection scans beyond the scoring sample and accepts unmarked 
   assert.equal(containsSimulatedDemand(book),false);
   sheet.getCell('D1101').value={formula:'"synthetic_simulated"',result:'synthetic_simulated'};
   assert.equal(containsSimulatedDemand(book),true);
+  sheet.getRow(1).values=['Transaction Date','SKU','Units Sold','Training Tier','Coverage'];
+  assert.equal(containsSimulatedDemand(book),true);
 });
 
 test('HTTP demo requires verified manager access and simulated imports fail before any store mutation',async()=>{
