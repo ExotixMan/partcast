@@ -9,6 +9,7 @@ import Loading from '../components/Loading.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Toast from '../components/Toast.jsx';
 import ForecastAccuracy from '../components/ForecastAccuracy.jsx';
+import ForecastDemo from '../components/ForecastDemo.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 const units = value => Number(value || 0).toLocaleString(undefined, {
   maximumFractionDigits: 1
@@ -113,6 +114,8 @@ export default function ForecastPage() {
   if (loading) return <Loading label={t("Loading sales estimates…")} />;
   return <>
     <PageHeader title={t("Plan ahead")} subtitle={t("See which parts customers may need next, then decide what to restock.")} actions={<Link className="btn-secondary" to="/reorder">{t("View restock list ")}<ArrowRight size={17} /></Link>} />
+
+    {canTrain && <ForecastDemo />}
 
     {loadError && <div role="alert" className="mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-amber-950">{t("We could not load your sales estimates.")}</p><p className="mt-1 text-sm text-amber-900">{t(loadError)}</p></div><button className="btn-secondary shrink-0" onClick={load}><RefreshCw size={16} />{t("Try again")}</button></div>}
 

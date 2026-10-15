@@ -93,6 +93,33 @@ test('part photos validate upload and show saved images',async({page,context})=>
  await page.locator('input[type=file]').setInputFiles({name:'bad.txt',mimeType:'text/plain',buffer:Buffer.from('not an image')});await expect(page.getByRole('alert')).toContainText('JPEG');expect(api.photoUploads).toHaveLength(0);
  await page.locator('input[type=file]').setInputFiles({name:'part.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});await expect.poll(()=>api.photoUploads.length).toBe(1);await expect(page.getByRole('dialog').locator('img')).toBeVisible();await page.getByRole('button',{name:'Remove photo'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(0);
 });
+test('simulated XGBoost demo shows its own metrics and leaves real forecasts unchanged',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:390,height:844});
+ const calls=[];
+ const metric={wape_percent:17.5,mae:3.07,rmse:5.08};
+ const methods=Object.fromEntries(['direct_period_xgboost','recursive_xgboost','recent_average_28','sma_365'].map(m=>[m,{metrics:{...metric,wape_percent:m==='sma_365'?12.3:m==='recursive_xgboost'?47.36:17.5},window_count:18}]));
+ await context.route('http://localhost:10000/api/forecast/demo',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  calls.push(route.request().postDataBuffer());
+  await route.fulfill({json:{dataset_type:'SIMULATED_DEMO',filename:'demo.xlsx',selected_method:'direct_period_xgboost',part_count:9,split_summary:{train:{start:'2024-10-15',end:'2026-06-16'},test:{start:'2026-08-16',end:'2026-10-14'}},validation:methods,test:methods,future_periods:[{part_number:'BP-001',start:'2026-10-15',end:'2026-11-13',predicted_units:3.5}]},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/forecast');
+ await page.getByText('Forecasting demo · simulated data',{exact:true}).click();
+ await expect(page.getByRole('button',{name:'Test XGBoost demo',exact:true})).toBeDisabled();
+ await page.getByLabel('Choose the capstone demo workbook').setInputFiles({name:'demo.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('stubbed-demo-request')});
+ await page.getByRole('button',{name:'Test XGBoost demo',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Demo results · simulated sales only'})).toBeVisible();
+ await expect(page.getByText('17.5%',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText('12.3%',{exact:true}).first()).toBeVisible();
+ await expect(page.getByRole('table',{name:'Next 30 days · demo quantities'})).toContainText('BP-001');
+ expect(calls).toHaveLength(1);
+ expect(calls[0].toString()).toContain('demo.xlsx');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.setViewportSize({width:1280,height:900});
+ await expect(page.getByRole('heading',{name:'Demo results · simulated sales only'})).toBeVisible();
+ await page.getByLabel('Website language').selectOption('fil');
+ await expect(page.getByRole('heading',{name:'Resulta ng demo · halimbawang benta lamang'})).toBeVisible();
+});
 test('password is required before Gmail email code; wrong code cannot open the store',async({page,context})=>{
  const calls=[],passwords=[];let verified=false;
  const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'};

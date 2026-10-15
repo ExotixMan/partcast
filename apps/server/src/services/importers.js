@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { loadSpreadsheet } from '../utils/spreadsheet.js';
+import { containsSimulatedDemand } from './forecastDemo.js';
 
 import { adminDb } from '../supabase.js';
 import { cleanText, excelDate, numberOr, fetchAll } from '../utils/helpers.js';
@@ -2500,6 +2501,10 @@ export async function importDemandTrainingWorkbook(
       buffer,
       fileName
     );
+
+  if (containsSimulatedDemand(workbook)) {
+    throw Object.assign(new Error('This workbook contains simulated demand. Use the labelled forecasting demo on Plan ahead. Store training history was not changed.'), {status:422, safe:true});
+  }
 
   const selected =
     bestDemandSheet(
