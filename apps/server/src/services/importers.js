@@ -3,6 +3,7 @@ import path from 'node:path';
 import { loadSpreadsheet } from '../utils/spreadsheet.js';
 import { containsSimulatedDemand } from './forecastDemo.js';
 import { simulatedDemandError } from '../utils/simulationData.js';
+import { isDemandQuantityHeader } from '../utils/demandHeaders.js';
 
 import { adminDb } from '../supabase.js';
 import { cleanText, excelDate, numberOr, fetchAll } from '../utils/helpers.js';
@@ -508,15 +509,7 @@ function findDemandHeader(
         }
 
         else if (
-          [
-            'demand quantity',
-            'demand qty',
-            'quantity sold',
-            'sales quantity',
-            'units sold',
-            'qty sold',
-            'demand'
-          ].includes(value)
+          isDemandQuantityHeader(value)
         ) {
           map.quantity =
             column;
@@ -2549,6 +2542,12 @@ export async function importDemandTrainingWorkbook(
     warnings.push(
       `Automatically selected "${selected.ws.name}" because it contains the strongest usable Date + Part Number + Demand Quantity dataset. The uploaded filename was not used to determine the dataset type.`
     );
+
+    if (workbook.worksheets.length > 1) {
+      warnings.push(
+        `Only the dated part quantities in "${selected.ws.name}" were imported. The other ${workbook.worksheets.length - 1} worksheet(s) were not imported; financial amounts and suggested quantities are not converted into sales quantities.`
+      );
+    }
 
     await completeBatch(
       batch.id,
