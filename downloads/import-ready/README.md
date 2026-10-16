@@ -1,5 +1,7 @@
 # Actual sales files ready for PartCast import
 
+**For a NEW empty database after a complete rebuild, use [the fresh-start files](../fresh-start-import/README.md) instead.** Those restore the inventory and all 27 supplied demand observations as imported history. The 23-row files below are intended for the existing database, which already retains four actual PartCast sale observations.
+
 - [Download the Excel workbook](PartCast_Actual_Sales_Import_Ready.xlsx)
 - [Download the matching CSV](PartCast_Actual_Sales_Import_Ready.csv)
 
