@@ -17,7 +17,7 @@ async function workbook(count,{duplicate=false,cancelled=false,note=''}={}) {
  return Buffer.from(await book.xlsx.writeBuffer());
 }
 function database(existing=[]) {
- const state={records:structuredClone(existing),batches:[],writes:[],proxies:[],calls:0,failCall:0};
+ const state={records:structuredClone(existing),products:[{id:part,part_number:'BP-001'}],batches:[],writes:[],proxies:[],calls:0,failCall:0};
  adminDb.from=table=>{
   assert(['products','legacy_sales','import_batches','demand_observations'].includes(table));
   let action='read',payload;const filters=[];
@@ -37,7 +37,7 @@ function database(existing=[]) {
   };
   return {
    select(){return this;},eq(k,v){filters.push([k,v]);return this;},not(){return this;},limit(){return this;},
-   range:async(from,to)=>({data:(table==='products'?[{id:part,part_number:'BP-001'}]:state.records).slice(from,to+1),error:null}),
+   range:async(from,to)=>({data:(table==='products'?state.products:state.records).slice(from,to+1),error:null}),
    insert(v){action='insert';payload=v;return this;},update(v){action='update';payload=v;return this;},
    single:async()=>result(),then(resolve,reject){try{return Promise.resolve(result()).then(resolve,reject);}catch(error){return Promise.reject(error).then(resolve,reject);}}
   };
@@ -78,5 +78,18 @@ test('transaction-count proxies remain explicitly optional and separate from act
   const result=await importSpreadsheetAuto(await workbook(1),'sales.xlsx','fixture-owner','legacy-sales',true);
   assert.equal(result.proxyObservations,1);assert.equal(state.proxies.length,1);
   assert.equal(state.proxies[0].source,'legacy_transaction_proxy');assert.equal(state.proxies[0].quantity,1);
+ }finally{adminDb.from=original;}
+});
+
+test('invoice links require one complete identified code, excluding partial codes, model labels and multi-part bills',async()=>{
+ const original=adminDb.from;
+ try {
+  const state=database();state.products.push({id:'oil-fixture',part_number:'OIL-001'},{id:'model-fixture',part_number:'VIOS'});
+  const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Sales');
+  sheet.addRow(['Reference','Date','Customer','Amount','Items']);
+  for(const [i,items] of ['BP-001 Brake pad','BP-001 / OIL-001','BP-0012 Brake pad','Lug nut VIOS','A-BP-001','OIL-001 Engine oil','BP-001/OIL-001','BP-001/7','BP-001 /OIL-001'].entries())sheet.addRow([`SI#${i+1}`,'2026-01-05','',100,items]);
+  await importSpreadsheetAuto(Buffer.from(await book.xlsx.writeBuffer()),'links.xlsx','fixture-owner','legacy-sales');
+  assert.deepEqual(state.records.map(row=>row.matched_product_id),[part,null,null,null,null,'oil-fixture',null,null,null]);
+  assert.equal(state.proxies.length,0);
  }finally{adminDb.from=original;}
 });

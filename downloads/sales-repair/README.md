@@ -10,6 +10,8 @@ Download [all files in one ZIP](PartCast_Sales_Repair_Files.zip), or download ea
 
 First deploy the latest API from branch `codex/partcast-offline-forecasting-20261009`. This release imports invoices in batches instead of thousands of individual database requests. It skips existing invoice references: matching details are treated as duplicates; conflicting details are left unchanged and reported for review. Retrying an interrupted import skips invoice records already saved. Do not run overlapping imports; these client-side reference checks are not a database uniqueness constraint.
 
+New invoice-to-product links require one complete identified code. Partial code matches, alphabetic vehicle/model labels and invoices containing several known part codes remain unassigned instead of linking the whole invoice to an arbitrary part. The original description stays available for review.
+
 In **PartCast → Import spreadsheets**, choose **Past sales and customer records** and upload this workbook. Leave **Estimate one sold unit when a quantity is missing** switched **off**. With an empty invoice ledger, expect **5,666 imported and 0 skipped**. If the invoices already exist, expect skips and review the result warnings. This file populates invoice reporting only. It does not replay sales, deduct stock, create customer utang or create actual sold quantities for forecasting. Existing records are not overwritten to apply corrections automatically.
 
 ## 2. Complete verified missing sales for forecasting

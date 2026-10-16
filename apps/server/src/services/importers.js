@@ -1996,8 +1996,24 @@ export async function importLegacySalesWorkbook(buffer, fileName, userId, usePro
       fetchAll(() => adminDb.from('products').select('id,part_number').not('part_number','is',null)),
       fetchAll(() => adminDb.from('legacy_sales').select('reference_no,sale_date,amount,raw_items'))
     ]);
-    const partLookup = products.filter(product => product.part_number && String(product.part_number).trim().length >= 4)
-      .sort((a,b) => String(b.part_number).length - String(a.part_number).length);
+    const partLookup = new Map(products.filter(product => product.part_number && String(product.part_number).trim().length >= 4
+      && /\d/.test(String(product.part_number))).map(product=>[String(product.part_number).trim().toUpperCase(),product]));
+    // Compile once for the entire upload, rather than testing every SKU for every invoice.
+    const codes=[...partLookup.keys()].sort((a,b)=>b.length-a.length)
+      .map(code=>code.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+    const partPattern=codes.length ? new RegExp('(?:^|[^A-Z0-9_-])('+codes.join('|')+')(?=$|[^A-Z0-9_-])','gi') : null;
+    const matchProduct=items=>{
+      let matched=null,seen=null;
+      if(!partPattern)return null;
+      for(const match of items.matchAll(partPattern)){
+        const product=partLookup.get(match[1].toUpperCase());
+        if(seen && seen!==product.id)return null;
+        seen=product.id;
+        const start=match.index+match[0].length-match[1].length,end=start+match[1].length;
+        if(!/[A-Z0-9_./-]/i.test(items[start-1]||'') && !/[A-Z0-9_./-]/i.test(items[end]||''))matched=product;
+      }
+      return matched;
+    };
     const referenceKey = value => String(value || '').trim().toUpperCase().replace(/\s+/g,'');
     const fingerprint = row => JSON.stringify([row.sale_date || null, numberOr(row.amount,0),
       String(row.raw_items || '').trim().replace(/\s+/g,' ')]);
@@ -2024,7 +2040,8 @@ export async function importLegacySalesWorkbook(buffer, fileName, userId, usePro
         read++;
         if (!reference || ['CANCELLED','CANCELED'].includes((customer || '').toUpperCase())) {skipped++;continue;}
         const upperItems = (items || '').toUpperCase();
-        const matched = partLookup.find(product => upperItems.includes(String(product.part_number).trim().toUpperCase()));
+        // A multi-part invoice cannot be assigned wholly to its first matching code.
+        const matched = matchProduct(upperItems);
         const record = {reference_no:reference,sale_date:date,customer_name:customer,
           amount:numberOr(getValue(row,header.map,'amount'),0),raw_items:items,
           matched_product_id:matched?.id || null,import_batch_id:batch.id};
