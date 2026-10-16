@@ -1984,347 +1984,86 @@ export async function importInventoryWorkbook(
   }
 }
 
-export async function importLegacySalesWorkbook(
-  buffer,
-  fileName,
-  userId,
-  useProxy = false,
-  parsedWorkbook = null
-) {
-  const fileSha256 =
-    spreadsheetHash(
-      buffer
-    );
-
-  await assertNotImported(
-    'legacy_sales',
-    fileSha256,
-    'This exact sales spreadsheet was already imported.'
-  );
-
-  const workbook =
-    parsedWorkbook ?? await loadSpreadsheet(
-      buffer,
-      fileName,
-      {rejectSimulated:true}
-    );
-
-  const batch =
-    await createBatch(
-      fileName,
-      fileSha256,
-      'legacy_sales',
-      userId
-    );
-
-  const products =
-    await fetchAll(
-      () =>
-        adminDb
-          .from(
-            'products'
-          )
-          .select(
-            'id,part_number'
-          )
-          .not(
-            'part_number',
-            'is',
-            null
-          )
-    );
-
-  const partLookup =
-    products
-      .filter(
-        product =>
-          product.part_number &&
-          String(
-            product.part_number
-          )
-            .trim()
-            .length >= 4
-      )
-      .sort(
-        (
-          first,
-          second
-        ) =>
-          String(
-            second.part_number
-          ).length -
-          String(
-            first.part_number
-          ).length
-      );
-
-  let read = 0;
-  let imported = 0;
-  let skipped = 0;
-  let proxies = 0;
-
-  const warnings = [];
-
+export async function importLegacySalesWorkbook(buffer, fileName, userId, useProxy = false, parsedWorkbook = null) {
+  const fileSha256 = spreadsheetHash(buffer);
+  await assertNotImported('legacy_sales', fileSha256, 'This exact sales spreadsheet was already imported.');
+  const workbook = parsedWorkbook ?? await loadSpreadsheet(buffer, fileName, {rejectSimulated:true});
+  const batch = await createBatch(fileName, fileSha256, 'legacy_sales', userId);
+  let read = 0, imported = 0, skipped = 0, proxies = 0, duplicates = 0, conflicts = 0;
+  const warnings = [], conflictExamples = [];
   try {
-    let foundTable =
-      false;
-
-    for (
-      const worksheet
-      of workbook.worksheets
-    ) {
-      const header =
-        findLegacyHeader(
-          worksheet
-        );
-
-      if (!header) {
-        continue;
-      }
-
+    const [products, existing] = await Promise.all([
+      fetchAll(() => adminDb.from('products').select('id,part_number').not('part_number','is',null)),
+      fetchAll(() => adminDb.from('legacy_sales').select('reference_no,sale_date,amount,raw_items'))
+    ]);
+    const partLookup = products.filter(product => product.part_number && String(product.part_number).trim().length >= 4)
+      .sort((a,b) => String(b.part_number).length - String(a.part_number).length);
+    const referenceKey = value => String(value || '').trim().toUpperCase().replace(/\s+/g,'');
+    const fingerprint = row => JSON.stringify([row.sale_date || null, numberOr(row.amount,0),
+      String(row.raw_items || '').trim().replace(/\s+/g,' ')]);
+    const references = new Map();
+    for (const row of existing) {
+      const key = referenceKey(row.reference_no);
+      if (!key) continue;
+      if (!references.has(key)) references.set(key,new Set());
+      references.get(key).add(fingerprint(row));
+    }
+    let foundTable = false;
+    const pending = [];
+    for (const worksheet of workbook.worksheets) {
+      const header = findLegacyHeader(worksheet);
+      if (!header) continue;
       foundTable = true;
-
-      for (
-        let rowNumber =
-          header.row + 1;
-
-        rowNumber <=
-          worksheet.rowCount;
-
-        rowNumber++
-      ) {
-        const row =
-          worksheet.getRow(
-            rowNumber
-          );
-
-        const reference =
-          cleanText(
-            getValue(
-              row,
-              header.map,
-              'reference'
-            ),
-            180
-          );
-
-        const date =
-          excelDate(
-            getValue(
-              row,
-              header.map,
-              'date'
-            )
-          );
-
-        const customer =
-          cleanText(
-            getValue(
-              row,
-              header.map,
-              'customer'
-            ),
-            240
-          );
-
-        const amountRaw =
-          getValue(
-            row,
-            header.map,
-            'amount'
-          );
-
-        const items =
-          cleanText(
-            getValue(
-              row,
-              header.map,
-              'items'
-            ),
-            1500
-          );
-
-        if (
-          !reference &&
-          !date &&
-          !customer &&
-          !items
-        ) {
-          continue;
-        }
-
-        if (
-          (
-            customer ||
-            ''
-          ).toUpperCase() ===
-          'CANCELLED'
-        ) {
-          skipped++;
-          continue;
-        }
-
+      for (let rowNumber=header.row+1;rowNumber<=worksheet.rowCount;rowNumber++) {
+        const row = worksheet.getRow(rowNumber);
+        const reference = cleanText(getValue(row,header.map,'reference'),180);
+        const date = excelDate(getValue(row,header.map,'date'));
+        const customer = cleanText(getValue(row,header.map,'customer'),240);
+        const items = cleanText(getValue(row,header.map,'items'),1500);
+        if (!reference && !date && !customer && !items) continue;
         read++;
-
-        const upperItems =
-          (
-            items ||
-            ''
-          ).toUpperCase();
-
-        const matched =
-          partLookup.find(
-            product =>
-              upperItems.includes(
-                String(
-                  product.part_number
-                )
-                  .trim()
-                  .toUpperCase()
-              )
-          ) ||
-          null;
-
-        const {
-          error
-        } =
-          await adminDb
-            .from(
-              'legacy_sales'
-            )
-            .insert({
-              reference_no:
-                reference,
-
-              sale_date:
-                date,
-
-              customer_name:
-                customer,
-
-              amount:
-                numberOr(
-                  amountRaw,
-                  0
-                ),
-
-              raw_items:
-                items,
-
-              matched_product_id:
-                matched?.id ||
-                null,
-
-              import_batch_id:
-                batch.id
-            });
-
-        if (error) {
-          throw error;
+        if (!reference || ['CANCELLED','CANCELED'].includes((customer || '').toUpperCase())) {skipped++;continue;}
+        const upperItems = (items || '').toUpperCase();
+        const matched = partLookup.find(product => upperItems.includes(String(product.part_number).trim().toUpperCase()));
+        const record = {reference_no:reference,sale_date:date,customer_name:customer,
+          amount:numberOr(getValue(row,header.map,'amount'),0),raw_items:items,
+          matched_product_id:matched?.id || null,import_batch_id:batch.id};
+        const key = referenceKey(reference), signature = fingerprint(record), previous = references.get(key);
+        if (previous) {
+          skipped++;
+          if (previous.has(signature)) duplicates++;
+          else {conflicts++;if(conflictExamples.length<8)conflictExamples.push(reference);}
+          continue;
         }
-
-        imported++;
-
-        if (
-          useProxy &&
-          matched &&
-          date
-        ) {
-          const {
-            error:
-              proxyError
-          } =
-            await adminDb
-              .from(
-                'demand_observations'
-              )
-              .insert({
-                product_id:
-                  matched.id,
-
-                occurred_on:
-                  date,
-
-                quantity:
-                  1,
-
-                source:
-                  'legacy_transaction_proxy',
-
-                source_reference:
-                  reference
-              });
-
-          if (!proxyError) {
-            proxies++;
-          } else {
-            console.error(
-              'LEGACY PROXY ERROR:',
-              proxyError
-            );
-          }
+        references.set(key,new Set([signature]));
+        pending.push(record);
+      }
+    }
+    if (!foundTable) throw Object.assign(new Error('No sales table was found. Expected Reference/Ref #, Date, Customer, and Items columns.'),{status:422});
+    // Supabase calls are batched: thousands of per-invoice requests timed out on Render.
+    for (let index=0;index<pending.length;index+=500) {
+      const chunk=pending.slice(index,index+500);
+      const saved=await adminDb.from('legacy_sales').insert(chunk);
+      if (saved.error) throw saved.error;
+      imported+=chunk.length;
+      if (useProxy) {
+        const rows=chunk.filter(row=>row.matched_product_id && row.sale_date).map(row=>({
+          product_id:row.matched_product_id,occurred_on:row.sale_date,quantity:1,
+          source:'legacy_transaction_proxy',source_reference:row.reference_no
+        }));
+        if (rows.length) {
+          const result=await adminDb.from('demand_observations').insert(rows);
+          if (result.error) warnings.push('A batch of transaction-count proxies could not be saved. The invoice records were retained.');
+          else proxies+=rows.length;
         }
       }
     }
-
-    if (!foundTable) {
-      const error =
-        new Error(
-          'No sales table was found. Expected Reference/Ref #, Date, Customer, and Items columns.'
-        );
-
-      error.status = 422;
-
-      throw error;
-    }
-
-    if (!useProxy) {
-      warnings.push(
-        'Sales rows were imported for reporting. No 1-unit demand proxy was created because the proxy option was not enabled.'
-      );
-    }
-
-    await completeBatch(
-      batch.id,
-      {
-        read,
-        imported,
-        skipped,
-        warnings
-      }
-    );
-
-    return {
-      batchId:
-        batch.id,
-
-      detectedType:
-        'legacy-sales',
-
-      rowsRead:
-        read,
-
-      rowsImported:
-        imported,
-
-      rowsSkipped:
-        skipped,
-
-      proxyObservations:
-        proxies,
-
-      warnings
-    };
-
-  } catch (error) {
-    await failBatch(
-      batch.id,
-      warnings,
-      error
-    );
-
-    throw error;
-  }
+    if (duplicates) warnings.push(`${duplicates} invoice(s) already exist with the same reference, date, amount and description; they were not added again.`);
+    if (conflicts) warnings.push(`${conflicts} invoice reference(s) already exist with different details and were left unchanged. Review the source receipts. Examples: ${conflictExamples.join(', ')}`);
+    if (!useProxy) warnings.push('Sales rows were imported for reporting. No 1-unit demand proxy was created because the proxy option was not enabled.');
+    await completeBatch(batch.id,{read,imported,skipped,warnings});
+    return {batchId:batch.id,detectedType:'legacy-sales',rowsRead:read,rowsImported:imported,rowsSkipped:skipped,proxyObservations:proxies,warnings};
+  } catch (error) {await failBatch(batch.id,warnings,error);throw error;}
 }
 
 function scoreDemandSheet(
