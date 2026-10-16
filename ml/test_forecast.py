@@ -1,4 +1,9 @@
 import unittest
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
 from datetime import date, timedelta
 import numpy as np
 import pandas as pd
@@ -8,6 +13,28 @@ from train_forecast import row_for_next_date, assess_readiness
 from unittest.mock import patch
 
 class ForecastTests(unittest.TestCase):
+    def test_readiness_cli_does_not_import_model_libraries(self):
+        origin = pd.Timestamp('2026-10-15')
+        rows = [{'product_id': 'fixture-only', 'occurred_on': (origin-pd.Timedelta(days=n)).date().isoformat(), 'quantity': 1}
+                for n in [70, 50, 30, 10, 0]]
+        with tempfile.TemporaryDirectory() as directory:
+            source, target = Path(directory)/'input.json', Path(directory)/'report.json'
+            source.write_text(json.dumps({'observations': rows, 'asOfDate': '2026-10-15'}))
+            # Block imports in a fresh interpreter so another test's imports cannot hide a regression.
+            script = '''import sys, importlib.abc, runpy
+class BlockModels(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'sklearn', 'xgboost'}:
+            raise AssertionError('Readiness imported model library: '+fullname)
+sys.meta_path.insert(0, BlockModels())
+sys.argv = ['train_forecast.py', '--check-data', '--input', sys.argv[1], '--output', sys.argv[2]]
+runpy.run_path('train_forecast.py', run_name='__main__')
+'''
+            result = subprocess.run([sys.executable, '-c', script, str(source), str(target)],
+                                    cwd=Path(__file__).parent, capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(json.loads(target.read_text())['ready'])
+
     def test_readiness_uses_sale_days_span_and_recency_without_fitting(self):
         origin = pd.Timestamp('2026-10-15')
         rows = [{'product_id':'test-part','occurred_on':(origin-pd.Timedelta(days=offset)).date().isoformat(),'quantity':1}

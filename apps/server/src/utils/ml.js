@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, readFile, rm, access } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { config } from '../config.js';
 import { forecastProcessEnv } from './forecastEnvironment.js';
 
@@ -10,12 +11,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const defaultScript = path.join(root, 'ml/train_forecast.py');
 let cachedRuntime;
 let pendingRuntime;
+const pendingReadiness = new Map();
 const exists = file => access(file).then(() => true, () => false);
-function processOutput(command, args, timeoutMs = 15000) {
+function processOutput(command, args, timeoutMs = 15000, timeoutMessage = 'Forecast calculation timed out. Try fewer parts or a shorter horizon.') {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {stdio:['ignore','pipe','pipe'],env:forecastProcessEnv()});
     let out='',err='';
-    const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Object.assign(new Error('Forecast calculation timed out. Try fewer parts or a shorter horizon.'),{status:503,safe:true,code:'FORECAST_TIMEOUT'}));},timeoutMs);
+    const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Object.assign(new Error(timeoutMessage),{status:503,safe:true,code:'FORECAST_TIMEOUT'}));},timeoutMs);
     child.stdout.on('data',d=>{out=(out+d).slice(-8000);});
     child.stderr.on('data',d=>{err=(err+d).slice(-4000);});
     child.on('error',e=>{clearTimeout(timer);reject(e);});
@@ -36,16 +38,25 @@ async function discoverForecastRuntime(key) {
   const candidates=[configured,path.join(root,'.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python'),'/opt/partcast-venv/bin/python','python3','python'].filter(Boolean);
   let python,versions;
   const failures=[];
+  const deadline=Date.now()+45000;
   for(const candidate of [...new Set(candidates)]){
-    try{const output=await processOutput(candidate,['-c','import json,platform,numpy,pandas,sklearn,xgboost; print(json.dumps({"python":platform.python_version(),"numpy":numpy.__version__,"pandas":pandas.__version__,"scikit_learn":sklearn.__version__,"xgboost":xgboost.__version__}))']);versions=JSON.parse(output.trim().split('\n').at(-1));python=candidate;break;}
-    catch(error){failures.push({candidate:failures.length+1,code:error.code||error.exitCode||'IMPORT_FAILED',signal:error.signal||null,missing_module:/No module named ['"]([\w.]+)['"]/.exec(error.message)?.[1]||null});}
+    const remaining=deadline-Date.now();
+    if(remaining<=0){failures.push({code:'FORECAST_TIMEOUT'});break;}
+    try{const output=await processOutput(candidate,['-c','import json,platform,numpy,pandas,sklearn,xgboost; print(json.dumps({"python":platform.python_version(),"numpy":numpy.__version__,"pandas":pandas.__version__,"scikit_learn":sklearn.__version__,"xgboost":xgboost.__version__}))'],Math.min(30000,remaining));versions=JSON.parse(output.trim().split('\n').at(-1));python=candidate;break;}
+    catch(error){
+      failures.push({candidate:failures.length+1,code:error.code||error.exitCode||'IMPORT_FAILED',signal:error.signal||null,missing_module:/No module named ['"]([\w.]+)['"]/.exec(error.message)?.[1]||null});
+      // Repeating expensive imports after a timeout or host kill adds load.
+      if(error.code==='FORECAST_TIMEOUT'||error.signal==='SIGKILL')break;
+    }
   }
   if(!python){
     console.error('Forecast runtime unavailable:',failures);
     const stopped=failures.some(f=>f.signal==='SIGKILL');
+    const timedOut=failures.some(f=>f.code==='FORECAST_TIMEOUT');
     throw Object.assign(new Error(stopped
       ? 'The server stopped the forecasting process. Retry after other calculations finish; ask the Super Admin to check Render memory limits if this continues.'
-      : 'The API forecasting runtime is not installed. Complete the Render build setup, then redeploy the API.'),{status:503,safe:true,code:stopped?'FORECAST_RESOURCE_LIMIT':'FORECAST_SETUP_REQUIRED'});
+      : timedOut ? 'The forecasting engine took too long to start. Try again; ask the Super Admin to check the API logs and Render memory limits if this continues.'
+      : 'The API forecasting runtime is not installed. Complete the Render build setup, then redeploy the API.'),{status:503,safe:true,code:stopped?'FORECAST_RESOURCE_LIMIT':timedOut?'FORECAST_RUNTIME_TIMEOUT':'FORECAST_SETUP_REQUIRED'});
   }
   let script=defaultScript;
   const requested=String(config.ML_SCRIPT_PATH||'').trim();
@@ -58,12 +69,21 @@ export async function forecastingStatus() {
   catch(e){return {ready:false,message:e.message,code:e.code};}
 }
 export async function checkForecastReadiness(payload) {
+  const key=createHash('sha256').update(JSON.stringify({asOfDate:payload.asOfDate,observations:payload.observations})).digest('hex');
+  if(pendingReadiness.has(key))return pendingReadiness.get(key);
+  const pending=runReadinessCheck(payload);
+  pendingReadiness.set(key,pending);
+  try{return await pending;}
+  finally{if(pendingReadiness.get(key)===pending)pendingReadiness.delete(key);}
+}
+async function runReadinessCheck(payload) {
   const runtime = await resolveForecastRuntime();
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'partcast-readiness-'));
   try {
     const input = path.join(tmp, 'input.json'), output = path.join(tmp, 'readiness.json');
     await writeFile(input, JSON.stringify(payload), {mode:0o600});
-    await processOutput(runtime.python, [runtime.script, '--input', input, '--output', output, '--check-data'], 30000);
+    await processOutput(runtime.python, [runtime.script, '--input', input, '--output', output, '--check-data'], 30000,
+      'The sales-history check took too long. Try again; ask the Super Admin to check the API logs if this continues.');
     return JSON.parse(await readFile(output, 'utf8'));
   } finally {
     await rm(tmp, {recursive:true, force:true});

@@ -8,8 +8,6 @@ from datetime import timedelta
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from xgboost import XGBRegressor
 from intermittent import daily_rate
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -163,6 +161,9 @@ def feature_columns():
 
 
 def make_model():
+    # History readiness does not fit a model or need these heavier imports.
+    from xgboost import XGBRegressor
+
     return XGBRegressor(
         n_estimators=320,
         max_depth=5,
@@ -255,6 +256,8 @@ def assess_readiness(observations, as_of_date):
 
 
 def train_model(feature_df, positive_weight=1.0, refit=True):
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
     cols = feature_columns()
     train, test = chronological_split(feature_df)
     model = make_model()

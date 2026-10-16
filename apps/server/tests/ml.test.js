@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-Object.assign(process.env,{SUPABASE_URL:'http://127.0.0.1:9',SUPABASE_ANON_KEY:'test-only-public-key-12345',SUPABASE_SERVICE_ROLE_KEY:'test-only-service-key-12345',SETUP_SECRET:'test-only-setup-secret',CRON_SECRET:'test-only-cron-secret-long-enough',IP_HASH_SECRET:'test-only-hash-secret',PYTHON_BIN:'C:/Users/Admin/Downloads/PartCast_NPG_Deployable/partcast/.venv/Scripts/python.exe',ML_SCRIPT_PATH:'C:/OldComputer/partcast/ml/train_forecast.py'});
+Object.assign(process.env,{SUPABASE_URL:'http://127.0.0.1:9',SUPABASE_ANON_KEY:'test-only-public-key-12345',SUPABASE_SERVICE_ROLE_KEY:'test-only-service-key-12345',SETUP_SECRET:'test-only-setup-secret',CRON_SECRET:'test-only-cron-secret-long-enough',IP_HASH_SECRET:'test-only-hash-secret',INTEGRATION_ENCRYPTION_KEY:'test-only-encryption-key-32-characters',PYTHON_BIN:'C:/Users/Admin/Downloads/PartCast_NPG_Deployable/partcast/.venv/Scripts/python.exe',ML_SCRIPT_PATH:'C:/OldComputer/partcast/ml/train_forecast.py'});
 const {runForecastPython,resolveForecastRuntime,forecastingStatus,validateForecastResult,checkForecastReadiness}=await import('../src/utils/ml.js');
 const asOfDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const observations=[];
@@ -34,6 +34,16 @@ test('the Python readiness CLI distinguishes sparse, stale and trainable observe
  const enough=[70,50,30,10,0].map(offset=>{const date=new Date(asOfDate+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-offset);return {product_id:'test-part',occurred_on:date.toISOString().slice(0,10),quantity:1};});
  const ready=await checkForecastReadiness({observations:enough,asOfDate});
  assert.equal(ready.ready,true);assert.equal(ready.record_count,5);assert.equal(ready.current_part_count,1);
+});
+
+test('concurrent identical history checks share one result and later checks use fresh observations',async()=>{
+ const payload={observations:[observations[0]],asOfDate};
+ const results=await Promise.all(Array.from({length:6},()=>checkForecastReadiness(structuredClone(payload))));
+ for(const result of results)assert.strictEqual(result,results[0]);
+ assert.equal(results[0].record_count,1);
+ const next=await checkForecastReadiness({observations:[],asOfDate});
+ assert.equal(next.record_count,0);assert.equal(next.status,'no_observations');
+ assert.notStrictEqual(next,results[0]);
 });
 
 test('forecast results cannot invent parts, repeat dates, shorten the horizon or claim false counts',()=>{

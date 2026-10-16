@@ -149,6 +149,46 @@ test('forecast history checks explain missing sales and enable updates only afte
  await expect(page.getByText(/Demand estimate updated/)).toBeVisible();
 });
 
+test('a 25-second sales-history response stays pending and completes without the old 20-second timeout',async({page,context})=>{
+ await fixture(context);let requests=0;
+ await context.route('http://localhost:10000/api/forecast/readiness**',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  requests++;
+  await new Promise(resolve=>setTimeout(resolve,25000));
+  await route.fulfill({json:{ready:false,status:'no_observations',record_count:0,current_part_count:0,latest_sale_date:null,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/forecast');
+ await expect(page.getByText('Checking sales history…',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
+ await expect(page.getByText('Still checking. The first check after the server starts can take longer. Keep this page open.',{exact:true})).toBeVisible({timeout:12000});
+ await expect(page.getByText('Record or import actual sales first.',{exact:true})).toBeVisible({timeout:30000});
+ await expect(page.getByText('Sales history could not be checked.',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Check sales history again',exact:true})).toBeEnabled();
+ expect(requests).toBe(1);
+});
+
+test('leaving a running history check cancels it without marking the store offline',async({page,context})=>{
+ await fixture(context);let release;
+ await page.addInitScript(()=>{
+  window.connectionEvents=[];
+  window.addEventListener('partcast:connection',event=>window.connectionEvents.push(event.detail));
+ });
+ await context.route('http://localhost:10000/api/forecast/readiness**',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  await new Promise(resolve=>{release=resolve;});
+  await route.abort('aborted');
+ });
+ try {
+  await page.goto('/forecast');
+  await expect(page.getByText('Checking sales history…',{exact:true})).toBeVisible();
+  await expect.poll(()=>typeof release).toBe('function');
+  await page.evaluate(()=>{window.connectionEvents=[];});
+  await page.getByRole('link',{name:'Import actual sales',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Import spreadsheets',exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>window.connectionEvents.filter(value=>value===false))).toEqual([]);
+ }finally{release?.();}
+});
+
 test('simulated XGBoost demo shows its own metrics and leaves real forecasts unchanged',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:390,height:844});
  const calls=[];

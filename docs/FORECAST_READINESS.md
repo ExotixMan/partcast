@@ -23,3 +23,13 @@ For an actual-history replacement, copy only `OWNER_ACTUAL_DATA` columns A–E t
 - Browser checks cover the disabled update action, per-part reasons, refresh after data changes, successful update submission, mobile layout and Tagalog, alongside the existing demo/import flow.
 
 No new API key or database migration is required. No uploaded quantities, source dates, live inventory or actual sales were changed for this fix.
+
+## Slow history checks on Render
+
+The history and engine-status requests allow 90 seconds in the browser. The API bounds cold interpreter discovery to 45 seconds and the history calculation to 30 seconds; ordinary API requests retain their 20-second limit. Previously, the browser could abandon a valid calculation after 20 seconds while Python was still checking. After eight seconds the history panel explains that the check is still running. Navigating away cancels that browser request, and simultaneous checks of identical inputs share one calculation without caching a completed eligibility result.
+
+The history CLI loads NumPy and pandas, with the exact same data/feature/evaluation rules as training. XGBoost and scikit-learn model/metric imports are deferred until fitting, reducing the memory and startup work of checking history. Engine discovery still verifies the complete installed forecasting dependencies. An interpreter startup timeout or host memory kill stops further expensive interpreter attempts and reports its actual cause rather than claiming packages are absent.
+
+Apply the matching API and website releases on Render, wait until both are Live, then reload **Demand planning** and choose **Check sales history again**. The native Node API still needs the [Python build/start commands](RENDER_PYTHON_SETUP.md). Do not reset Supabase or reimport quantities to fix a request timeout. A successful request can legitimately report sparse or old sales; the supplied 27-record history remains insufficient for a current forecast.
+
+Validation includes a real browser response delayed for 25 seconds, concurrent history checks, a stalled-interpreter regression, a history CLI that refuses model-library imports, and the actual XGBoost forecasting integration. Hosted authenticated checks require a current staff session and are separate from the public `/health` check.

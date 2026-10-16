@@ -1,7 +1,7 @@
 import {verifiedCacheMatches} from './access.js';
 import {lineCents,validAmount} from './store.js';
 import { readCache, saveCache, queueItems, projectedProducts, enqueueMovement, drainQueue } from './offline.js';
-import { resolveApiConnection, connectionMessage } from './connection.js';
+import { resolveApiConnection, connectionMessage, apiRequestTimeout } from './connection.js';
 
 const connection = resolveApiConnection(import.meta.env.VITE_API_URL, window.location.href, import.meta.env.PROD);
 const API_URL = connection.url;
@@ -9,7 +9,7 @@ export const apiConnectionIssue = connection.error || null;
 let currentSession = null;
 let syncing = null;
 export function setApiSession(session) { currentSession = session; }
-const cacheable = path => !/^\/api\/forecast\/(demo|readiness)/.test(path) && /^\/api\/(me|dashboard|products(?:\?|\/|$)|suppliers$|reorder|forecast\/|data-quality|notifications$|debts(?:\/|$)|barcode\/)/.test(path);
+const cacheable = path => !/^\/api\/forecast\/(demo|readiness|status)/.test(path) && /^\/api\/(me|dashboard|products(?:\?|\/|$)|suppliers$|reorder|forecast\/|data-quality|notifications$|debts(?:\/|$)|barcode\/)/.test(path);
 export class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
 
 function checkConnection() {
@@ -22,9 +22,9 @@ async function fetchApi(path, options) {
     window.dispatchEvent(new CustomEvent('partcast:connection', { detail: true }));
     return result;
   } catch (error) {
-    window.dispatchEvent(new CustomEvent('partcast:connection', { detail: false }));
     if (error.name === 'AbortError') throw error;
-    throw new ApiError(connectionMessage(error), 0);
+    window.dispatchEvent(new CustomEvent('partcast:connection', { detail: false }));
+    throw Object.assign(new ApiError(connectionMessage(error), 0), { code: error.name === 'TimeoutError' ? 'timeout' : undefined });
   }
 }
 
@@ -35,7 +35,9 @@ async function networkRequest(path, options = {}) {
   const headers = { ...(options.headers || {}), Authorization: `Bearer ${session.access_token}` };
   if (!(options.body instanceof FormData) && options.body !== undefined) headers['Content-Type'] = 'application/json';
   let res;
-  res = await fetchApi(path, { ...fetchOptions, headers, signal: options.signal || AbortSignal.timeout(['/api/forecast/train','/api/forecast/demo/jobs'].includes(path) ? 180000 : path.startsWith('/api/imports/') ? 120000 : 20000) });
+  const deadline = AbortSignal.timeout(apiRequestTimeout(path));
+  const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
+  res = await fetchApi(path, { ...fetchOptions, headers, signal });
   const json = (res.headers.get('content-type') || '').includes('application/json');
   if (!res.ok) {
     const body = json ? await res.json().catch(() => ({})) : {};
@@ -154,7 +156,7 @@ async function ledger(path,body){
  return {queued:(await queueItems(userId)).some(i=>i.key===entry.key),clientOperationId:entry.payload.client_operation_id};
 }
 export const api = {
-  get: path => request(path),
+  get: (path, options) => request(path, options),
   post: (path, body) => ['/api/inventory/movement','/api/inventory/batch'].includes(path) ? movement(body,path.endsWith('/batch')) : ['/api/debts','/api/debts/payment'].includes(path)?ledger(path,body): request(path, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body ?? {}) }),
   patch: (path, body) => request(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) }),
   delete: path=>request(path,{method:'DELETE'}),

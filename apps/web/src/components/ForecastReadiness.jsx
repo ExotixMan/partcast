@@ -21,19 +21,24 @@ const date = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString(u
 export default function ForecastReadiness({includeProxy,refreshKey,onChange}) {
   const [report,setReport] = useState(null), [error,setError] = useState('');
   const [checking,setChecking] = useState(true), [retry,setRetry] = useState(0), [query,setQuery] = useState('');
+  const [slow,setSlow] = useState(false);
   useEffect(()=>{
     let active = true;
-    setChecking(true);setError('');onChange(null);
-    api.get(`/api/forecast/readiness?includeProxy=${Boolean(includeProxy)}`).then(result=>{
+    const controller = new AbortController();
+    const timer = setTimeout(()=>{if(active)setSlow(true);},8000);
+    setChecking(true);setSlow(false);setError('');onChange(null);
+    api.get(`/api/forecast/readiness?includeProxy=${Boolean(includeProxy)}`,{signal:controller.signal}).then(result=>{
       if(active){setReport(result);onChange(result);}
-    }).catch(error=>{if(active){setReport(null);setError(error.message);}})
-      .finally(()=>{if(active)setChecking(false);});
-    return ()=>{active=false;};
+    }).catch(error=>{if(active&&error.name!=='AbortError'){setReport(null);setError(error.code==='timeout'
+      ? 'The sales-history check timed out. Try again. If this continues, ask the Super Admin to check the API logs.'
+      : error.message);}})
+      .finally(()=>{clearTimeout(timer);if(active)setChecking(false);});
+    return ()=>{active=false;clearTimeout(timer);controller.abort();};
   },[includeProxy,refreshKey,retry,onChange]);
   const matched = (report?.products||[]).filter(row=>`${row.part_number||''} ${row.description||''} ${row.product_id}`.toLowerCase().includes(query.toLowerCase()));
   return <section className="panel mt-5 p-5 sm:p-6" aria-labelledby="forecast-readiness-title" aria-busy={checking}>
     <h2 id="forecast-readiness-title" className="text-lg font-bold">{t('Can these sales train XGBoost?')}</h2>
-    {checking ? <p className="mt-3 text-sm text-slate-600" role="status">{t('Checking sales history…')}</p> : error ? <div role="alert" className="mt-3 text-sm text-amber-900"><p>{t('Sales history could not be checked.')}</p><p className="mt-1">{t(error)}</p></div> : report && <>
+    {checking ? <div className="mt-3 text-sm text-slate-600" role="status"><p>{t('Checking sales history…')}</p>{slow&&<p className="mt-2 leading-6">{t('Still checking. The first check after the server starts can take longer. Keep this page open.')}</p>}</div> : error ? <div role="alert" className="mt-3 text-sm text-amber-900"><p>{t('Sales history could not be checked.')}</p><p className="mt-1">{t(error)}</p></div> : report && <>
       <p className={`mt-3 font-semibold ${report.ready?'text-emerald-800':'text-amber-900'}`} role="status">{t(messages[report.status]||report.message)}</p>
       <p className="mt-2 text-sm text-slate-600">{t('{v0} saved records · {v1} parts meet the current history checks.',{v0:report.record_count,v1:report.current_part_count})}</p>
       <p className="mt-2 text-sm leading-6 text-slate-600">{t('For each part: at least {v0} distinct sale days across {v1} calendar days, with a usable sale within {v2} days. The engine also checks that enough rows remain for training and testing.',{v0:report.requirements.sale_days,v1:report.requirements.calendar_days,v2:report.requirements.maximum_age_days})}</p>

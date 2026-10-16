@@ -1,7 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveApiConnection, supabaseConnectionIssue, connectionMessage } from '../src/lib/connection.js';
+import { resolveApiConnection, supabaseConnectionIssue, connectionMessage, apiRequestTimeout } from '../src/lib/connection.js';
 const jwt = claims => `e30.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.test-signature`;
+
+test('forecast checks can finish after cold discovery and data validation instead of aborting at 20 seconds', () => {
+  for (const path of ['/api/forecast/readiness?includeProxy=false','/api/forecast/status']) {
+    assert(apiRequestTimeout(path)>45000+30000);
+  }
+  assert.equal(apiRequestTimeout('/api/products?q=oil'),20000);
+  assert.equal(apiRequestTimeout('/api/forecast/train'),180000);
+  assert.equal(apiRequestTimeout('/api/imports/inventory'),120000);
+});
 
 test('hosted sites reject local, insecure and missing API addresses', () => {
   const website = 'https://partcast-web.onrender.com';
