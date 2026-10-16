@@ -1,0 +1,1232 @@
+{
+  "dataset_type": "SIMULATED_DEMO",
+  "filename": "05_SIMULATED_XGBoost_Demo.xlsx",
+  "source_sha256": "6f4fc61059ca11ab70dcfe71ddb6dadc1a612787a60abebab5d51aee8aca286a",
+  "runtime_versions": {
+    "python": "3.12.14",
+    "numpy": "2.5.3",
+    "pandas": "2.3.3",
+    "xgboost": "3.4.1"
+  },
+  "horizon_days": 30,
+  "part_count": 9,
+  "parts": [
+    "16620-30031",
+    "23303-64010",
+    "27415-0L030",
+    "43560-26010",
+    "87139-06080",
+    "90915-YZZD2",
+    "C014",
+    "GUT-20",
+    "TYC550"
+  ],
+  "split_summary": {
+    "train": {
+      "rows": 5490,
+      "start": "2024-10-15",
+      "end": "2026-06-16"
+    },
+    "validation": {
+      "rows": 540,
+      "start": "2026-06-17",
+      "end": "2026-08-15"
+    },
+    "test": {
+      "rows": 540,
+      "start": "2026-08-16",
+      "end": "2026-10-14"
+    }
+  },
+  "selected_method": "direct_period_xgboost",
+  "selection_basis": "Validation WAPE among fixed direct and recursive XGBoost strategies; test labels cannot select the strategy.",
+  "validation": {
+    "direct_period_xgboost": {
+      "metrics": {
+        "mae": 1.5652,
+        "rmse": 2.275,
+        "wape_percent": 8.6155,
+        "bias": -0.3573,
+        "actual_recorded_units": 327,
+        "predicted_units": 320.5685
+      },
+      "window_count": 18,
+      "positive_window_count": 18,
+      "windows": [
+        {
+          "part_number": "16620-30031",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 5,
+          "predicted_units": 5.1402
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 40,
+          "predicted_units": 39.9747
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 6,
+          "predicted_units": 5.8929
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 10,
+          "predicted_units": 6.8705
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 9,
+          "predicted_units": 12.0681
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 60,
+          "predicted_units": 60.566
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 15,
+          "predicted_units": 12.7411
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 12,
+          "predicted_units": 12.0016
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 5,
+          "predicted_units": 5.0518
+        },
+        {
+          "part_number": "16620-30031",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 4,
+          "predicted_units": 5.2518
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 42,
+          "predicted_units": 39.8059
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 7,
+          "predicted_units": 7.7669
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 7,
+          "predicted_units": 7.504
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 12,
+          "predicted_units": 13.6396
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 60,
+          "predicted_units": 57.2658
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 20,
+          "predicted_units": 13.147
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 9,
+          "predicted_units": 10.4445
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 4,
+          "predicted_units": 5.4361
+        }
+      ]
+    },
+    "recursive_xgboost": {
+      "metrics": {
+        "mae": 3.9954,
+        "rmse": 7.4758,
+        "wape_percent": 21.9933,
+        "bias": -1.3768,
+        "actual_recorded_units": 327,
+        "predicted_units": 302.2182
+      },
+      "window_count": 18,
+      "positive_window_count": 18,
+      "windows": [
+        {
+          "part_number": "16620-30031",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 5,
+          "predicted_units": 3.4802
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 40,
+          "predicted_units": 44.6249
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 6,
+          "predicted_units": 6.5796
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 10,
+          "predicted_units": 9.2614
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 9,
+          "predicted_units": 14.1702
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 60,
+          "predicted_units": 64.4368
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 15,
+          "predicted_units": 18.6774
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 12,
+          "predicted_units": 14.8661
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 5,
+          "predicted_units": 3.2258
+        },
+        {
+          "part_number": "16620-30031",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 4,
+          "predicted_units": 3.1992
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 42,
+          "predicted_units": 41.4545
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 7,
+          "predicted_units": 8.3777
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 7,
+          "predicted_units": 6.8162
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 12,
+          "predicted_units": 4.8767
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 60,
+          "predicted_units": 31.4231
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 20,
+          "predicted_units": 13.8078
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 9,
+          "predicted_units": 9.8354
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 4,
+          "predicted_units": 3.1052
+        }
+      ]
+    },
+    "recent_average_28": {
+      "metrics": {
+        "mae": 2.1389,
+        "rmse": 2.5596,
+        "wape_percent": 11.7736,
+        "bias": 0.8214,
+        "actual_recorded_units": 327,
+        "predicted_units": 341.7855
+      },
+      "window_count": 18,
+      "positive_window_count": 18,
+      "windows": [
+        {
+          "part_number": "16620-30031",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 5,
+          "predicted_units": 4.2857
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 40,
+          "predicted_units": 42.8571
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 6,
+          "predicted_units": 8.5714
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 10,
+          "predicted_units": 6.4286
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 9,
+          "predicted_units": 11.7857
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 60,
+          "predicted_units": 64.2857
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 15,
+          "predicted_units": 17.1429
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 12,
+          "predicted_units": 12.8571
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 5,
+          "predicted_units": 4.2857
+        },
+        {
+          "part_number": "16620-30031",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 4,
+          "predicted_units": 4.2857
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 42,
+          "predicted_units": 42.8571
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 7,
+          "predicted_units": 6.4286
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 7,
+          "predicted_units": 8.5714
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 12,
+          "predicted_units": 9.6429
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 60,
+          "predicted_units": 64.2857
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 20,
+          "predicted_units": 16.0714
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 9,
+          "predicted_units": 12.8571
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 4,
+          "predicted_units": 4.2857
+        }
+      ]
+    },
+    "sma_365": {
+      "metrics": {
+        "mae": 1.675,
+        "rmse": 2.2217,
+        "wape_percent": 9.2204,
+        "bias": -0.153,
+        "actual_recorded_units": 327,
+        "predicted_units": 324.2466
+      },
+      "window_count": 18,
+      "positive_window_count": 18,
+      "windows": [
+        {
+          "part_number": "16620-30031",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 5,
+          "predicted_units": 3.9452
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 40,
+          "predicted_units": 40.7671
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 6,
+          "predicted_units": 8.3836
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 10,
+          "predicted_units": 7.6438
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 9,
+          "predicted_units": 12.9863
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 60,
+          "predicted_units": 56.9589
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 15,
+          "predicted_units": 14.9589
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 12,
+          "predicted_units": 12.5753
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-06-17",
+          "end": "2026-07-16",
+          "actual_units": 5,
+          "predicted_units": 4.274
+        },
+        {
+          "part_number": "16620-30031",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 4,
+          "predicted_units": 4.0274
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 42,
+          "predicted_units": 40.9315
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 7,
+          "predicted_units": 8.2192
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 7,
+          "predicted_units": 7.6438
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 12,
+          "predicted_units": 12.411
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 60,
+          "predicted_units": 56.9589
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 20,
+          "predicted_units": 14.8767
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 9,
+          "predicted_units": 12.3288
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-07-17",
+          "end": "2026-08-15",
+          "actual_units": 4,
+          "predicted_units": 4.3562
+        }
+      ]
+    }
+  },
+  "test": {
+    "direct_period_xgboost": {
+      "metrics": {
+        "mae": 3.0725,
+        "rmse": 5.0789,
+        "wape_percent": 17.5016,
+        "bias": -1.2931,
+        "actual_recorded_units": 316,
+        "predicted_units": 292.7235
+      },
+      "window_count": 18,
+      "positive_window_count": 18,
+      "windows": [
+        {
+          "part_number": "16620-30031",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 4,
+          "predicted_units": 5.0152
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 30,
+          "predicted_units": 27.8386
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 9,
+          "predicted_units": 7.0748
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 8,
+          "predicted_units": 7.2861
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 8,
+          "predicted_units": 11.2777
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 60,
+          "predicted_units": 60.9031
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 17,
+          "predicted_units": 14.5194
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 12,
+          "predicted_units": 12.3765
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 4,
+          "predicted_units": 5.3502
+        },
+        {
+          "part_number": "16620-30031",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 4,
+          "predicted_units": 4.4973
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 40,
+          "predicted_units": 42.0079
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 8,
+          "predicted_units": 5.9032
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 10,
+          "predicted_units": 7.8109
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 15,
+          "predicted_units": 11.6428
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 56,
+          "predicted_units": 37.1616
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 12,
+          "predicted_units": 16.4846
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 16,
+          "predicted_units": 10.4719
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 3,
+          "predicted_units": 5.1017
+        }
+      ]
+    },
+    "recursive_xgboost": {
+      "metrics": {
+        "mae": 8.3144,
+        "rmse": 11.2687,
+        "wape_percent": 47.3605,
+        "bias": -0.2075,
+        "actual_recorded_units": 316,
+        "predicted_units": 312.2654
+      },
+      "window_count": 18,
+      "positive_window_count": 18,
+      "windows": [
+        {
+          "part_number": "16620-30031",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 4,
+          "predicted_units": 2.9746
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 30,
+          "predicted_units": 15.1926
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 9,
+          "predicted_units": 7.1961
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 8,
+          "predicted_units": 8.8907
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 8,
+          "predicted_units": 9.847
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 60,
+          "predicted_units": 33.5103
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 17,
+          "predicted_units": 14.2838
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 12,
+          "predicted_units": 12.3843
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 4,
+          "predicted_units": 2.8477
+        },
+        {
+          "part_number": "16620-30031",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 4,
+          "predicted_units": 8.7851
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 40,
+          "predicted_units": 19.7264
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 8,
+          "predicted_units": 17.0678
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 10,
+          "predicted_units": 17.5722
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 15,
+          "predicted_units": 27.0248
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 56,
+          "predicted_units": 47.5716
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 12,
+          "predicted_units": 30.417
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 16,
+          "predicted_units": 30.3519
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 3,
+          "predicted_units": 6.6215
+        }
+      ]
+    },
+    "recent_average_28": {
+      "metrics": {
+        "mae": 3.7143,
+        "rmse": 5.3033,
+        "wape_percent": 21.1573,
+        "bias": 1.0159,
+        "actual_recorded_units": 316,
+        "predicted_units": 334.2857
+      },
+      "window_count": 18,
+      "positive_window_count": 18,
+      "windows": [
+        {
+          "part_number": "16620-30031",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 4,
+          "predicted_units": 4.2857
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 30,
+          "predicted_units": 45
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 9,
+          "predicted_units": 6.4286
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 8,
+          "predicted_units": 7.5
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 8,
+          "predicted_units": 12.8571
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 60,
+          "predicted_units": 64.2857
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 17,
+          "predicted_units": 17.1429
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 12,
+          "predicted_units": 9.6429
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 4,
+          "predicted_units": 4.2857
+        },
+        {
+          "part_number": "16620-30031",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 4,
+          "predicted_units": 4.2857
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 40,
+          "predicted_units": 32.1429
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 8,
+          "predicted_units": 9.6429
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 10,
+          "predicted_units": 8.5714
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 15,
+          "predicted_units": 8.5714
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 56,
+          "predicted_units": 64.2857
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 12,
+          "predicted_units": 18.2143
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 16,
+          "predicted_units": 12.8571
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 3,
+          "predicted_units": 4.2857
+        }
+      ]
+    },
+    "sma_365": {
+      "metrics": {
+        "mae": 2.1598,
+        "rmse": 3.3436,
+        "wape_percent": 12.3028,
+        "bias": 0.4627,
+        "actual_recorded_units": 316,
+        "predicted_units": 324.3289
+      },
+      "window_count": 18,
+      "positive_window_count": 18,
+      "windows": [
+        {
+          "part_number": "16620-30031",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 4,
+          "predicted_units": 3.9452
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 30,
+          "predicted_units": 41.0959
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 9,
+          "predicted_units": 8.137
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 8,
+          "predicted_units": 7.5616
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 8,
+          "predicted_units": 12.411
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 60,
+          "predicted_units": 56.9589
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 17,
+          "predicted_units": 15.2055
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 12,
+          "predicted_units": 12.3288
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-08-16",
+          "end": "2026-09-14",
+          "actual_units": 4,
+          "predicted_units": 4.274
+        },
+        {
+          "part_number": "16620-30031",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 4,
+          "predicted_units": 3.9452
+        },
+        {
+          "part_number": "23303-64010",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 40,
+          "predicted_units": 41.9178
+        },
+        {
+          "part_number": "27415-0L030",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 8,
+          "predicted_units": 8.0548
+        },
+        {
+          "part_number": "43560-26010",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 10,
+          "predicted_units": 7.6438
+        },
+        {
+          "part_number": "87139-06080",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 15,
+          "predicted_units": 12
+        },
+        {
+          "part_number": "90915-YZZD2",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 56,
+          "predicted_units": 56.9589
+        },
+        {
+          "part_number": "C014",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 12,
+          "predicted_units": 15.2877
+        },
+        {
+          "part_number": "GUT-20",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 16,
+          "predicted_units": 12.3288
+        },
+        {
+          "part_number": "TYC550",
+          "start": "2026-09-15",
+          "end": "2026-10-14",
+          "actual_units": 3,
+          "predicted_units": 4.274
+        }
+      ]
+    }
+  },
+  "future_periods": [
+    {
+      "part_number": "16620-30031",
+      "start": "2026-10-15",
+      "end": "2026-11-13",
+      "predicted_units": 4.6222
+    },
+    {
+      "part_number": "23303-64010",
+      "start": "2026-10-15",
+      "end": "2026-11-13",
+      "predicted_units": 40.801
+    },
+    {
+      "part_number": "27415-0L030",
+      "start": "2026-10-15",
+      "end": "2026-11-13",
+      "predicted_units": 8.4231
+    },
+    {
+      "part_number": "43560-26010",
+      "start": "2026-10-15",
+      "end": "2026-11-13",
+      "predicted_units": 10.8955
+    },
+    {
+      "part_number": "87139-06080",
+      "start": "2026-10-15",
+      "end": "2026-11-13",
+      "predicted_units": 12.0224
+    },
+    {
+      "part_number": "90915-YZZD2",
+      "start": "2026-10-15",
+      "end": "2026-11-13",
+      "predicted_units": 53.3545
+    },
+    {
+      "part_number": "C014",
+      "start": "2026-10-15",
+      "end": "2026-11-13",
+      "predicted_units": 14.6209
+    },
+    {
+      "part_number": "GUT-20",
+      "start": "2026-10-15",
+      "end": "2026-11-13",
+      "predicted_units": 12.9931
+    },
+    {
+      "part_number": "TYC550",
+      "start": "2026-10-15",
+      "end": "2026-11-13",
+      "predicted_units": 5.6839
+    }
+  ],
+  "production_accuracy_established": false,
+  "actual_sales_modified": false,
+  "limitations": [
+    "Every demand date and quantity in this experiment is simulated, including zero days.",
+    "Test labels are excluded from fitting each tested period. Completed earlier periods become historical before the next period.",
+    "The workbook and its test outcomes have already been inspected; this is a reproducible demonstration, not new independent real-store evidence.",
+    "Future totals are fitted after evaluation using all supplied synthetic history; they are not stock-order recommendations.",
+    "Moving-average baselines may outperform XGBoost and remain visible. WAPE is error, not an accuracy percentage."
+  ]
+}
