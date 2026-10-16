@@ -4,32 +4,49 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
+import { forecastProcessEnv } from './forecastEnvironment.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const defaultScript = path.join(root, 'ml/train_forecast.py');
 let cachedRuntime;
+let pendingRuntime;
 const exists = file => access(file).then(() => true, () => false);
 function processOutput(command, args, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {stdio:['ignore','pipe','pipe'],env:{...process.env,PYTHONUNBUFFERED:'1'}});
+    const child = spawn(command, args, {stdio:['ignore','pipe','pipe'],env:forecastProcessEnv()});
     let out='',err='';
-    const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Object.assign(new Error('Forecast calculation timed out. Try fewer parts or a shorter horizon.'),{status:503,safe:true}));},timeoutMs);
+    const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Object.assign(new Error('Forecast calculation timed out. Try fewer parts or a shorter horizon.'),{status:503,safe:true,code:'FORECAST_TIMEOUT'}));},timeoutMs);
     child.stdout.on('data',d=>{out=(out+d).slice(-8000);});
     child.stderr.on('data',d=>{err=(err+d).slice(-4000);});
     child.on('error',e=>{clearTimeout(timer);reject(e);});
-    child.on('close',code=>{clearTimeout(timer);code===0?resolve(out):reject(Object.assign(new Error(err.trim()||'The forecasting process could not finish.'),{status:code===2?422:503,safe:code===2}));});
+    child.on('close',(code,signal)=>{clearTimeout(timer);code===0?resolve(out):reject(Object.assign(new Error(err.trim()||'The forecasting process could not finish.'),{status:code===2?422:503,safe:code===2,exitCode:code,signal}));});
   });
 }
 export async function resolveForecastRuntime() {
   const key=`${config.PYTHON_BIN}|${config.ML_SCRIPT_PATH}`;
   if(cachedRuntime?.key===key&&Date.now()-cachedRuntime.checkedAt<300000)return cachedRuntime;
+  if(pendingRuntime?.key===key)return pendingRuntime.promise;
+  const pending={key,promise:discoverForecastRuntime(key)};
+  pendingRuntime=pending;
+  try{return await pending.promise;}
+  finally{if(pendingRuntime===pending)pendingRuntime=null;}
+}
+async function discoverForecastRuntime(key) {
   const configured=String(config.PYTHON_BIN||'').trim().replace(/^"(.*)"$/,'$1');
   const candidates=[configured,path.join(root,'.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python'),'/opt/partcast-venv/bin/python','python3','python'].filter(Boolean);
   let python,versions;
+  const failures=[];
   for(const candidate of [...new Set(candidates)]){
-    try{const output=await processOutput(candidate,['-c','import json,platform,numpy,pandas,sklearn,xgboost; print(json.dumps({"python":platform.python_version(),"numpy":numpy.__version__,"pandas":pandas.__version__,"scikit_learn":sklearn.__version__,"xgboost":xgboost.__version__}))']);versions=JSON.parse(output.trim().split('\n').at(-1));python=candidate;break;}catch{/* Try a runtime installed on this machine. */}
+    try{const output=await processOutput(candidate,['-c','import json,platform,numpy,pandas,sklearn,xgboost; print(json.dumps({"python":platform.python_version(),"numpy":numpy.__version__,"pandas":pandas.__version__,"scikit_learn":sklearn.__version__,"xgboost":xgboost.__version__}))']);versions=JSON.parse(output.trim().split('\n').at(-1));python=candidate;break;}
+    catch(error){failures.push({candidate:failures.length+1,code:error.code||error.exitCode||'IMPORT_FAILED',signal:error.signal||null,missing_module:/No module named ['"]([\w.]+)['"]/.exec(error.message)?.[1]||null});}
   }
-  if(!python)throw Object.assign(new Error('Demand prediction needs Python with numpy, pandas, scikit-learn and xgboost. Ask the Super Admin to run the project setup and restart the API.'),{status:503,safe:true});
+  if(!python){
+    console.error('Forecast runtime unavailable:',failures);
+    const stopped=failures.some(f=>f.signal==='SIGKILL');
+    throw Object.assign(new Error(stopped
+      ? 'The server stopped the forecasting process. Retry after other calculations finish; ask the Super Admin to check Render memory limits if this continues.'
+      : 'The API forecasting runtime is not installed. Complete the Render build setup, then redeploy the API.'),{status:503,safe:true,code:stopped?'FORECAST_RESOURCE_LIMIT':'FORECAST_SETUP_REQUIRED'});
+  }
   let script=defaultScript;
   const requested=String(config.ML_SCRIPT_PATH||'').trim();
   for(const candidate of requested?[path.resolve(requested),path.resolve(root,requested)]:[]){if(await exists(candidate)){script=candidate;break;}}
@@ -38,7 +55,7 @@ export async function resolveForecastRuntime() {
 }
 export async function forecastingStatus() {
   try{const runtime=await resolveForecastRuntime();return {ready:true,message:'The forecasting engine is ready.',runtime_versions:runtime.versions};}
-  catch(e){return {ready:false,message:e.message};}
+  catch(e){return {ready:false,message:e.message,code:e.code};}
 }
 export async function checkForecastReadiness(payload) {
   const runtime = await resolveForecastRuntime();

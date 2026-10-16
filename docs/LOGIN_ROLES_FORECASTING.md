@@ -93,7 +93,7 @@ spawn C:/Users/Admin/Downloads/PartCast_NPG_Deployable/partcast/.venv/Scripts/py
 
 A virtual environment is installed for one machine and should not be copied between computers or into Render. The launcher now tries the configured executable, this project's local virtual environment, the Docker virtual environment, then Python on PATH. It probes the required packages and falls back to the bundled forecasting script if a copied script path is missing. The Demand planning page shows a readable engine status, and Super Admin can check it in IT settings.
 
-On **Render**, use this repository's root **Dockerfile**, not a Node-only runtime. The image installs Python and analytics packages at `/opt/partcast-venv/bin/python`, with the script at `/app/ml/train_forecast.py`. Remove copied Windows `PYTHON_BIN`/`ML_SCRIPT_PATH` values, or use those Linux paths.
+On **Render**, the existing Docker deployment installs Python and analytics packages at `/opt/partcast-venv/bin/python`, with the script at `/app/ml/train_forecast.py`. An existing native **Node** service instead needs the [Render Python build and start scripts](RENDER_PYTHON_SETUP.md): repository root, `bash scripts/render-build.sh`, and `bash scripts/render-start.sh`. The start script selects the installed Linux paths automatically. A Node-only npm install does not install the Python requirements.
 
 On **Windows**, open a terminal in the PartCast project root and install a fresh virtual environment:
 

@@ -1,5 +1,7 @@
 # Fixing the Render store connection
 
+For “Sales history could not be checked” with missing Python packages, follow [forecasting setup for the existing Render Node API](RENDER_PYTHON_SETUP.md). A healthy API can still lack its forecasting installation.
+
 The website is `https://partcast-web.onrender.com` and the API service is `https://partcast.onrender.com`. `/health` is a check endpoint; do not include it in `VITE_API_URL`.
 
 Open each service in the Render dashboard, choose **Environment**, and check these settings:

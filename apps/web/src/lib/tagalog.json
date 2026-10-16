@@ -1086,5 +1086,7 @@
   "Meets part history checks": "Pasado sa pagsusuri ng kasaysayan ng piyesa",
   "Check sales history again": "Suriin muli ang kasaysayan ng benta",
   "Import actual sales": "Mag-import ng aktuwal na benta",
-  "Review the sales history checks below before updating.": "Suriin muna ang kasaysayan ng benta sa ibaba bago mag-update."
+  "Review the sales history checks below before updating.": "Suriin muna ang kasaysayan ng benta sa ibaba bago mag-update.",
+  "The API forecasting runtime is not installed. Complete the Render build setup, then redeploy the API.": "Hindi naka-install ang forecasting runtime sa API. Kumpletuhin ang build setup sa Render, saka muling i-deploy ang API.",
+  "The server stopped the forecasting process. Retry after other calculations finish; ask the Super Admin to check Render memory limits if this continues.": "Itinigil ng server ang pagkalkula ng hula. Subukan muli kapag tapos na ang ibang pagkalkula; ipasuri sa Super Admin ang limitasyon ng memory sa Render kung mauulit ito."
 }

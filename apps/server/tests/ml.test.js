@@ -5,6 +5,11 @@ const {runForecastPython,resolveForecastRuntime,forecastingStatus,validateForeca
 const asOfDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const observations=[];
 for(const part of ['synthetic-brake','synthetic-oil'])for(let i=0;i<120;i++){const date=new Date(asOfDate+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-119+i);observations.push({product_id:part,occurred_on:date.toISOString().slice(0,10),quantity:i%3===0?i%5+1:0,source:'actual_sale'});}
+test('concurrent cold runtime checks share one discovery result instead of starting duplicate Python imports',async()=>{
+ const results=await Promise.all(Array.from({length:10},()=>resolveForecastRuntime()));
+ for(const result of results)assert.strictEqual(result,results[0]);
+ assert.equal(typeof results[0].versions.xgboost,'string');
+});
 test('real XGBoost training survives a copied Windows Python path and produces future estimates plus an artifact',async()=>{
  const runtime=await resolveForecastRuntime();assert.notEqual(runtime.python,process.env.PYTHON_BIN);const status=await forecastingStatus();assert.equal(status.ready,true);assert.equal(typeof status.runtime_versions.xgboost,'string');assert.equal(status.runtime_versions.python,runtime.versions.python);
  const {result,modelBuffer}=await runForecastPython({observations,asOfDate,horizonDays:7});

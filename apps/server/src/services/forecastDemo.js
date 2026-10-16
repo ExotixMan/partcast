@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {loadSpreadsheet} from '../utils/spreadsheet.js';
 import {excelDate} from '../utils/helpers.js';
 import {isSimulationWorksheetName} from '../utils/simulationData.js';
+import {forecastProcessEnv} from '../utils/forecastEnvironment.js';
 
 const script = fileURLToPath(new URL('../../../../ml/evaluate_demo_workbook.py', import.meta.url));
 const bad = message => Object.assign(new Error(message), {status:422, safe:true});
@@ -71,7 +72,7 @@ export async function runDemoWorkbook(buffer, filename) {
     const input = path.join(directory, 'input.json'), output = path.join(directory, 'result.json');
     await writeFile(input, JSON.stringify(payload), {mode:0o600});
     await new Promise((resolve, reject) => {
-      const child = spawn(runtime.python, [script, '--input', input, '--output', output], {stdio:['ignore','pipe','pipe']});
+      const child = spawn(runtime.python, [script, '--input', input, '--output', output], {stdio:['ignore','pipe','pipe'],env:forecastProcessEnv()});
       let stdout = '', stderr = '', settled = false;
       const finish = (error) => { if (settled) return; settled=true; clearTimeout(timer); error ? reject(error) : resolve(); };
       const timer = setTimeout(() => {child.kill('SIGKILL'); finish(Object.assign(new Error('The demo took too long. Try fewer parts.'),{status:503,safe:true}));}, 150000);
