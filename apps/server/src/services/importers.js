@@ -98,7 +98,7 @@ function headerMap(worksheet) {
       headerValues(
         worksheet,
         rowNumber
-      );
+      ).map(value => value.length > 80 ? '' : value.replace(/\s*[\[(][^\])]{1,40}[\])]\s*$/, '').trim());
 
     const hasPart =
       values.some(
@@ -112,24 +112,13 @@ function headerMap(worksheet) {
             'partnumber',
             'sku',
             'product code'
-          ].includes(value) ||
-          value.includes(
-            'part number'
-          )
+          ].includes(value)
       );
 
     const hasDescription =
       values.some(
         value =>
-          value ===
-            'description' ||
-          value ===
-            'item description' ||
-          value ===
-            'product description' ||
-          value.includes(
-            'description'
-          )
+          ['description','item description','product description','part description'].includes(value)
       );
 
     const hasQuantity =
@@ -143,10 +132,7 @@ function headerMap(worksheet) {
             'stock quantity',
             'on hand',
             'on-hand'
-          ].includes(value) ||
-          value.includes(
-            'quantity'
-          )
+          ].includes(value)
       );
 
     if (
@@ -166,10 +152,8 @@ function headerMap(worksheet) {
           }
 
           if (
-            value.includes(
-              'part number'
-            ) ||
             [
+              'part number',
               'part no',
               'part no.',
               'part #',
@@ -199,9 +183,7 @@ function headerMap(worksheet) {
           }
 
           else if (
-            value.includes(
-              'description'
-            )
+            ['description','item description','product description','part description'].includes(value)
           ) {
             map.description =
               column;
@@ -226,10 +208,7 @@ function headerMap(worksheet) {
               'stock quantity',
               'on hand',
               'on-hand'
-            ].includes(value) ||
-            value.includes(
-              'quantity'
-            )
+            ].includes(value)
           ) {
             map.quantity =
               column;
@@ -344,6 +323,8 @@ function headerMap(worksheet) {
         }
       );
 
+      // Narrative cells can mention several field names without forming a table.
+      if (!map.quantity || !(map.partNumber || map.description)) continue;
       return {
         row: rowNumber,
         map
