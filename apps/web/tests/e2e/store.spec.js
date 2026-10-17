@@ -118,6 +118,70 @@ test('imports guide a simulated workbook to an open demo and treat timeouts as u
  expect(uploads).toBe(2);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+test('saved past invoices appear after import, survive reload and support search, dates and pagination',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:390,height:844});
+ let saved=[],uploads=0;const history=[],queries=[],headers={'access-control-allow-origin':'*'};
+ const note='Sales rows were imported for reporting. No 1-unit demand proxy was created because the proxy option was not enabled.';
+ const duplicates='21 invoice(s) already exist with the same reference, date, amount and description; they were not added again.';
+ await context.route('http://localhost:10000/api/imports**',async route=>{
+  const request=route.request();if(request.method()==='OPTIONS')return route.fallback();
+  const url=new URL(request.url());
+  if(url.pathname==='/api/imports/spreadsheet'){
+   uploads++;expect(request.postData()).toContain('legacy-sales');expect(request.postData()).toContain('false');
+   const added=saved.length?0:21;
+   if(added)saved=Array.from({length:21},(_,index)=>({id:`saved-${index+1}`,reference_no:`SI#${index+1}`,sale_date:'2026-10-12',amount:index+1===1?1250.5:100,raw_items:index===0?'BP-001 Brake pad':`Other part ${index+1}`})).reverse();
+   const result={detectedType:'legacy-sales',rowsImported:added,rowsSkipped:21-added,warnings:added?[note]:[duplicates,note]};
+   history.unshift({id:`batch-${uploads}`,file_name:'invoices.xlsx',import_type:'legacy_sales',status:'completed',rows_read:21,rows_imported:added,rows_skipped:21-added,warnings:result.warnings,created_at:'2026-10-17T00:00:00Z'});
+   return route.fulfill({json:result,headers});
+  }
+  if(url.pathname==='/api/imports/sales'){
+   const q=url.searchParams.get('q')||'',from=url.searchParams.get('from'),to=url.searchParams.get('to'),current=Number(url.searchParams.get('page')||1);queries.push(Object.fromEntries(url.searchParams));
+   const rows=saved.filter(row=>(!q||`${row.reference_no} ${row.raw_items}`.toLowerCase().includes(q.toLowerCase()))&&(!from||row.sale_date>=from)&&(!to||row.sale_date<=to));
+   return route.fulfill({json:{data:rows.slice((current-1)*20,current*20),count:rows.length,page:current,pageSize:20},headers});
+  }
+  return route.fulfill({json:{data:history},headers});
+ });
+ await page.goto('/imports');const panel=page.getByRole('region',{name:'Saved past sales',exact:true});
+ await expect(panel.getByText('No past invoices are saved yet. Import a past-sales spreadsheet above.')).toBeVisible();
+ await page.getByLabel('What is in these files?').selectOption('legacy-sales');
+ await page.getByLabel('Choose spreadsheet files').setInputFiles({name:'invoices.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('fixture; real parsing checked in HTTP integration test')});
+ await page.getByRole('button',{name:'Import 1 file',exact:true}).click();
+ const results=page.getByRole('region',{name:'Latest import results'});
+ await expect(results).toContainText('21 rows added · 0 skipped.');await expect(results).toContainText(note);
+ await results.getByRole('link',{name:'View saved past sales'}).click();await expect(page).toHaveURL(/#saved-past-sales$/);
+ await expect(panel.getByText('Invoices found: 21')).toBeVisible();await expect(panel.getByRole('article')).toHaveCount(20);
+ await panel.getByRole('button',{name:'Next',exact:true}).click();await expect(panel.getByRole('article')).toHaveCount(1);await expect(panel.getByRole('article')).toContainText('BP-001 Brake pad');
+ expect(queries.at(-1).page).toBe('2');
+ await panel.getByLabel('Search reference or description').fill('BP-001');await panel.getByRole('button',{name:'Find invoices'}).click();
+ await expect(panel.getByText('Invoices found: 1')).toBeVisible();await expect(panel.getByRole('article')).toContainText('1,250.50');expect(queries.at(-1).page).toBe('1');
+ await panel.getByLabel('From date',{exact:true}).fill('2026-10-13');await panel.getByLabel('To date',{exact:true}).fill('2026-10-13');await panel.getByRole('button',{name:'Find invoices'}).click();
+ await expect(panel.getByText('No invoices match these filters.')).toBeVisible();
+ await panel.getByRole('button',{name:'Clear filters'}).click();await expect(panel.getByText('Invoices found: 21')).toBeVisible();
+ await page.reload();await expect(panel.getByText('Invoices found: 21')).toBeVisible();
+ await page.getByLabel('What is in these files?').selectOption('legacy-sales');
+ await page.getByLabel('Choose spreadsheet files').setInputFiles({name:'invoices-copy.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('fixture')});
+ await page.getByRole('button',{name:'Import 1 file',exact:true}).click();
+ await expect(results.getByText('Check completed. No new rows were added.',{exact:true})).toBeVisible();await expect(results).toContainText(duplicates);expect(saved).toHaveLength(21);
+ await expect(panel.getByText('Invoices found: 21')).toBeVisible();
+ for(const width of [390,768,1280]){
+  await page.setViewportSize({width,height:900});
+  if(width===1280)await expect(panel.getByRole('table')).toBeVisible();else await expect(panel.getByRole('article').first()).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ }
+ await page.getByLabel('Website language').selectOption('fil');
+ await expect(page.getByRole('region',{name:'Naka-save na dating benta'})).toBeVisible();await expect(page.getByText('Mga invoice na nakita: 21')).toBeVisible();
+ expect(uploads).toBe(2);
+});
+test('saved invoice read failures show a retry instead of an empty or successful import claim',async({page,context})=>{
+ await fixture(context);let failed=true;
+ await context.route('http://localhost:10000/api/imports/sales**',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  await route.fulfill({status:failed?503:200,json:failed?{error:'Fixture store temporarily unavailable.'}:{data:[{id:'persisted',reference_no:'SI#20',sale_date:null,amount:null,raw_items:null}],count:1,page:1,pageSize:20},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/imports');const panel=page.getByRole('region',{name:'Saved past sales',exact:true});
+ await expect(panel.getByText('Saved invoices could not be loaded.')).toBeVisible();await expect(panel.getByText('Invoices found: 0')).toHaveCount(0);
+ failed=false;await panel.getByRole('button',{name:'Try again',exact:true}).click();await expect(panel.getByText('Invoices found: 1')).toBeVisible();await expect(panel.getByRole('table').getByText('Date unavailable')).toBeVisible();
+});
 test('forecast history checks explain missing sales and enable updates only after usable history is verified',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:390,height:844});
  let ready=false;const posted=[];

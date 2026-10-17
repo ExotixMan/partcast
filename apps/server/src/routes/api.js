@@ -468,6 +468,25 @@ router.get('/imports', rolesAdmin, async (req,res,next) => {
   } catch(e){next(e);}
 });
 
+router.get('/imports/sales', rolesAdmin, async (req,res,next) => {
+  try {
+    const {from,to}=reportDates(req.query);
+    const page=z.coerce.number().int().min(1).max(500000).default(1).parse(req.query.page);
+    const pageSize=z.coerce.number().int().min(1).max(50).default(20).parse(req.query.pageSize);
+    const search=z.string().trim().max(120).default('').parse(req.query.q);
+    // Only literal words/reference characters may enter PostgREST's OR grammar.
+    const literal=search.replace(/[^\p{L}\p{N} #/_-]/gu,' ').trim().replace(/_/g,'\\_');
+    if(search&&!/[\p{L}\p{N}]/u.test(literal))throw Object.assign(new Error('Enter letters or numbers to search invoices.'),{status:422});
+    let query=adminDb.from('legacy_sales').select('id,reference_no,sale_date,amount,raw_items',{count:'exact'});
+    if(from)query=query.gte('sale_date',from);
+    if(to)query=query.lte('sale_date',to);
+    if(literal)query=query.or(`reference_no.ilike.%${literal}%,raw_items.ilike.%${literal}%`);
+    const {data,count,error}=await query.order('sale_date',{ascending:false,nullsFirst:false}).order('id').range((page-1)*pageSize,page*pageSize-1);
+    if(error)throw error;
+    res.json({data:data||[],count:count||0,page,pageSize});
+  }catch(e){next(e);}
+});
+
 router.get('/reports/:type.xlsx', async (req,res,next) => {
   try {
     const type = req.params.type;

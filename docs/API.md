@@ -54,6 +54,11 @@ Draft `extra_columns` contains `{id: <uuid>, label: <1–50 characters>}` entrie
 - `GET /api/forecast/product/:id`
 - `POST /api/forecast/train`
 - `GET /api/data-quality`
+- `GET /api/imports/sales` — verified manager access; saved invoice references,
+  dates, descriptions and amounts. Supports `q`, inclusive `from`/`to` dates,
+  `page` (default 1) and `pageSize` (default 20, maximum 50). Returns
+  `{ data, count, page, pageSize }`. Invoice records are separate from actual
+  sold quantities and counter transactions.
 
 ## Imports / reports / backups
 
