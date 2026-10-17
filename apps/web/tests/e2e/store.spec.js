@@ -530,3 +530,24 @@ test('inventory staff can read counter sales but cannot request manager-only sal
  for(const path of ['/sales','/sales?source=imported']){await page.goto(path);await expect(page.getByRole('region',{name:'Counter sales',exact:true})).toBeVisible();await expect(page.getByRole('navigation',{name:'Sales sources'})).toHaveCount(0);}
  await page.goto('/forecast-demo');await expect(page).toHaveURL(/\/$/);expect(protectedCalls).toEqual([]);
 });
+
+test('a separate demo database uses the usual planning page while keeping generated data identified',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:390,height:844});let trained=false;
+ const headers={'access-control-allow-origin':'*'};
+ const intercept=(path,handler)=>context.route('http://localhost:10000'+path,route=>route.request().method()==='OPTIONS'?route.fallback():handler(route));
+ await intercept('/api/me',route=>route.fulfill({json:{user:{id:userId,full_name:'Store Staff',role:'owner',active:true,session_id:sid,verification_expires_at:'2099-01-01T00:00:00Z',data_environment:'simulated_demo'}},headers}));
+ await intercept('/api/data-quality',route=>route.fulfill({json:{dataMode:'simulated_demo',demoDemandRows:778,demoHistoryDays:730,actualDemandRows:0,importedTrainingRows:0},headers}));
+ await intercept('/api/forecast/status',route=>route.fulfill({json:{ready:true},headers}));
+ await intercept('/api/forecast/readiness**',route=>route.fulfill({json:{ready:true,status:'ready',record_count:778,current_part_count:9,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}},headers}));
+ await intercept('/api/forecast/runs',route=>route.fulfill({json:{data:trained?[{id:'run-demo',status:'completed',completed_at:'2026-10-17T00:00:00Z',metrics:{data_mode:'simulated_demo',production_accuracy_established:false}}]:[]},headers}));
+ await intercept('/api/forecast/products',route=>route.fulfill({json:{run:trained?{id:'run-demo'}:null,data:trained?[{product_id:p1,part_number:'23303-64010',description:'FUEL FILTER',predicted_total:8,forecast_days:30}]:[]},headers}));
+ await intercept('/api/forecast/product/*',route=>route.fulfill({json:{data:[{run_id:'run-demo',forecast_date:'2026-10-18',predicted_quantity:0.25}]},headers}));
+ await intercept('/api/forecast/train',route=>{expect(route.request().postDataJSON()).toEqual({horizonDays:30,includeProxy:false});trained=true;return route.fulfill({json:{forecastCount:270},headers});});
+ await intercept('/api/forecast/recorded-sales**',route=>route.fulfill({json:{mode:'simulated_demo',record_count:778,part_count:9,last_sale_date:'2026-10-16',data:[{product_id:p1,part_number:'23303-64010',description:'FUEL FILTER',unit:'pcs',recorded_quantity:12,demo_records:40,actual_records:0,imported_records:0,sale_days:40,first_sale_date:'2024-10-17',last_sale_date:'2026-10-16'}]},headers}));
+ await page.goto('/forecast');await expect(page.getByText('Demo demand records',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText('778',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText(/walkthrough estimates demand from generated quantities/)).toBeVisible();
+ await expect(page.getByText('Actual quantities from imported sales',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Update demand estimate',exact:true}).click();await expect(page.getByLabel('Choose a part')).toContainText('23303-64010');await page.getByRole('button',{name:'Daily list',exact:true}).click();await expect(page.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('0.3');
+ await page.goto('/sales');await expect(page.getByText('Generated sample records: 40',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText('Generated sample quantities in the separate demo database.')).toBeVisible();
+ for(const width of [320,768,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),String(width)).toBe(true);}
+ await page.getByLabel('Website language').selectOption('fil');await expect(page.getByText('Mga ginawang halimbawang dami sa hiwalay na demo database.')).toBeVisible();
+});

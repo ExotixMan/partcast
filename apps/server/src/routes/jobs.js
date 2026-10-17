@@ -4,6 +4,7 @@ import { adminDb } from '../supabase.js';
 import { buildBackupWorkbook } from '../utils/excel.js';
 import { fetchAll } from '../utils/helpers.js';
 import { runForecastPython } from '../utils/ml.js';
+import {getDataEnvironment,markForecastMetrics} from '../services/dataEnvironment.js';
 import { config } from '../config.js';
 
 const router = Router();
@@ -59,8 +60,9 @@ async function createBackup(actorId = null) {
 
 async function trainForecast({ includeProxy=false, horizonDays=30, actorId=null }) {
   if(includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
+  const environment=await getDataEnvironment();
   const observations = await fetchAll(() => {
-    const q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source').in('source',['actual_sale','imported_training_data']);
+    const q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source').in('source',environment.sources);
     return q.order('occurred_on');
   });
   if (observations.length < 30) return { skipped:true, reason:'Not enough demand observations.' };
@@ -78,12 +80,12 @@ async function trainForecast({ includeProxy=false, horizonDays=30, actorId=null 
     const rows=result.forecasts.map(f=>({run_id:runId,product_id:f.product_id,forecast_date:f.forecast_date,predicted_quantity:f.predicted_quantity}));
     for(let i=0;i<rows.length;i+=500){ const ins=await adminDb.from('demand_forecasts').insert(rows.slice(i,i+500)); if(ins.error) throw ins.error; }
     const done=await adminDb.from('forecast_runs').update({
-      status:'completed',model_version:result.model_version,metrics:result.metrics,
+      status:'completed',model_version:result.model_version,metrics:markForecastMetrics(result.metrics,environment),
       training_date_min:result.training_date_min,training_date_max:result.training_date_max,
       model_storage_path:modelPath,completed_at:new Date().toISOString()
     }).eq('id',runId);
     if(done.error) throw done.error;
-    return {skipped:false,runId,metrics:result.metrics,forecastCount:rows.length};
+    return {skipped:false,runId,metrics:markForecastMetrics(result.metrics,environment),forecastCount:rows.length};
   } catch(error){
     await adminDb.from('forecast_runs').update({status:'failed',error_message:String(error.message).slice(0,1000),completed_at:new Date().toISOString()}).eq('id',runId);
     throw error;

@@ -4,6 +4,7 @@ import { supabaseKeyIssue, frontendOrigins } from './utils/connection-config.js'
 
 const schema = z.object({
   NODE_ENV: z.string().default('development'),
+  PARTCAST_DEMO_MODE: z.enum(['true','false']).default('false').transform(value=>value==='true'),
   PORT: z.coerce.number().int().positive().default(10000),
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string().min(20),

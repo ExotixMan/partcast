@@ -18,7 +18,7 @@ export default function ForecastAccuracy({metrics}){
     <dl className="mt-4 grid gap-4 sm:grid-cols-3">
      <div><dt className="text-sm text-amber-900">{t('Average error per planning period')}</dt><dd className="mt-1 text-xl font-bold text-slate-950">{number(validation.model.mae)} <span className="text-sm font-normal">{t('units')}</span></dd></div>
      <div><dt className="text-sm text-amber-900">{t('Overall quantity error (WAPE)')}</dt><dd className="mt-1 text-xl font-bold text-slate-950">{validation.model.wape_percent==null?t('Not measurable'):number(validation.model.wape_percent)+'%'}</dd></div>
-     <div><dt className="text-sm text-amber-900">{t('Actual / estimated units in the tests')}</dt><dd className="mt-1 text-xl font-bold text-slate-950">{number(validation.model.actual_recorded_units)} / {number(validation.model.predicted_units)}</dd></div>
+     <div><dt className="text-sm text-amber-900">{metrics?.data_mode==='simulated_demo'?t('Sample / estimated units in the tests'):t('Actual / estimated units in the tests')}</dt><dd className="mt-1 text-xl font-bold text-slate-950">{number(validation.model.actual_recorded_units)} / {number(validation.model.predicted_units)}</dd></div>
     </dl>
     <p className="mt-3 text-sm leading-6 text-amber-900">{t('Lower error is better. A quantity error near 100% means the forecast missed much of the recorded demand.')}</p>
     <p className="mt-2 text-sm leading-6 text-amber-900">{t('A recent-sales average had an error of {v0} units per period.',{v0:number(validation.recent_average?.mae)})}</p>

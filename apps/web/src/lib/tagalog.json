@@ -1221,5 +1221,17 @@
   "Sales could not be loaded": "Hindi makuha ang mga benta",
   "No sales found": "Walang nakitang benta",
   "Sales saved through Sell or receive appear here. Try another date range or record a sale.": "Makikita rito ang mga benta na nai-save sa Magbenta o tumanggap. Subukan ang ibang saklaw ng petsa o magtala ng benta.",
-  "Parts sold with dates, quantities, customers and amounts": "Mga nabentang piyesa kasama ang petsa, dami, mamimili at halaga"
+  "Parts sold with dates, quantities, customers and amounts": "Mga nabentang piyesa kasama ang petsa, dami, mamimili at halaga",
+  "Demo store": "Halimbawang tindahan",
+  "Generated stock and demand for practice. These are not actual store sales.": "Ginawang halimbawa ang stock at demand para sa pagsasanay. Hindi ito aktuwal na benta ng tindahan.",
+  "This walkthrough estimates demand from generated quantities in your separate demo database. Its results do not measure actual-store accuracy.": "Gumagamit ang pagsasanay na ito ng ginawang dami sa hiwalay na demo database. Hindi nito sinusukat ang katumpakan para sa tunay na tindahan.",
+  "Demo demand records": "Mga halimbawang tala ng demand",
+  "Generated positive-demand observations": "Mga ginawang tala na may positibong demand",
+  "Days in sample history": "Mga araw sa halimbawang kasaysayan",
+  "Complete generated calendar, including zero days": "Kumpletong halimbawang kalendaryo, kasama ang mga araw na sero",
+  "Sample forecast limitations": "Mga limitasyon ng halimbawang pagtataya",
+  "These errors describe generated demand only. They do not establish accuracy for the actual store.": "Para lamang sa ginawang demand ang mga error na ito. Hindi nito pinatutunayan ang katumpakan para sa tunay na tindahan.",
+  "Generated sample quantities in the separate demo database.": "Mga ginawang halimbawang dami sa hiwalay na demo database.",
+  "Generated sample records: {v0}": "Mga ginawang halimbawang tala: {v0}",
+  "Sample / estimated units in the tests": "Halimbawa / tinatayang yunit sa mga pagsusuri"
 }

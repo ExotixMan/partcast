@@ -116,3 +116,17 @@ through the manual supplier-email endpoint. See [capstone scope](CAPSTONE_SCOPE.
 `POST /api/admin/supplier-email/:supplierId` accepts an optional reviewed draft: `{subject, message, items:[{product_id, part_number, description, quantity}]}`. Without a body the existing automatic recommendation draft remains available. Recipients are read from the saved supplier; the request cannot choose an arbitrary recipient. Products are checked against that supplier's recommendations.
 
 The website first calls Supabase `signInWithPassword`. It then calls `POST /auth/otp/request` using that password session's bearer token. The recipient is the validated account email; the request cannot choose a different recipient. `POST /auth/otp/verify` accepts `{code:"123456"}` and grants that session 12 hours of store access. `POST /auth/logout` revokes its verification. These `/auth` endpoints require a validated active password session, but not yet an email verification. See [code limits, roles and Google configuration](LOGIN_ROLES_FORECASTING.md).
+
+
+## Separate database walkthrough
+
+`PARTCAST_DEMO_MODE=true` is an API environment option for a separate Supabase
+project prepared with the generated-data seed. The API also requires the
+`partcast_demo_environment` database marker; the flag alone is insufficient.
+`GET /api/me` reports `user.data_environment`. Normal mode selects only
+`actual_sale` and `imported_training_data`; database demo mode selects only
+`simulated_demo`, including on the normal readiness, training, sales-summary
+and cron forecast paths. Forecast metrics retain `data_mode=simulated_demo`
+and `production_accuracy_established=false`. Normal spreadsheet imports still
+reject generated demand. See [DEMO_DATABASE.md](DEMO_DATABASE.md) for the SQL,
+project configuration and walkthrough.

@@ -10,6 +10,7 @@ import { fetchAll, cleanText } from '../utils/helpers.js';
 import { importInventoryWorkbook, importLegacySalesWorkbook, importDemandTrainingWorkbook, importSpreadsheetAuto, isSupportedSpreadsheetName } from '../services/importers.js';
 import { buildReportWorkbook } from '../utils/excel.js';
 import { runForecastPython,forecastingStatus,checkForecastReadiness } from '../utils/ml.js';
+import {getDataEnvironment,markForecastMetrics} from '../services/dataEnvironment.js';
 import { createDemoJobs } from '../services/forecastDemo.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
 
@@ -21,6 +22,7 @@ import {summarizeRecordedSales} from '../utils/recordedSales.js';
 const storeDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const router = Router();
 router.use(authorizeApi);
+router.use(async(req,res,next)=>{try{req.dataEnvironment=await getDataEnvironment();next();}catch(error){next(error);}});
 router.use(storeRoutes);
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -37,7 +39,7 @@ const rolesWrite = requireRole('owner','admin','inventory_staff');
 const rolesAdmin = requireRole('owner','admin');
 const assistantLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 
-router.get('/me', (req, res) => { const {accessToken,...user}=req.user;res.json({user}); });
+router.get('/me', (req, res) => { const {accessToken,...user}=req.user;res.json({user:{...user,data_environment:req.dataEnvironment.mode}}); });
 
 router.get('/offline-snapshot', async (req,res,next) => {
   try {
@@ -356,10 +358,10 @@ router.get('/forecast/demo/jobs/:id', rolesAdmin, (req,res,next)=>{
   catch(error) {next(error);}
 });
 
-async function demandForForecast(includeProxy) {
+async function demandForForecast(environment) {
   return fetchAll(() => adminDb.from('demand_observations')
     .select('product_id,occurred_on,quantity,source,product:products(part_number,description,unit)')
-    .in('source', ['actual_sale','imported_training_data'])
+    .in('source', environment.sources)
     .order('occurred_on').order('id'));
 }
 router.get('/forecast/recorded-sales', rolesAdmin, async (req,res,next) => {
@@ -367,15 +369,15 @@ router.get('/forecast/recorded-sales', rolesAdmin, async (req,res,next) => {
     const {from,to}=reportDates(req.query);
     const asOfDate=storeDay();
     // Validate before querying; this route deliberately does not start Python.
-    summarizeRecordedSales([],{from,to,asOfDate});
-    res.json(summarizeRecordedSales(await demandForForecast(false),{from,to,asOfDate}));
+    summarizeRecordedSales([],{from,to,asOfDate,dataMode:req.dataEnvironment.mode});
+    res.json(summarizeRecordedSales(await demandForForecast(req.dataEnvironment),{from,to,asOfDate,dataMode:req.dataEnvironment.mode}));
   } catch(error) {next(error);}
 });
 router.get('/forecast/readiness', rolesAdmin, async (req,res,next) => {
   try {
     const includeProxy = z.enum(['true','false']).default('false').parse(req.query.includeProxy) === 'true';
     if(includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
-    const observations = await demandForForecast(false);
+    const observations = await demandForForecast(req.dataEnvironment);
     const report = await checkForecastReadiness({observations,asOfDate:storeDay()});
     const products = new Map(observations.map(row=>[row.product_id,row.product]));
     res.json({...report, products:report.products.map(row=>({...row,...products.get(row.product_id)}))});
@@ -387,7 +389,7 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
     const body = z.object({ horizonDays:z.coerce.number().int().min(7).max(90).default(30), includeProxy:z.boolean().default(false) }).parse(req.body || {});
     const runId = crypto.randomUUID();
     if(body.includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
-    const observations = await demandForForecast(false);
+    const observations = await demandForForecast(req.dataEnvironment);
     const asOfDate = storeDay();
     const readiness = await checkForecastReadiness({observations,asOfDate});
     if (!readiness.ready) return res.status(422).json({error:readiness.message,code:'FORECAST_DATA_NOT_READY',readiness});
@@ -409,13 +411,13 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
         if (error) throw error;
       }
       const { error: completeError } = await adminDb.from('forecast_runs').update({
-        status:'completed',model_version:result.model_version,metrics:result.metrics,
+        status:'completed',model_version:result.model_version,metrics:markForecastMetrics(result.metrics,req.dataEnvironment),
         training_date_min:result.training_date_min,training_date_max:result.training_date_max,
         model_storage_path:modelPath,completed_at:new Date().toISOString()
       }).eq('id',runId);
       if (completeError) throw completeError;
       await audit(req,'train','forecast_run',runId,{rows:observations.length,products:productIds.length,includeProxy:body.includeProxy});
-      res.json({ runId, metrics:result.metrics, forecastCount:forecastRows.length });
+      res.json({ runId, metrics:markForecastMetrics(result.metrics,req.dataEnvironment), forecastCount:forecastRows.length });
     } catch (inner) {
       await adminDb.from('forecast_runs').update({status:'failed',error_message:String(inner.message).slice(0,1000),completed_at:new Date().toISOString()}).eq('id',runId);
       throw inner;
@@ -502,6 +504,11 @@ router.get('/reports/:type.xlsx', async (req,res,next) => {
 
 router.get('/data-quality', async (req,res,next) => {
   try {
+    if(req.dataEnvironment.mode==='simulated_demo'){
+      const {count,error}=await adminDb.from('demand_observations').select('*',{count:'exact',head:true}).eq('source','simulated_demo');
+      if(error)throw error;
+      return res.json({dataMode:'simulated_demo',demoDemandRows:count||0,demoHistoryDays:req.dataEnvironment.historyDays,actualDemandRows:0,importedTrainingRows:0,proxyDemandRows:0,legacySalesRows:0,unmatchedLegacySales:0});
+    }
     const [actual, imported, proxy, legacy, unmatched] = await Promise.all([
       adminDb.from('demand_observations').select('*',{count:'exact',head:true}).eq('source','actual_sale'),
       adminDb.from('demand_observations').select('*',{count:'exact',head:true}).eq('source','imported_training_data'),
