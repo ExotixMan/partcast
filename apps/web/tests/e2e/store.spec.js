@@ -189,6 +189,75 @@ test('leaving a running history check cancels it without marking the store offli
  }finally{release?.();}
 });
 
+test('recorded sales work without the Python engine, filter dates and remain readable offline',async({page,context})=>{
+ const api=await fixture(context);await page.setViewportSize({width:390,height:844});
+ const queries=[],training=[];let offline=false;
+ page.on('request',request=>{if(request.url().endsWith('/api/forecast/train')&&request.method()==='POST')training.push(request.postData());});
+ await context.route('http://localhost:10000/api/forecast/status',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  await route.fulfill({json:{ready:false,message:'The fixture Python engine is unavailable.'},headers:{'access-control-allow-origin':'*'}});
+ });
+ await context.route('http://localhost:10000/api/data-quality',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  await route.fulfill({json:{actualDemandRows:1,importedTrainingRows:3},headers:{'access-control-allow-origin':'*'}});
+ });
+ await context.route('http://localhost:10000/api/forecast/recorded-sales**',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  if(offline){await route.abort('internetdisconnected');return;}
+  const params=new URL(route.request().url()).searchParams;queries.push(Object.fromEntries(params));
+  const range=Boolean(params.get('from')),empty=params.get('from')==='2026-10-11';
+  const rows=empty?[]:[{product_id:p1,part_number:'BP-001',description:'Toyota brake pad',unit:'pcs',recorded_quantity:range?5:55,sale_days:range?1:2,record_count:range?2:3,actual_records:1,imported_records:range?1:2,first_sale_date:range?'2026-10-12':'2020-01-02',last_sale_date:'2026-10-12'},...(!range?[{product_id:p2,part_number:'OIL-001',description:'Engine oil',unit:'L',recorded_quantity:1.25,sale_days:1,record_count:1,actual_records:0,imported_records:1,first_sale_date:'2026-10-10',last_sale_date:'2026-10-10'}]:[])];
+  await route.fulfill({json:{mode:'recorded_sales',record_count:empty?0:range?2:4,part_count:rows.length,last_sale_date:empty?null:'2026-10-12',invalid_records:0,future_records:0,includes_forecasts:false,missing_days_filled:false,data:rows},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/forecast');
+ const panel=page.getByRole('region',{name:'Recorded sales',exact:true});
+ await expect(panel.getByRole('heading',{name:'Recorded sales',exact:true})).toBeVisible();
+ await expect(panel.getByRole('article').filter({hasText:'BP-001'})).toContainText('55 pcs');
+ await expect(panel.getByRole('article').filter({hasText:'OIL-001'})).toContainText('1.25 L');
+ await expect(page.getByText('The forecasting engine needs attention',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
+ await panel.getByLabel('From date',{exact:true}).fill('2026-10-12');await panel.getByLabel('To date',{exact:true}).fill('2026-10-12');
+ await panel.getByRole('button',{name:'Show recorded sales',exact:true}).click();
+ await expect(panel.getByRole('article').filter({hasText:'BP-001'})).toContainText('5 pcs');
+ expect(queries.at(-1)).toEqual({from:'2026-10-12',to:'2026-10-12'});
+ await panel.getByLabel('From date',{exact:true}).fill('2026-10-11');await panel.getByLabel('To date',{exact:true}).fill('2026-10-11');
+ await panel.getByRole('button',{name:'Show recorded sales',exact:true}).click();
+ await expect(panel.getByText('No quantities were recorded in these dates.',{exact:true})).toBeVisible();
+ await expect(panel.getByText('This does not mean there were no sales.',{exact:true})).toBeVisible();
+ await panel.getByRole('button',{name:'All saved dates',exact:true}).click();
+ await expect(panel.getByRole('article').filter({hasText:'BP-001'})).toContainText('55 pcs');
+ await page.evaluate(async()=>{await navigator.serviceWorker.ready;});
+ offline=true;api.disconnect(true);await context.setOffline(true);await page.reload();
+ await expect(panel.getByText(/Saved copy from/)).toBeVisible();
+ await expect(panel.getByRole('article').filter({hasText:'BP-001'})).toContainText('55 pcs');
+ expect(training).toHaveLength(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('recorded sales search and pagination work on desktop, tablet and mobile in Tagalog',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:1280,height:900});
+ const rows=Array.from({length:12},(_,i)=>({product_id:'recorded-fixture-'+i,part_number:'SKU-'+String(i+1).padStart(3,'0'),description:'Fixture part '+(i+1),unit:null,recorded_quantity:i+1,sale_days:1,actual_records:0,imported_records:1,first_sale_date:'2026-10-12',last_sale_date:'2026-10-12'}));
+ await context.route('http://localhost:10000/api/forecast/recorded-sales**',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  await route.fulfill({json:{mode:'recorded_sales',record_count:12,part_count:12,last_sale_date:'2026-10-12',invalid_records:0,future_records:0,data:rows},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/forecast');let panel=page.getByRole('region',{name:'Recorded sales',exact:true});
+ await expect(panel.getByRole('table',{name:'Recorded sales',exact:true}).locator('tbody tr')).toHaveCount(10);
+ await panel.getByRole('button',{name:'Next parts',exact:true}).click();
+ await expect(panel.getByRole('table',{name:'Recorded sales',exact:true}).locator('tbody tr')).toHaveCount(2);
+ await panel.getByLabel('Find a recorded part').fill('SKU-001');
+ await expect(panel.getByRole('table',{name:'Recorded sales',exact:true}).locator('tbody tr')).toHaveCount(1);
+ await expect(panel.getByRole('button',{name:'Previous parts',exact:true})).toBeDisabled();
+ await page.getByLabel('Website language').selectOption('fil');
+ panel=page.getByRole('region',{name:'Naitalang benta',exact:true});
+ await expect(panel.getByRole('heading',{name:'Naitalang benta',exact:true})).toBeVisible();
+ await expect(panel.getByRole('button',{name:'Ipakita ang naitalang benta',exact:true})).toBeVisible();
+ for(const width of [1280,768,390]){
+  await page.setViewportSize({width,height:900});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ }
+ await expect(panel.getByRole('article').filter({hasText:'SKU-001'})).toBeVisible();
+});
+
 test('simulated XGBoost demo shows its own metrics and leaves real forecasts unchanged',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:390,height:844});
  const calls=[];

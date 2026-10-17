@@ -17,6 +17,7 @@ import storeRoutes from './store.js';
 import {storeReport} from '../utils/storeReports.js';
 import {amount,positiveAmount,category,barcode,reportDates,dateQuery} from '../utils/storeValidation.js';
 import {neededRestock,normalizeRestock} from '../utils/restock.js';
+import {summarizeRecordedSales} from '../utils/recordedSales.js';
 const storeDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const router = Router();
 router.use(authorizeApi);
@@ -357,10 +358,19 @@ router.get('/forecast/demo/jobs/:id', rolesAdmin, (req,res,next)=>{
 
 async function demandForForecast(includeProxy) {
   return fetchAll(() => adminDb.from('demand_observations')
-    .select('product_id,occurred_on,quantity,source,product:products(part_number,description)')
+    .select('product_id,occurred_on,quantity,source,product:products(part_number,description,unit)')
     .in('source', includeProxy ? ['actual_sale','imported_training_data','legacy_transaction_proxy'] : ['actual_sale','imported_training_data'])
-    .order('occurred_on'));
+    .order('occurred_on').order('id'));
 }
+router.get('/forecast/recorded-sales', rolesAdmin, async (req,res,next) => {
+  try {
+    const {from,to}=reportDates(req.query);
+    const asOfDate=storeDay();
+    // Validate before querying; this route deliberately does not start Python.
+    summarizeRecordedSales([],{from,to,asOfDate});
+    res.json(summarizeRecordedSales(await demandForForecast(false),{from,to,asOfDate}));
+  } catch(error) {next(error);}
+});
 router.get('/forecast/readiness', rolesAdmin, async (req,res,next) => {
   try {
     const includeProxy = z.enum(['true','false']).default('false').parse(req.query.includeProxy) === 'true';
