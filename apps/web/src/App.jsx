@@ -11,6 +11,7 @@ const DebtsPage = lazy(() => import('./pages/DebtsPage.jsx'));
 const LoginPage = lazy(() => import('./pages/LoginPage.jsx'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage.jsx'));
+const SalesPage = lazy(() => import('./pages/SalesPage.jsx'));
 const TransactionsPage = lazy(() => import('./pages/TransactionsPage.jsx'));
 const ForecastPage = lazy(() => import('./pages/ForecastPage.jsx'));
 const ReorderPage = lazy(() => import('./pages/ReorderPage.jsx'));
@@ -54,6 +55,8 @@ export default function App() {
   <Route path="counter" element={<CounterPage />} />
   <Route path="debts" element={<RoleRoute roles={staffRoles}><DebtsPage /></RoleRoute>} />
   <Route path="inventory" element={<InventoryPage />} />
+  <Route path="sales" element={<RoleRoute roles={staffRoles}><SalesPage /></RoleRoute>} />
+  <Route path="forecast-demo" element={<RoleRoute roles={managerRoles}><ForecastPage demo /></RoleRoute>} />
   <Route path="transactions" element={<RoleRoute roles={staffRoles}><TransactionsPage /></RoleRoute>} />
   <Route path="forecast" element={<RoleRoute roles={staffRoles}><ForecastPage /></RoleRoute>} />
   <Route path="reorder" element={<RoleRoute roles={staffRoles}><ReorderPage /></RoleRoute>} />

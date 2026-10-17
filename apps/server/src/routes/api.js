@@ -216,7 +216,7 @@ router.get('/transactions', async (req, res, next) => {
     const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize) || 25));
     const type = String(req.query.type || 'all');
     let q = adminDb.from('inventory_transactions')
-      .select('*,product:products(part_number,description,brand),supplier:suppliers(name)', { count: 'exact' });
+      .select('*,product:products(part_number,description,brand,unit),supplier:suppliers(name)', { count: 'exact' });
     if (type !== 'all') q = q.eq('tx_type', z.enum(['initial','stock_in','stock_out','sale']).parse(type));
     q=dateQuery(q,reportDates(req.query));
     const { data, error, count } = await q.order('occurred_at',{ascending:false}).range((page-1)*pageSize, page*pageSize-1);

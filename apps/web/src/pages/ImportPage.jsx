@@ -8,7 +8,6 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import Loading from '../components/Loading.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import Toast from '../components/Toast.jsx';
-import ImportedSales from '../components/ImportedSales.jsx';
 import ImportNotes from '../components/ImportNotes.jsx';
 const typeLabel = {
   auto: 'Choose automatically (recommended)',
@@ -28,7 +27,6 @@ export default function ImportPage() {
   const [historyError, setHistoryError] = useState('');
   const [toast, setToast] = useState(null);
   const [results, setResults] = useState([]);
-  const [importRefresh,setImportRefresh]=useState(0);
   async function load() {
     setHistoryLoading(true);
     setHistoryError('');
@@ -80,19 +78,13 @@ export default function ImportPage() {
         type: successful === done.length ? 'success' : 'error',
         message: unconfirmed ? t('Import status is unconfirmed. Check Past imports before trying again.') : successful===done.length&&!added?t('Check completed. No new rows were added. Review the import notes.'):t('{v0} of {v1} files checked. {v2} rows added. Review the results below.',{v0:successful,v1:done.length,v2:added})
       });
-      setImportRefresh(value=>value+1);
       load();
     } finally {
       setBusy(false);
     }
   }
   return <>
-    <PageHeader title={t("Import spreadsheets")} subtitle={t("Add existing stock or sales records from an Excel or CSV file.")} />
-    <section className="mb-5 rounded-xl border border-sky-200 bg-sky-50 p-5" aria-label={t('Choose the right place for your workbook')}>
-      <h2 className="font-bold text-slate-950">{t('Using the capstone demo workbook?')}</h2>
-      <p className="mt-2 break-words text-sm leading-6 text-slate-700">{t('PartCast_Capstone_Forecasting_Improved.xlsx contains simulated demand. Open the forecasting demo and choose that file there. Use the form below for actual stock and customer sales.')}</p>
-      <Link className="btn-secondary mt-3" to="/forecast?demo=1">{t('Open forecasting demo')}</Link>
-    </section>
+    <PageHeader title={t("Import spreadsheets")} subtitle={t("Add existing stock or sales records from an Excel or CSV file.")} actions={<Link className="btn-secondary" to="/sales?source=imported">{t('View sales')}</Link>} />
     <section className="panel p-5 sm:p-6"><div className="grid gap-6 lg:grid-cols-2">
       <div className="min-w-0"><div className="flex items-start gap-3"><div className="shrink-0 rounded-xl bg-emerald-50 p-3 text-emerald-700"><FileSpreadsheet size={23} aria-hidden="true" /></div><div className="min-w-0"><h2 className="text-lg font-bold">{t("1. Choose your files")}</h2><p id="import-file-help" className="mt-1 text-sm leading-6 text-slate-600">{t("Supported files: Excel (.xlsx or .xlsm) and CSV (.csv).")}</p></div></div>
         <label className="mt-5 block cursor-pointer rounded-xl border-2 border-dashed border-slate-300 p-6 text-center hover:border-emerald-500 hover:bg-emerald-50 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-emerald-700" htmlFor="import-files"><UploadCloud className="mx-auto text-slate-500" size={30} aria-hidden="true" /><span className="mt-3 block font-semibold text-slate-900">{t("Choose spreadsheet files")}</span><span className="mt-2 block text-sm leading-6 text-slate-600">{t("You can select more than one file.")}</span><input id="import-files" type="file" multiple disabled={busy} aria-describedby="import-file-help" accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" className="sr-only" onChange={event => setFiles([...event.target.files])} /></label>
@@ -100,7 +92,7 @@ export default function ImportPage() {
       </div>
       <div className="min-w-0 space-y-4"><h2 className="text-lg font-bold">{t("2. Check and import")}</h2><label className="block" htmlFor="import-type"><span className="label">{t("What is in these files?")}</span><select id="import-type" className="input min-w-0" disabled={busy} value={kind} onChange={event => setKind(event.target.value)}>{Object.entries(typeLabel).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>
         <p className="text-sm leading-6 text-slate-600">{t("Choose automatically if you are unsure. PartCast checks the column names to find stock records, sales, or forecasting quantities.")}</p>
-        {kind==='legacy-sales'&&<p className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-slate-700">{t('Past invoices appear in Saved past sales below. They do not change stock or add actual sold quantities for forecasting. Import dated part quantities separately.')}</p>}
+        {kind==='legacy-sales'&&<p className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-slate-700">{t('Past invoices appear on the Sales page. They do not change stock or add actual sold quantities for forecasting. Import dated part quantities separately.')}</p>}
         {(kind==='inventory'||kind==='auto')&&<p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t('Inventory imports replace saved stock counts with spreadsheet quantities. Use current shelf counts and back up first. Import sales quantities separately for forecasting.')}</p>}
         {(kind==='demand-training'||kind==='auto')&&<p className="text-sm leading-6 text-slate-600">{t('A forecasting import replaces previously imported training history. Include the full history you want to keep.')}</p>}
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t("Imported records are saved to your store. Check that you selected the correct files before continuing. An internet connection is needed.")}</div>
@@ -114,8 +106,7 @@ export default function ImportPage() {
                 v0: result.selectedSheet
               }) : ''}{result.snapshotSheet ? t(" Stock sheet: {v0}.", {
                 v0: result.snapshotSheet
-              }) : ''}</p>{result.detectedType==='legacy-sales'&&<><p className="mt-2 text-sm leading-6 text-slate-600">{t('Past invoices appear in Saved past sales below. They do not change stock or add actual sold quantities for forecasting. Import dated part quantities separately.')}</p><a className="btn-secondary mt-3" href="#saved-past-sales">{t('View saved past sales')}</a></>}<ImportNotes warnings={result.warnings} open /></> : <><p className="mt-2 text-sm leading-6 text-red-700">{result.unconfirmed?t('Import status unconfirmed: '):t("Not imported: ")}{t(result.error)}</p>{result.unconfirmed&&<p className="mt-2 text-sm leading-6 text-slate-600">{t('A slow or interrupted connection does not confirm whether records were saved. Check Past imports and your inventory before submitting the same file again.')}</p>}{result.code==='SIMULATED_DEMAND'&&<Link className="btn-secondary mt-3" to="/forecast?demo=1">{t('Open forecasting demo')}</Link>}</>}</div></div>)}</div></section>}
-    <ImportedSales refreshKey={importRefresh} />
+              }) : ''}</p>{result.detectedType==='legacy-sales'&&<><p className="mt-2 text-sm leading-6 text-slate-600">{t('Past invoices appear on the Sales page. They do not change stock or add actual sold quantities for forecasting. Import dated part quantities separately.')}</p><Link className="btn-secondary mt-3" to="/sales?source=imported">{t('View saved past sales')}</Link></>}<ImportNotes warnings={result.warnings} open /></> : <><p className="mt-2 text-sm leading-6 text-red-700">{result.unconfirmed?t('Import status unconfirmed: '):t("Not imported: ")}{t(result.error)}</p>{result.unconfirmed&&<p className="mt-2 text-sm leading-6 text-slate-600">{t('A slow or interrupted connection does not confirm whether records were saved. Check Past imports and your inventory before submitting the same file again.')}</p>}{result.code==='SIMULATED_DEMAND'&&<Link className="btn-secondary mt-3" to="/forecast-demo">{t('Open forecasting demo')}</Link>}</>}</div></div>)}</div></section>}
     <div className="mt-5 flex gap-3 rounded-xl border border-slate-200 bg-white p-4"><TriangleAlert className="mt-0.5 shrink-0 text-slate-600" size={21} aria-hidden="true" /><p className="text-sm leading-6 text-slate-600"><span className="font-semibold text-slate-900">{t("For better forecasts:")}</span>{t(" import inventory first, then past sales, then your prepared forecasting spreadsheet. Use actual quantities sold, dates, and matching part numbers.")}</p></div>
     <section className="panel mt-5 overflow-hidden" aria-busy={historyLoading}><div className="panel-header"><h2 className="font-bold">{t("Past imports")}</h2></div>
       {historyLoading ? <Loading label={t("Loading past imports…")} /> : historyError ? <div className="space-y-3 p-5" role="alert"><h3 className="font-semibold">{t("Past imports could not be loaded")}</h3><p className="text-sm text-red-700">{historyError}</p><button className="btn-secondary" onClick={load}>{t("Try again")}</button></div> : !history.length ? <EmptyState title={t("No files imported yet")} text={t("Choose your first spreadsheet above. Its import result will be recorded here.")} /> : <>

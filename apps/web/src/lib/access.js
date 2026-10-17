@@ -7,7 +7,7 @@ export function canOpenPage(role, path) {
   if (!role) return false;
   if (path === '/it-settings') return role === 'super_admin';
   if (['/settings','/users'].includes(path)) return ownerRoles.includes(role);
-  if (['/imports','/backups'].includes(path)) return managerRoles.includes(role);
+  if (['/imports','/backups','/forecast-demo'].includes(path)) return managerRoles.includes(role);
   return role !== 'cashier' || ['/inventory','/counter','/account'].includes(path);
 }
 export function sessionId(session) {

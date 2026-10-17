@@ -1,6 +1,6 @@
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Boxes, ChartNoAxesCombined, ChevronRight, CircleHelp, FileDown, History, House, ShoppingCart, Wallet, LogOut, Menu, RefreshCcw, Settings, Truck, Upload, UserRound, Users, X } from 'lucide-react';
+import { Boxes, ChartNoAxesCombined, ChevronRight, CircleHelp, FileDown, ReceiptText, History, House, ShoppingCart, Wallet, LogOut, Menu, RefreshCcw, Settings, Truck, Upload, UserRound, Users, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import {canOpenPage} from '../lib/access.js';
@@ -35,7 +35,7 @@ const daily = [{
   hint: 'Check what needs ordering',
   icon: Truck
 }];
-const tools = [{
+const tools = [{to:'/sales',label:'Sales',hint:'Find previous sales',icon:ReceiptText}, {
   to: '/debts',
   label: 'Customer utang',
   icon: Wallet

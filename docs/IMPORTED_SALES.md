@@ -1,10 +1,11 @@
 # Find imported invoices
 
-Open **Import spreadsheets → Saved past sales** to browse records saved by
+Open **Sales → Imported invoices → Saved past sales** to browse records saved by
 **Past sales and customer records**. The list reads `legacy_sales` from the
-store database and refreshes after every import attempt, including an attempt
+store database whenever the Sales page is opened, including after an import
 whose completion could not be confirmed. It also loads existing records after
-a page reload. No reimport is required just to display existing invoices.
+a page reload. Import results link directly to this Sales tab. No reimport is
+required just to display existing invoices.
 
 Search an invoice reference or description, filter by inclusive sale dates,
 and browse 20 invoices per page. Dates default to **all saved dates** so older
@@ -38,7 +39,7 @@ cannot read this invoice browser. Customer contact fields are not returned.
   reads the saved invoices through the new endpoint. It checks duplicates,
   inclusive date filters, pagination, search syntax, validation, and role and
   email-code restrictions. Browsing performs no writes.
-- Browser checks cover automatic refresh after import, zero-added feedback,
+- Browser checks cover navigation to Sales after import, zero-added feedback,
   persistent import notes and records after reload, search and dates,
   pagination, phone/tablet/desktop layouts, Tagalog, and read-error recovery.
 

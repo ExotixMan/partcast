@@ -10,8 +10,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import Toast from '../components/Toast.jsx';
 import ForecastAccuracy from '../components/ForecastAccuracy.jsx';
 import ForecastDemo from '../components/ForecastDemo.jsx';
-import ForecastReadiness from '../components/ForecastReadiness.jsx';
-import RecordedSales from '../components/RecordedSales.jsx';
+import useForecastReadiness from '../hooks/useForecastReadiness.js';
 import { useAuth } from '../context/AuthContext.jsx';
 const units = value => Number(value || 0).toLocaleString(undefined, {
   maximumFractionDigits: 1
@@ -24,15 +23,14 @@ const time = value => value ? new Date(value).toLocaleString(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short'
 }) : 'Not updated yet';
-export default function ForecastPage() {
+export default function ForecastPage({demo=false}) {
   useLocale();
   const {
     profile
   } = useAuth();
   const canTrain = ['super_admin', 'owner', 'admin'].includes(profile?.role);
-  const [params,setParams]=useSearchParams();
-  const demoView=canTrain&&params.get('demo')==='1';
-  const switcher=canTrain&&<div role="group" aria-label={t('Demand planning workspace')} className="mb-5 flex flex-wrap gap-2"><button className={demoView?'btn-secondary':'btn-primary'} aria-pressed={!demoView} onClick={()=>setParams({})}>{t('Store demand')}</button><button className={demoView?'btn-primary':'btn-secondary'} aria-pressed={demoView} onClick={()=>setParams({demo:'1'})}>{t('Practice demo')}</button></div>;
+  const [params]=useSearchParams();
+  const demoView=canTrain&&(demo||params.get('demo')==='1');
   const [runtime,setRuntime] = useState(null);
   const [runs, setRuns] = useState([]);
   const [quality, setQuality] = useState(null);
@@ -50,8 +48,9 @@ export default function ForecastPage() {
   const [horizon, setHorizon] = useState(30);
   const [view, setView] = useState('chart');
   const [toast, setToast] = useState(null);
-  const [readiness,setReadiness] = useState(null);
   const [readinessRefresh,setReadinessRefresh] = useState(0);
+  const {report:readiness,error:readinessError,checking,slow}=useForecastReadiness(canTrain&&!demoView,readinessRefresh);
+  const salesStatus=checking ? (slow?'Still preparing. The server may need a moment to start.':'Preparing sales data…') : readinessError || (readiness?.ready===false ? (readiness.status==='no_observations'?'Record or import actual sales first.':'Add more recent sales before updating estimates.') : 'Uses the sales records already saved in PartCast. This can take a moment.');
   async function load() {
     setLoading(true);
     setLoadError('');
@@ -121,13 +120,10 @@ export default function ForecastPage() {
       setTraining(false);
     }
   }
-  if(demoView)return <><PageHeader title={t('Practice demand forecasting')} subtitle={t('Run XGBoost on a separate sample, then inspect its errors and estimates.')} />{switcher}<ForecastDemo initiallyOpen /></>;
+  if(demoView)return <><PageHeader title={t('Practice demand forecasting')} subtitle={t('Run XGBoost on a separate sample, then inspect its errors and estimates.')} /><Link className="btn-secondary mb-5" to="/forecast">{t('Back to demand planning')}</Link><ForecastDemo initiallyOpen /></>;
   if (loading) return <Loading label={t("Loading sales estimates…")} />;
   return <>
     <PageHeader title={t("Plan ahead")} subtitle={t("See which parts customers may need next, then decide what to restock.")} actions={<Link className="btn-secondary" to="/reorder">{t("View restock list ")}<ArrowRight size={17} /></Link>} />
-
-    {switcher}
-    {quality&&<p className="mb-5 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600">{t('Saved invoices: {v0}. Forecasting uses dated quantities sold per part; invoice amounts are kept separately.',{v0:Number(quality.legacySalesRows||0).toLocaleString()})}</p>}
 
     {loadError && <div role="alert" className="mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-amber-950">{t("We could not load your sales estimates.")}</p><p className="mt-1 text-sm text-amber-900">{t(loadError)}</p></div><button className="btn-secondary shrink-0" onClick={load}><RefreshCw size={16} />{t("Try again")}</button></div>}
 
@@ -135,12 +131,10 @@ export default function ForecastPage() {
     <section className="panel p-5 sm:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700"><CalendarDays size={16} />{t("Sales estimates")}</div><h2 className="text-lg font-bold text-slate-950">{t("A guide for your next stock order")}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t("PartCast uses recorded sales and imported sales history to estimate demand. Check your shelves and recent sales before ordering. Estimates are not guaranteed sales.")}</p><p className="mt-3 text-sm text-slate-500">{t("Last completed update: ")}<span className="font-medium text-slate-700">{time(latest?.completed_at || latest?.started_at)}</span></p></div>
-        {canTrain ? <div className="w-full rounded-xl border border-slate-200 bg-slate-50 p-4 lg:max-w-sm"><label className="label" htmlFor="planning-days">{t("How far ahead do you want to plan?")}</label><select id="planning-days" className="input" value={horizon} onChange={event => setHorizon(event.target.value)} disabled={training}><option value="14">{t("Next 14 days")}</option><option value="30">{t("Next 30 days")}</option><option value="60">{t("Next 60 days")}</option><option value="90">{t("Next 90 days")}</option></select><button className="btn-primary mt-3 w-full" disabled={training || Boolean(loadError) || runtime?.ready===false || readiness?.ready!==true} onClick={train}><RefreshCw size={17} className={training ? 'animate-spin' : ''} />{training ? t('Updating estimates…') : t('Update demand estimate')}</button><p className="mt-2 text-xs leading-5 text-slate-500">{readiness?.ready===false?t('Review the sales history checks below before updating.'):t("Uses the sales records already saved in PartCast. This can take a moment.")}</p></div> : <div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 lg:max-w-xs">{t("Your store manager can update these estimates. You can review the available results below.")}</div>}
+        {canTrain ? <div className="w-full rounded-xl border border-slate-200 bg-slate-50 p-4 lg:max-w-sm"><label className="label" htmlFor="planning-days">{t("How far ahead do you want to plan?")}</label><select id="planning-days" className="input" value={horizon} onChange={event => setHorizon(event.target.value)} disabled={training}><option value="14">{t("Next 14 days")}</option><option value="30">{t("Next 30 days")}</option><option value="60">{t("Next 60 days")}</option><option value="90">{t("Next 90 days")}</option></select><button className="btn-primary mt-3 w-full" disabled={training || checking || Boolean(loadError) || runtime?.ready===false || readiness?.ready!==true} onClick={train}><RefreshCw size={17} className={training ? 'animate-spin' : ''} />{training ? t('Updating estimates…') : t('Update demand estimate')}</button><p className="mt-2 text-xs leading-5 text-slate-600" role={readinessError?'alert':'status'}>{t(salesStatus)}</p>{!checking&&<button className="mt-2 min-h-11 text-sm font-semibold text-red-700 underline underline-offset-4" onClick={()=>setReadinessRefresh(value=>value+1)} disabled={training}>{t('Refresh sales data')}</button>}</div> : <div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 lg:max-w-xs">{t("Your store manager can update these estimates. You can review the available results below.")}</div>}
       </div>
     </section>
 
-    {canTrain&&<ForecastReadiness includeProxy={includeProxy} refreshKey={readinessRefresh} onChange={setReadiness} />}
-    {canTrain && <RecordedSales refreshKey={readinessRefresh} />}
 
     <div className="mt-5 grid gap-3 sm:grid-cols-3">
       <div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Parts with current estimates")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{forecastProducts.length.toLocaleString()}</p><p className="mt-1 text-sm text-slate-500">{t("From the latest completed update")}</p></div>
@@ -175,7 +169,7 @@ export default function ForecastPage() {
                   }} /><Line type="monotone" dataKey="predicted_quantity" stroke="#dc2626" strokeWidth={3} dot={false} /></LineChart></ResponsiveContainer></div></> : <div className="max-h-[380px] overflow-y-auto"><table className="w-full text-left text-sm"><caption className="sr-only">{t("Daily sales estimates for ")}{selectedProduct?.description}</caption><thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th scope="col" className="px-5 py-3 font-semibold">{t("Date")}</th><th scope="col" className="px-5 py-3 text-right font-semibold">{t("Estimated units sold")}</th></tr></thead><tbody className="divide-y divide-slate-100">{forecast.map(row => <tr key={`${row.run_id}-${row.forecast_date}`}><td className="px-5 py-3">{day(row.forecast_date)}</td><td className="px-5 py-3 text-right font-semibold">{units(row.predicted_quantity)}</td></tr>)}</tbody></table></div>}
           <p className="border-t border-slate-100 px-4 py-4 text-sm leading-6 text-slate-500 sm:px-5">{t("A value below 1 means the part may sell occasionally, rather than every day. Use the period total to help plan your order.")}</p>
         </> : <div className="p-8 text-center text-sm text-slate-600">{t("No upcoming daily estimates are available for this part. Ask your store manager to update the demand estimate.")}</div>}
-      </> : <div className="px-5 py-10 sm:px-8"><div className="mx-auto max-w-lg text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-700"><CalendarDays size={26} /></div><h3 className="mt-4 text-lg font-bold text-slate-950">{needsData ? t('Start with your sales history') : estimatesExpired ? t('No current estimates to show') : t('Your first estimate is not ready yet')}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{needsData ? t('Record actual sales in PartCast or ask your manager to import a prepared sales spreadsheet. Then update the demand estimate.') : readiness?.ready===false ? t('Use the recorded sales above while you complete recent history for each part.') : t('Update the demand estimate using recent sales. Parts without enough recent history will be left out.')}</p><div className="mt-5 rounded-xl bg-slate-50 p-4 text-left"><p className="text-sm font-semibold text-slate-900">{t("For each part, PartCast needs:")}</p><ul className="mt-2 space-y-2 text-sm text-slate-600"><li>{t("At least 5 days with recorded sales")}</li><li>{t("At least 35 days of sales history")}</li><li>{t("A usable sale record from the last 31 days")}</li></ul></div><p className="mt-4 text-sm leading-6 text-slate-500">{t("Keep recording every sale. Missing entries can make demand appear lower than it really is.")}{!canTrain && t(' Ask your store manager to run the update.')}</p></div></div>}
+      </> : <div className="px-5 py-10 sm:px-8"><div className="mx-auto max-w-lg text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-700"><CalendarDays size={26} /></div><h3 className="mt-4 text-lg font-bold text-slate-950">{needsData ? t('Start with your sales history') : estimatesExpired ? t('No current estimates to show') : t('Your first estimate is not ready yet')}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{needsData ? t('Record actual sales in PartCast or ask your manager to import a prepared sales spreadsheet. Then update the demand estimate.') : readiness?.ready===false ? t('Keep recording sales. More recent history is needed before estimates can be updated.') : t('Update the demand estimate using recent sales. Parts without enough recent history will be left out.')}</p><Link className="btn-secondary mt-5" to="/sales">{t('View sales')}</Link><p className="mt-4 text-sm leading-6 text-slate-500">{t("Keep recording every sale. Missing entries can make demand appear lower than it really is.")}{!canTrain && t(' Ask your store manager to run the update.')}</p></div></div>}
     </section>
 
     <ForecastAccuracy metrics={metrics}/>

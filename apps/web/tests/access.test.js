@@ -11,7 +11,12 @@ test('offline access requires the same password session, verified account and un
 });
 test('Cashier pages are limited and technical settings belong only to Super Admin',()=>{
  for(const path of ['/inventory','/counter','/account'])assert(canOpenPage('cashier',path));
- for(const path of ['/','/reports','/debts','/users','/settings','/it-settings','/forecast'])assert.equal(canOpenPage('cashier',path),false);
+ for(const path of ['/','/reports','/debts','/users','/settings','/it-settings','/forecast','/sales','/forecast-demo'])assert.equal(canOpenPage('cashier',path),false);
  for(const role of ['owner','admin','inventory_staff','cashier'])assert.equal(canOpenPage(role,'/it-settings'),false);
  assert(canOpenPage('super_admin','/it-settings'));assert(canOpenPage('owner','/settings'));
+});
+
+test('only managers can open the isolated forecasting demo',()=>{
+ for(const role of ['super_admin','owner','admin'])assert(canOpenPage(role,'/forecast-demo'));
+ for(const role of ['inventory_staff','cashier'])assert.equal(canOpenPage(role,'/forecast-demo'),false);
 });

@@ -21,7 +21,7 @@ accuracy percentage.
 | Stock-in/out and sales monitoring | Sell or receive, multiple-item baskets and stock history |
 | Low-stock alerts | Alerts, stock thresholds and restock list |
 | Frequently sold and slow-moving parts | Home → Sales & store insights |
-| XGBoost estimates and evaluation | Demand planning → Store demand |
+| XGBoost estimates and evaluation | Demand planning |
 | Reorder decision support | Restock, with staff-controlled supplier requests |
 | Inventory, transaction and sales reporting | Reports with inclusive date ranges |
 | Authorized access and security | Password + Gmail code, role restrictions and private backups |
@@ -78,7 +78,7 @@ requirements and are kept under management controls.
 
 ## Separate demonstration
 
-Demand planning → Practice demo provides the workbook download and upload.
+The separate `/forecast-demo` page provides the workbook download and upload; it is not part of normal navigation.
 The same original 6,570 simulated daily rows for nine identified part numbers
 are retained; no dates or quantities were changed to improve scores. Normal
 store imports reject this workbook before database writes. Demo results
@@ -117,3 +117,18 @@ behavior, supplier catalog fitment, deployment status or real-store accuracy.
 - Demo source bytes, split counts, all nine existing inventory identities,
   Excel/JSON metrics and every ZIP entry were checked. The simulated input
   rows remain byte-for-byte identical to the previously supplied sample.
+
+
+## Everyday screens
+
+Demand planning no longer shows the “Can these sales train XGBoost?” diagnostic
+panel, recorded-sales browser, or Store/Practice selector. Eligibility checks
+still run before an update and remain enforced by the API. A short message
+beside the update button explains when more history or a retry is needed.
+
+Sales has its own `/sales` page: quantities by part, counter transactions with
+customers and amounts, and imported invoices. Manager-only sources remain
+restricted; inventory staff can read counter sales and cashiers keep their
+existing counter/inventory access. Imports now focuses on choosing files,
+results and batch history; it links to Sales rather than embedding invoice
+records or a permanent capstone-demo banner. No data is deleted or relabelled.

@@ -66,7 +66,7 @@ Store readiness/training rejects `includeProxy=true`. Imported quantities are
 used, but invoice-count estimates are excluded. `useProxy=true` is rejected
 before a past-sales batch is created. The labelled sample is downloadable at
 `/examples/PartCast_Forecasting_DEMO.xlsx` on the website and runs only in
-**Demand planning → Practice demo**.
+the isolated **`/forecast-demo`** page.
 
 ## Imports / reports / backups
 

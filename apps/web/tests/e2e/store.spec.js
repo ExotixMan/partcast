@@ -103,12 +103,13 @@ test('imports guide a simulated workbook to an open demo and treat timeouts as u
   await route.fulfill({status:422,json:{code:'SIMULATED_DEMAND',error:'This workbook contains simulated demand. Use the labelled forecasting demo on Plan ahead. Store training history was not changed.'},headers:{'access-control-allow-origin':'*'}});
  });
  await page.goto('/imports');
- await expect(page.getByRole('heading',{name:'Using the capstone demo workbook?'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Using the capstone demo workbook?'})).toHaveCount(0);
+ await expect(page.getByRole('region',{name:'Saved past sales',exact:true})).toHaveCount(0);
  await page.getByLabel('Choose spreadsheet files').setInputFiles({name:'PartCast_Capstone_Forecasting_Improved.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('stubbed-upload')});
  await page.getByRole('button',{name:'Import 1 file',exact:true}).click();
  await expect(page.getByRole('region',{name:'Latest import results'})).toContainText('simulated demand');
  await page.getByRole('region',{name:'Latest import results'}).getByRole('link',{name:'Open forecasting demo'}).click();
- await expect(page).toHaveURL(/\/forecast\?demo=1$/);
+ await expect(page).toHaveURL(/\/forecast-demo$/);
  await expect(page.getByLabel('Choose the capstone demo workbook')).toBeVisible();
  await page.goto('/imports');failNetwork=true;
  await page.getByLabel('Choose spreadsheet files').setInputFiles({name:'actual-sales.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('stubbed-upload')});
@@ -141,14 +142,15 @@ test('saved past invoices appear after import, survive reload and support search
   }
   return route.fulfill({json:{data:history},headers});
  });
- await page.goto('/imports');const panel=page.getByRole('region',{name:'Saved past sales',exact:true});
- await expect(panel.getByText('No past invoices are saved yet. Import a past-sales spreadsheet above.')).toBeVisible();
+ await page.goto('/sales?source=imported');const panel=page.getByRole('region',{name:'Saved past sales',exact:true});
+ await expect(panel.getByText('No past invoices are saved yet. Use Import spreadsheets to add your sales file.')).toBeVisible();
+ await page.goto('/imports');
  await page.getByLabel('What is in these files?').selectOption('legacy-sales');
  await page.getByLabel('Choose spreadsheet files').setInputFiles({name:'invoices.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('fixture; real parsing checked in HTTP integration test')});
  await page.getByRole('button',{name:'Import 1 file',exact:true}).click();
  const results=page.getByRole('region',{name:'Latest import results'});
  await expect(results).toContainText('21 rows added · 0 skipped.');await expect(results).toContainText(note);
- await results.getByRole('link',{name:'View saved past sales'}).click();await expect(page).toHaveURL(/#saved-past-sales$/);
+ await results.getByRole('link',{name:'View saved past sales'}).click();await expect(page).toHaveURL(/\/sales\?source=imported$/);
  await expect(panel.getByText('Invoices found: 21')).toBeVisible();await expect(panel.getByRole('article')).toHaveCount(20);
  await panel.getByRole('button',{name:'Next',exact:true}).click();await expect(panel.getByRole('article')).toHaveCount(1);await expect(panel.getByRole('article')).toContainText('BP-001 Brake pad');
  expect(queries.at(-1).page).toBe('2');
@@ -158,10 +160,12 @@ test('saved past invoices appear after import, survive reload and support search
  await expect(panel.getByText('No invoices match these filters.')).toBeVisible();
  await panel.getByRole('button',{name:'Clear filters'}).click();await expect(panel.getByText('Invoices found: 21')).toBeVisible();
  await page.reload();await expect(panel.getByText('Invoices found: 21')).toBeVisible();
+ await page.goto('/imports');
  await page.getByLabel('What is in these files?').selectOption('legacy-sales');
  await page.getByLabel('Choose spreadsheet files').setInputFiles({name:'invoices-copy.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('fixture')});
  await page.getByRole('button',{name:'Import 1 file',exact:true}).click();
  await expect(results.getByText('Check completed. No new rows were added.',{exact:true})).toBeVisible();await expect(results).toContainText(duplicates);expect(saved).toHaveLength(21);
+ await results.getByRole('link',{name:'View saved past sales'}).click();
  await expect(panel.getByText('Invoices found: 21')).toBeVisible();
  for(const width of [390,768,1280]){
   await page.setViewportSize({width,height:900});
@@ -178,11 +182,11 @@ test('saved invoice read failures show a retry instead of an empty or successful
   if(route.request().method()==='OPTIONS')return route.fallback();
   await route.fulfill({status:failed?503:200,json:failed?{error:'Fixture store temporarily unavailable.'}:{data:[{id:'persisted',reference_no:'SI#20',sale_date:null,amount:null,raw_items:null}],count:1,page:1,pageSize:20},headers:{'access-control-allow-origin':'*'}});
  });
- await page.goto('/imports');const panel=page.getByRole('region',{name:'Saved past sales',exact:true});
+ await page.goto('/sales?source=imported');const panel=page.getByRole('region',{name:'Saved past sales',exact:true});
  await expect(panel.getByText('Saved invoices could not be loaded.')).toBeVisible();await expect(panel.getByText('Invoices found: 0')).toHaveCount(0);
  failed=false;await panel.getByRole('button',{name:'Try again',exact:true}).click();await expect(panel.getByText('Invoices found: 1')).toBeVisible();await expect(panel.getByRole('table').getByText('Date unavailable')).toBeVisible();
 });
-test('forecast history checks explain missing sales and enable updates only after usable history is verified',async({page,context})=>{
+test('demand planning hides diagnostic panels and enables updates only after usable history is verified',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:390,height:844});
  let ready=false;const posted=[];
  await context.route('http://localhost:10000/api/forecast/readiness**',async route=>{
@@ -195,18 +199,16 @@ test('forecast history checks explain missing sales and enable updates only afte
   posted.push(route.request().postDataJSON());await route.fulfill({json:{forecastCount:7},headers:{'access-control-allow-origin':'*'}});
  });
  await page.goto('/forecast');
- await expect(page.getByRole('heading',{name:'Can these sales train XGBoost?'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Can these sales train XGBoost?'})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'Recorded sales',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Practice demo',exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
- await expect(page.getByText('Recent sales are missing for parts with enough history.')).toBeVisible();
- await page.getByText('See what each part is missing',{exact:true}).click();
- await expect(page.getByText('Latest sale is more than 31 days old',{exact:true})).toBeVisible();
- await expect(page.getByRole('link',{name:'Import actual sales',exact:true})).toHaveAttribute('href','/imports');
+ await expect(page.getByText('Add more recent sales before updating estimates.',{exact:true})).toBeVisible();
  await page.getByLabel('Website language').selectOption('fil');
- await expect(page.getByRole('heading',{name:'Sapat ba ang mga benta para sanayin ang XGBoost?'})).toBeVisible();
- await expect(page.getByText('Mahigit 31 araw na ang huling benta',{exact:true})).toBeVisible();
+ await expect(page.getByText('Magdagdag ng mas bagong benta bago i-update ang pagtataya.',{exact:true})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.getByLabel('Wika ng website').selectOption('en');
- ready=true;await page.getByRole('button',{name:'Check sales history again',exact:true}).click();
+ ready=true;await page.getByRole('button',{name:'Refresh sales data',exact:true}).click();
  await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Update demand estimate',exact:true}).click();
  await expect.poll(()=>posted.length).toBe(1);expect(posted[0]).toEqual({horizonDays:30,includeProxy:false});
@@ -222,12 +224,12 @@ test('a 25-second sales-history response stays pending and completes without the
   await route.fulfill({json:{ready:false,status:'no_observations',record_count:0,current_part_count:0,latest_sale_date:null,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}},headers:{'access-control-allow-origin':'*'}});
  });
  await page.goto('/forecast');
- await expect(page.getByText('Checking sales history…',{exact:true})).toBeVisible();
+ await expect(page.getByText('Preparing sales data…',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
- await expect(page.getByText('Still checking. The first check after the server starts can take longer. Keep this page open.',{exact:true})).toBeVisible({timeout:12000});
+ await expect(page.getByText('Still preparing. The server may need a moment to start.',{exact:true})).toBeVisible({timeout:12000});
  await expect(page.getByText('Record or import actual sales first.',{exact:true})).toBeVisible({timeout:30000});
  await expect(page.getByText('Sales history could not be checked.',{exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Check sales history again',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Refresh sales data',exact:true})).toBeEnabled();
  expect(requests).toBe(1);
 });
 
@@ -244,16 +246,16 @@ test('leaving a running history check cancels it without marking the store offli
  });
  try {
   await page.goto('/forecast');
-  await expect(page.getByText('Checking sales history…',{exact:true})).toBeVisible();
+  await expect(page.getByText('Preparing sales data…',{exact:true})).toBeVisible();
   await expect.poll(()=>typeof release).toBe('function');
   await page.evaluate(()=>{window.connectionEvents=[];});
-  await page.getByRole('link',{name:'Import actual sales',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Import spreadsheets',exact:true})).toBeVisible();
+  await page.getByRole('link',{name:'View sales',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Sales',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>window.connectionEvents.filter(value=>value===false))).toEqual([]);
  }finally{release?.();}
 });
 
-test('recorded sales work without the Python engine, filter dates and remain readable offline',async({page,context})=>{
+test('separate sales page works without the Python engine, filter dates and remain readable offline',async({page,context})=>{
  const api=await fixture(context);await page.setViewportSize({width:390,height:844});
  const queries=[],training=[];let offline=false;
  page.on('request',request=>{if(request.url().endsWith('/api/forecast/train')&&request.method()==='POST')training.push(request.postData());});
@@ -273,19 +275,19 @@ test('recorded sales work without the Python engine, filter dates and remain rea
   const rows=empty?[]:[{product_id:p1,part_number:'BP-001',description:'Toyota brake pad',unit:'pcs',recorded_quantity:range?5:55,sale_days:range?1:2,record_count:range?2:3,actual_records:1,imported_records:range?1:2,first_sale_date:range?'2026-10-12':'2020-01-02',last_sale_date:'2026-10-12'},...(!range?[{product_id:p2,part_number:'OIL-001',description:'Engine oil',unit:'L',recorded_quantity:1.25,sale_days:1,record_count:1,actual_records:0,imported_records:1,first_sale_date:'2026-10-10',last_sale_date:'2026-10-10'}]:[])];
   await route.fulfill({json:{mode:'recorded_sales',record_count:empty?0:range?2:4,part_count:rows.length,last_sale_date:empty?null:'2026-10-12',invalid_records:0,future_records:0,includes_forecasts:false,missing_days_filled:false,data:rows},headers:{'access-control-allow-origin':'*'}});
  });
- await page.goto('/forecast');
- const panel=page.getByRole('region',{name:'Recorded sales',exact:true});
- await expect(panel.getByRole('heading',{name:'Recorded sales',exact:true})).toBeVisible();
+ await page.goto('/sales');
+ const panel=page.getByRole('region',{name:'Sales by part',exact:true});
+ await expect(panel.getByRole('heading',{name:'Sales by part',exact:true})).toBeVisible();
  await expect(panel.getByRole('article').filter({hasText:'BP-001'})).toContainText('55 pcs');
  await expect(panel.getByRole('article').filter({hasText:'OIL-001'})).toContainText('1.25 L');
- await expect(page.getByText('The forecasting engine needs attention',{exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
+ await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toHaveCount(0);
  await panel.getByLabel('From date',{exact:true}).fill('2026-10-12');await panel.getByLabel('To date',{exact:true}).fill('2026-10-12');
- await panel.getByRole('button',{name:'Show recorded sales',exact:true}).click();
+ await panel.getByRole('button',{name:'Show sales',exact:true}).click();
  await expect(panel.getByRole('article').filter({hasText:'BP-001'})).toContainText('5 pcs');
  expect(queries.at(-1)).toEqual({from:'2026-10-12',to:'2026-10-12'});
  await panel.getByLabel('From date',{exact:true}).fill('2026-10-11');await panel.getByLabel('To date',{exact:true}).fill('2026-10-11');
- await panel.getByRole('button',{name:'Show recorded sales',exact:true}).click();
+ await panel.getByRole('button',{name:'Show sales',exact:true}).click();
  await expect(panel.getByText('No quantities were recorded in these dates.',{exact:true})).toBeVisible();
  await expect(panel.getByText('This does not mean there were no sales.',{exact:true})).toBeVisible();
  await panel.getByRole('button',{name:'All saved dates',exact:true}).click();
@@ -297,24 +299,24 @@ test('recorded sales work without the Python engine, filter dates and remain rea
  expect(training).toHaveLength(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-test('recorded sales search and pagination work on desktop, tablet and mobile in Tagalog',async({page,context})=>{
+test('separate sales search and pagination work on desktop, tablet and mobile in Tagalog',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:1280,height:900});
  const rows=Array.from({length:12},(_,i)=>({product_id:'recorded-fixture-'+i,part_number:'SKU-'+String(i+1).padStart(3,'0'),description:'Fixture part '+(i+1),unit:null,recorded_quantity:i+1,sale_days:1,actual_records:0,imported_records:1,first_sale_date:'2026-10-12',last_sale_date:'2026-10-12'}));
  await context.route('http://localhost:10000/api/forecast/recorded-sales**',async route=>{
   if(route.request().method()==='OPTIONS')return route.fallback();
   await route.fulfill({json:{mode:'recorded_sales',record_count:12,part_count:12,last_sale_date:'2026-10-12',invalid_records:0,future_records:0,data:rows},headers:{'access-control-allow-origin':'*'}});
  });
- await page.goto('/forecast');let panel=page.getByRole('region',{name:'Recorded sales',exact:true});
- await expect(panel.getByRole('table',{name:'Recorded sales',exact:true}).locator('tbody tr')).toHaveCount(10);
+ await page.goto('/sales');let panel=page.getByRole('region',{name:'Sales by part',exact:true});
+ await expect(panel.getByRole('table',{name:'Sales by part',exact:true}).locator('tbody tr')).toHaveCount(10);
  await panel.getByRole('button',{name:'Next parts',exact:true}).click();
- await expect(panel.getByRole('table',{name:'Recorded sales',exact:true}).locator('tbody tr')).toHaveCount(2);
+ await expect(panel.getByRole('table',{name:'Sales by part',exact:true}).locator('tbody tr')).toHaveCount(2);
  await panel.getByLabel('Find a recorded part').fill('SKU-001');
- await expect(panel.getByRole('table',{name:'Recorded sales',exact:true}).locator('tbody tr')).toHaveCount(1);
+ await expect(panel.getByRole('table',{name:'Sales by part',exact:true}).locator('tbody tr')).toHaveCount(1);
  await expect(panel.getByRole('button',{name:'Previous parts',exact:true})).toBeDisabled();
  await page.getByLabel('Website language').selectOption('fil');
- panel=page.getByRole('region',{name:'Naitalang benta',exact:true});
- await expect(panel.getByRole('heading',{name:'Naitalang benta',exact:true})).toBeVisible();
- await expect(panel.getByRole('button',{name:'Ipakita ang naitalang benta',exact:true})).toBeVisible();
+ panel=page.getByRole('region',{name:'Benta ayon sa piyesa',exact:true});
+ await expect(panel.getByRole('heading',{name:'Benta ayon sa piyesa',exact:true})).toBeVisible();
+ await expect(panel.getByRole('button',{name:'Ipakita ang mga benta',exact:true})).toBeVisible();
  for(const width of [1280,768,390]){
   await page.setViewportSize({width,height:900});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -335,8 +337,7 @@ test('simulated XGBoost demo shows its own metrics and leaves real forecasts unc
   }
   await route.fulfill({json:{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',status:'completed',result:{dataset_type:'SIMULATED_DEMO',filename:'demo.xlsx',selected_method:'direct_period_xgboost',part_count:9,split_summary:{train:{start:'2024-10-15',end:'2026-06-16'},test:{start:'2026-08-16',end:'2026-10-14'}},validation:methods,test:methods,future_periods:[{part_number:'BP-001',start:'2026-10-15',end:'2026-11-13',predicted_units:3.5}]}},headers:{'access-control-allow-origin':'*'}});
  });
- await page.goto('/forecast');
- await page.getByRole('button',{name:'Practice demo',exact:true}).click();
+ await page.goto('/forecast-demo');
  const download=page.waitForEvent('download');await page.getByRole('link',{name:'Download demo Excel'}).click();
  const file=await download;expect(file.suggestedFilename()).toBe('PartCast_Forecasting_DEMO.xlsx');
  const sample=new ExcelJS.Workbook();await sample.xlsx.readFile(await file.path());
@@ -367,7 +368,7 @@ test('an incomplete sales-history response keeps the demand page usable and cann
  });
  await page.goto('/forecast');await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toBeVisible();await expect(page.getByText('The sales-history response was incomplete. Check again or ask your Super Admin to update the API.')).toBeVisible();
  await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
- valid=true;await page.getByRole('button',{name:'Check sales history again',exact:true}).click();await expect(page.getByText('Record or import actual sales first.',{exact:true})).toBeVisible();expect(errors).toEqual([]);
+ valid=true;await page.getByRole('button',{name:'Refresh sales data',exact:true}).click();await expect(page.getByText('Record or import actual sales first.',{exact:true})).toBeVisible();expect(errors).toEqual([]);
 });
 test('password is required before Gmail email code; wrong code cannot open the store',async({page,context})=>{
  const calls=[],passwords=[];let verified=false;
@@ -430,9 +431,9 @@ test('Cashier sees only selling and read-only inventory, including whole photo p
  const api=await fixture(context,{role:'cashier'});api.products[0].photo_paths=[`${p1}/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webp`];
  await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page).toHaveURL(/counter/);await expect(page.getByRole('heading',{name:'Sell or receive',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'View photos of Toyota brake pad'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(1);expect(await page.getByRole('dialog').locator('img').evaluate(img=>getComputedStyle(img).objectFit)).toBe('contain');await page.getByRole('button',{name:'Close modal'}).click();
- await page.getByRole('button',{name:'More pages'}).click();const nav=page.getByRole('dialog',{name:'All pages'});await expect(nav.getByRole('link',{name:/Demand planning|Reports|Settings|Customer utang/})).toHaveCount(0);await page.getByRole('button',{name:'Close navigation'}).click();
+ await page.getByRole('button',{name:'More pages'}).click();const nav=page.getByRole('dialog',{name:'All pages'});await expect(nav.getByRole('link',{name:/Demand planning|Reports|Settings|Customer utang|^Sales/})).toHaveCount(0);await page.getByRole('button',{name:'Close navigation'}).click();
  await page.goto('/inventory');await expect(page.getByRole('heading',{name:'Inventory',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Add a new part'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Edit details'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Adjust stock'})).toHaveCount(0);await expect(page.getByText(/View only/).filter({visible:true})).toHaveCount(2);
- for(const path of ['/reports','/debts','/forecast','/it-settings','/users']){await page.goto(path);await expect(page).toHaveURL(/counter/);}
+ for(const path of ['/reports','/debts','/forecast','/forecast-demo','/sales','/it-settings','/users']){await page.goto(path);await expect(page).toHaveURL(/counter/);}
  expect(api.productWrites).toHaveLength(0);
 });
 test('Owner cannot open IT settings; Super Admin can change masked Google credentials',async({page,context})=>{
@@ -478,7 +479,7 @@ test('stock alerts prioritize urgency, filter by status and part, preserve read 
 
 test('every application page opens on phone tablet and desktop without page errors',async({page,context})=>{
  test.setTimeout(120000);await fixture(context,{role:'super_admin'});const errors=[];page.on('pageerror',error=>errors.push(error.message));
- const paths=['/','/counter','/inventory','/forecast','/forecast?demo=1','/reorder','/reports','/imports','/debts','/transactions','/backups','/users','/settings','/account','/it-settings'];
+ const paths=['/','/counter','/inventory','/forecast','/forecast?demo=1','/forecast-demo','/sales','/sales?source=counter','/sales?source=imported','/reorder','/reports','/imports','/debts','/transactions','/backups','/users','/settings','/account','/it-settings'];
  for(const width of [390,768,1280]){
   await page.setViewportSize({width,height:900});
   for(const path of paths){await page.goto(path);await expect(page.getByRole('main')).toBeVisible();await expect(page.getByRole('main').getByRole('heading',{level:1})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${path} at ${width}px`).toBe(true);}
@@ -495,4 +496,37 @@ test('offline sale survives an expired email check and sends after re-verificati
  needsCode=true;store.disconnect(false);await context.setOffline(false);await expect(page.getByLabel('Email sign-in code')).toBeVisible({timeout:15000});
  const waiting=await page.evaluate(()=>new Promise(resolve=>{const r=indexedDB.open('partcast-offline-v1');r.onsuccess=()=>{const request=r.result.transaction('queue').objectStore('queue').getAll();request.onsuccess=()=>resolve(request.result);};}));expect(waiting).toHaveLength(1);expect(waiting[0].status).toBe('pending');
  await page.getByLabel('Email sign-in code').fill('654321');await page.getByRole('button',{name:'Verify code and sign in'}).click();await expect.poll(()=>store.batches.length,{timeout:15000}).toBe(1);expect(store.batches[0].client_operation_id).toBe(waiting[0].payload.client_operation_id);expect(store.products[0].current_stock).toBe(3);
+});
+
+
+test('counter sales have their own dated, paginated list and preserve fractional quantities',async({page,context})=>{
+ await fixture(context);const queries=[];let fail=false;
+ await context.route('http://localhost:10000/api/transactions**',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  const params=new URL(route.request().url()).searchParams;queries.push(Object.fromEntries(params));
+  const range=params.has('from'),second=params.get('page')==='2';
+  const data=Array.from({length:range?1:second?1:25},(_,i)=>({id:'sale-'+i,tx_type:'sale',quantity:1.25,total_amount:125.5,customer_name:'Juan',reference_no:'COUNTER-01',occurred_at:'2026-10-12T04:00:00Z',product:{part_number:'OIL-001',description:'Engine oil',unit:'L'}}));
+  await route.fulfill({status:fail?503:200,json:fail?{error:'Sales server unavailable.'}:{data,count:range?1:26},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.setViewportSize({width:390,height:844});await page.goto('/sales?source=counter');
+ let panel=page.getByRole('region',{name:'Counter sales',exact:true});
+ await expect(panel.getByText('Sales entries: 26')).toBeVisible();await expect(panel.getByRole('article')).toHaveCount(25);
+ await expect(panel.getByRole('article').first()).toContainText('1.25 L');await expect(panel.getByRole('article').first()).toContainText('125.50');await expect(panel.getByRole('article').first()).toContainText('Juan');
+ await panel.getByRole('button',{name:'Next',exact:true}).click();await expect(panel.getByRole('article')).toHaveCount(1);expect(queries.at(-1).page).toBe('2');
+ await panel.getByLabel('From date',{exact:true}).fill('2026-10-12');await panel.getByLabel('To date',{exact:true}).fill('2026-10-12');await panel.getByRole('button',{name:'Find sales'}).click();
+ await expect(panel.getByText('Sales entries: 1')).toBeVisible();expect(queries.at(-1)).toEqual({page:'1',pageSize:'25',type:'sale',from:'2026-10-12',to:'2026-10-12'});
+ await panel.getByRole('button',{name:'Clear filters'}).click();await expect(panel.getByText('Sales entries: 26')).toBeVisible();expect(queries.at(-1)).toEqual({page:'1',pageSize:'25',type:'sale'});
+ fail=true;await panel.getByRole('button',{name:'Refresh history'}).click();await expect(panel.getByRole('heading',{name:'Sales could not be loaded'})).toBeVisible();await expect(panel.getByRole('article')).toHaveCount(0);
+ fail=false;await panel.getByRole('button',{name:'Try again'}).click();await expect(panel.getByText('Sales entries: 26')).toBeVisible();
+ await page.getByLabel('Website language').selectOption('fil');panel=page.getByRole('region',{name:'Benta sa counter',exact:true});await expect(panel.getByText('Mga tala ng benta: 26')).toBeVisible();
+ for(const width of [320,768,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),String(width)).toBe(true);}
+ await expect(panel.getByRole('table')).toContainText('1.25 L');
+ expect(queries.every(query=>query.type==='sale')).toBe(true);
+});
+
+test('inventory staff can read counter sales but cannot request manager-only sales sources or the demo',async({page,context})=>{
+ await fixture(context,{role:'inventory_staff'});const protectedCalls=[];
+ page.on('request',request=>{if(/\/api\/(imports\/sales|forecast\/(recorded-sales|demo))/.test(request.url()))protectedCalls.push(request.url());});
+ for(const path of ['/sales','/sales?source=imported']){await page.goto(path);await expect(page.getByRole('region',{name:'Counter sales',exact:true})).toBeVisible();await expect(page.getByRole('navigation',{name:'Sales sources'})).toHaveCount(0);}
+ await page.goto('/forecast-demo');await expect(page).toHaveURL(/\/$/);expect(protectedCalls).toEqual([]);
 });
