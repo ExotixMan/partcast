@@ -5,10 +5,14 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+ENV OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
 COPY ml/requirements.txt ./ml/requirements.txt
+COPY scripts/verify-forecast-runtime.py ./scripts/verify-forecast-runtime.py
 RUN python3 -m venv /opt/partcast-venv \
   && /opt/partcast-venv/bin/pip install --no-cache-dir --upgrade pip \
-  && /opt/partcast-venv/bin/pip install --no-cache-dir -r ./ml/requirements.txt
+  && /opt/partcast-venv/bin/pip install --no-cache-dir -r ./ml/requirements.txt \
+  && /opt/partcast-venv/bin/pip check \
+  && /opt/partcast-venv/bin/python ./scripts/verify-forecast-runtime.py
 
 COPY apps/server/package.json apps/server/package-lock.json ./apps/server/
 RUN cd ./apps/server && npm ci --omit=dev

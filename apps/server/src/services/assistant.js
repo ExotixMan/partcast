@@ -1,5 +1,6 @@
+import {getIntegration,integrationReady} from '../utils/integrations.js';
+import {normalizeQuestion,isTagalog,explainParts,productTerms} from '../utils/partTerms.js';
 import { adminDb } from '../supabase.js';
-import { config } from '../config.js';
 
 function safeNumber(value) {
   const number = Number(value);
@@ -39,7 +40,7 @@ function extractSearchTerm(message) {
     'this', 'that', 'today', 'week', 'month', 'year', 'units', 'unit',
     'reorder', 'restock', 'restocking', 'supplier', 'suppliers', 'demand',
     'expected', 'forecast', 'prediction', 'fast', 'slow', 'moving', 'best',
-    'top', 'current', 'store', 'shop', 'npg'
+    'top', 'current', 'store', 'shop', 'npg','the','are','can','our','quantity','po','ba','ang','ng','natin','ngayon','you','we','are','can','there','any','tayo','kayo','kami','yung','ito','alin','para'
   ]);
 
   return (
@@ -79,8 +80,10 @@ function summarizeSales(rows) {
 }
 
 async function loadContext(message) {
-  const searchTerm = extractSearchTerm(message);
+  const searchTerm = productTerms(message)[0]||extractSearchTerm(normalizeQuestion(message));
   const safeTerm = sanitizeSearchTerm(searchTerm);
+  const terms=(productTerms(message).length?productTerms(message):[safeTerm]).map(sanitizeSearchTerm).filter(Boolean);
+  const searchFilter=terms.flatMap(term=>[`part_number.ilike.%${term}%,description.ilike.%${term}%,brand.ilike.%${term}%,barcode.ilike.%${term}%,alias_text.ilike.%${term}%`]).join(',');
 
   const defaultProducts = adminDb
     .from('inventory_status')
@@ -99,7 +102,7 @@ async function loadContext(message) {
         )
         .eq('active', true)
         .or(
-          `part_number.ilike.%${safeTerm}%,description.ilike.%${safeTerm}%,brand.ilike.%${safeTerm}%`
+          searchFilter
         )
         .limit(8)
     : defaultProducts;
@@ -224,16 +227,16 @@ async function loadContext(message) {
 }
 
 function technicalQuestion(question) {
-  return /\b(api|database|supabase|xgboost|machine learning|algorithm|model metrics?|training data|dataset|backend|frontend|server|code|coding|developer|deployment|render|github|system status)\b/i.test(
+  return /\b(api|database|supabase|machine learning|algorithm|model metrics?|training data|dataset|backend|frontend|server|code|coding|developer|deployment|render|github|system status)\b/i.test(
     question
   );
 }
 
-function localAnswer(message, context) {
+export function localAnswer(message, context) {
   const question = String(message || '').toLowerCase();
   const metrics = context.metrics || {};
 
-  if (technicalQuestion(question)) {
+  if (technicalQuestion(question) && !/forecast|demand|xgboost/.test(question)) {
     return 'I can help you with store information instead. You can ask me about available stock, out-of-stock items, sales, best-selling or slow-moving parts, prices, suppliers, restocking, inventory value, or expected demand.';
   }
 
@@ -406,11 +409,12 @@ function localAnswer(message, context) {
     ).toLocaleString()} are out of stock.`;
   }
 
-  if (context.searchTerm) {
+  if (context.searchTerm && /stock|available|price|cost|where|location|part|have|sell/.test(question)) {
     if (!context.matchingProducts.length) {
       return `I could not find an active inventory item matching “${context.searchTerm}”. Try the part number, brand, or a word from the item description.`;
     }
 
+    if(context.matchingProducts.length>1)return `I found several matching parts. Confirm the part number and vehicle fit: ${context.matchingProducts.slice(0,6).map(p=>`${p.part_number||'No part number'} – ${p.description}: ${units(p.current_stock)} ${p.unit||'units'}${/price|how much/.test(question)?`, ${money(p.selling_price)} each`:''}${/where|location/.test(question)?`, ${p.location||'location not recorded'}`:''}`).join('; ')}.`;
     const product = context.matchingProducts[0];
 
     if (/price|selling price|how much/.test(question)) {
@@ -442,16 +446,11 @@ function localAnswer(message, context) {
     }`;
   }
 
-  return `I can help with your store records. Right now there are ${safeNumber(
-    metrics.totalProducts
-  ).toLocaleString()} active products, ${safeNumber(
-    metrics.lowStock
-  ).toLocaleString()} low-stock item(s), and ${safeNumber(
-    metrics.outOfStock
-  ).toLocaleString()} out-of-stock item(s). You can ask about stock availability, sales, prices, best-selling parts, slow-moving items, suppliers, restocking, inventory value, or expected demand.`;
+  return null;
 }
 
-async function geminiAnswer(message, context) {
+async function geminiAnswer(message, context, language) {
+  const integration=await getIntegration('gemini');
   const prompt = `You are the NPG Autoparts Store Assistant speaking directly to the store owner.
 
 The owner is not technical. Use simple business language and short, practical answers.
@@ -477,6 +476,8 @@ Use ONLY the supplied store context. Never invent quantities, prices, sales, sup
 
 Do not reveal customer names, supplier email addresses, credentials, secrets, or private technical information.
 
+Reply in ${language==='fil'?'clear Tagalog (common English car-part terms are allowed)':'English'}. Distinguish coolant fluid from the radiator component; do not treat related parts as interchangeable.
+
 STORE CONTEXT:
 ${JSON.stringify(context)}
 
@@ -485,13 +486,13 @@ ${compactText(message, 1000)}`;
 
   const endpoint =
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      config.GEMINI_MODEL
-    )}:generateContent?key=${encodeURIComponent(config.GEMINI_API_KEY)}`;
+      integration.model
+    )}:generateContent`;
 
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json', 'x-goog-api-key': integration.api_key
     },
     body: JSON.stringify({
       contents: [
@@ -528,11 +529,12 @@ ${compactText(message, 1000)}`;
   return compactText(text, 2000);
 }
 
-export function assistantMode() {
-  return config.GEMINI_API_KEY
+export async function assistantMode() {
+  const integration=await getIntegration('gemini');
+  return integrationReady('gemini',integration)
     ? {
         mode: 'gemini',
-        model: config.GEMINI_MODEL
+        model: integration.model
       }
     : {
         mode: 'smart-local',
@@ -540,35 +542,39 @@ export function assistantMode() {
       };
 }
 
-export async function answerAssistant(message) {
-  const context = await loadContext(message);
-
-  if (config.GEMINI_API_KEY) {
-    try {
-      const answer = await geminiAnswer(
-        message,
-        context
-      );
-
-      return {
-        answer,
-        mode: 'gemini',
-        model: config.GEMINI_MODEL
-      };
-    } catch (error) {
-      console.error(
-        'Store assistant fallback:',
-        error.message
-      );
-    }
-  }
-
-  return {
-    answer: localAnswer(
-      message,
-      context
-    ),
-    mode: 'smart-local',
-    model: null
-  };
+export function tagalogStoreAnswer(message,context){
+ const q=normalizeQuestion(message),money=n=>`₱${Number(n||0).toFixed(2)}`;
+ let rows,prefix;
+ if(/out of stock/.test(q)){rows=context.lowStock.filter(p=>p.stock_status==='out');prefix='Mga ubos na piyesa';}
+ else if(/low stock/.test(q)){rows=context.lowStock.filter(p=>p.stock_status==='low');prefix='Mga paubos na piyesa';}
+ else if(/restock/.test(q)){rows=context.reorders;prefix='Mga mungkahing idagdag sa stock';}
+ else if(/sales/.test(q)){const data=/today/.test(q)?context.sales.today:/week/.test(q)?context.sales.last7Days:context.sales.last30Days;return `Naitalang benta ${/today/.test(q)?'ngayon':/week/.test(q)?'sa huling 7 araw':'sa huling 30 araw'}: ${money(data.revenue)}, mula sa ${data.quantity} na naibentang yunit.`;}
+ else if(/demand|forecast|prediction/.test(q)){
+ if(!context.demandEstimate.available)return 'Kulang pa ang kasalukuyang datos para sa maaasahang pagtataya ng benta.';
+ rows=context.searchTerm?context.matchingDemand:context.demandLeaders;prefix='Tinatayang benta sa kasalukuyang panahon ng pagpaplano';
+ return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.predicted_quantity} yunit`).join('; '):'Walang sapat na naitalang pagtataya para sa piyesang ito.'}`;
+ }else if(context.searchTerm){rows=context.matchingProducts;prefix='Mula sa tala ng tindahan';}
+ else return null;
+ return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.current_stock} ${p.unit||'yunit'}${/price/.test(q)?`, ${money(p.selling_price)} bawat isa`:''}${/where/.test(q)?`, lokasyon: ${p.location||'hindi pa naitala'}`:''}${/restock/.test(q)?`, mungkahing order: ${Math.ceil(Number(p.recommended_quantity||0))}`:''}`).join('; '):'Walang katugmang piyesa sa mga tala.'}`;
+}
+async function cashierAnswer(message,fil){
+ const q=normalizeQuestion(message);
+ if(/cost|capital|profit|revenue|sales|benta|forecast|demand|supplier|utang/.test(q))return {answer:fil?'Para sa ulat ng benta, utang, o pagpaplano, tanungin ang may-ari. Makakatulong ako sa paghahanap, presyo at stock ng piyesa.':'Ask the owner about sales reports, customer balances or planning. I can help find parts, selling prices and stock.',mode:'database',model:null};
+ const terms=productTerms(message),term=terms[0]||extractSearchTerm(q);
+ let query=adminDb.from('inventory_status').select('part_number,description,current_stock,unit,location,selling_price,stock_status').eq('active',true);
+ if(/out of stock/.test(q))query=query.eq('stock_status','out');else if(/low stock/.test(q))query=query.eq('stock_status','low');
+ else if(term)query=query.or((terms.length?terms:[term]).map(sanitizeSearchTerm).filter(Boolean).flatMap(t=>[`description.ilike.%${t}%,part_number.ilike.%${t}%,barcode.ilike.%${t}%,alias_text.ilike.%${t}%`]).join(','));
+ const {data,error}=await query.order('description').limit(8);if(error)throw error;
+ return {answer:(fil?'Mula sa tala ng tindahan: ':'Store records: ')+(data.length?data.map(p=>`${p.part_number||''} ${p.description}: ${units(p.current_stock)} ${p.unit||'units'}${/price/.test(q)?`, ${money(p.selling_price)}`:''}${/where/.test(q)?`, ${p.location|| (fil?'Walang naitalang lokasyon':'No saved location')}`:''}`).join('; '):(fil?'Walang katugmang piyesa.':'No matching parts.')),mode:'database',model:null};
+}
+export async function answerAssistant(message,language,role) {
+ const fil=language==='fil'||isTagalog(message),definition=explainParts(message,fil);
+ if(definition)return {answer:definition,mode:'local',model:null};
+ if(role==='cashier')return cashierAnswer(message,fil);
+ const context=await loadContext(message);
+ const answer=fil?tagalogStoreAnswer(message,context):localAnswer(normalizeQuestion(message),context);
+ if(answer)return {answer,mode:'database',model:null,updatedAt:new Date().toISOString()};
+ const integration=await getIntegration('gemini');
+ if(integrationReady('gemini',integration)){try{return {answer:await geminiAnswer(message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[email removed]'),context,fil?'fil':'en'),mode:'gemini',model:integration.model};}catch{console.error('Assistant AI unavailable; using store guidance.');}}
+ return {answer:fil?'Maaari kong tingnan ang stock, presyo, benta, supplier, at inaasahang demand. Subukan ang part number o itanong: “Alin ang kailangang dagdagan ng stock?”':'I can check stock, prices, sales, suppliers and expected demand. Try a part number or ask “Which parts need restocking?”',mode:'database',model:null};
 }

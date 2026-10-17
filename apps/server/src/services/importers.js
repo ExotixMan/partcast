@@ -1,7 +1,9 @@
-import ExcelJS from 'exceljs';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import * as XLSX from 'xlsx';
+import { loadSpreadsheet } from '../utils/spreadsheet.js';
+import { containsSimulatedDemand } from './forecastDemo.js';
+import { simulatedDemandError } from '../utils/simulationData.js';
+import { isDemandQuantityHeader } from '../utils/demandHeaders.js';
 
 import { adminDb } from '../supabase.js';
 import { cleanText, excelDate, numberOr, fetchAll } from '../utils/helpers.js';
@@ -12,223 +14,6 @@ export function isSupportedSpreadsheetName(fileName = '') {
   return SUPPORTED_EXTENSIONS.has(
     path.extname(String(fileName)).toLowerCase()
   );
-}
-
-function safeSheetName(originalName, index, usedNames) {
-  let name = String(
-    originalName || `Sheet${index + 1}`
-  )
-    .replace(/[\\/*?:\[\]]/g, '_')
-    .trim();
-
-  if (!name) {
-    name = `Sheet${index + 1}`;
-  }
-
-  name = name.substring(0, 31);
-
-  let finalName = name;
-  let counter = 1;
-
-  while (
-    usedNames.has(
-      finalName.toLowerCase()
-    )
-  ) {
-    const suffix = `_${counter}`;
-
-    finalName =
-      name.substring(
-        0,
-        31 - suffix.length
-      ) + suffix;
-
-    counter++;
-  }
-
-  usedNames.add(
-    finalName.toLowerCase()
-  );
-
-  return finalName;
-}
-
-async function loadSpreadsheet(
-  buffer,
-  fileName = ''
-) {
-  if (
-    !Buffer.isBuffer(buffer) ||
-    buffer.length === 0
-  ) {
-    const error =
-      new Error(
-        'The uploaded spreadsheet is empty.'
-      );
-
-    error.status = 400;
-    throw error;
-  }
-
-  const extension =
-    path.extname(
-      String(fileName)
-    ).toLowerCase();
-
-  if (extension === '.xls') {
-    const error =
-      new Error(
-        'Old .xls files are not supported. Save the file as .xlsx first.'
-      );
-
-    error.status = 415;
-    throw error;
-  }
-
-  if (
-    extension &&
-    !SUPPORTED_EXTENSIONS.has(
-      extension
-    )
-  ) {
-    const error =
-      new Error(
-        'Unsupported spreadsheet format. Upload an .xlsx, .xlsm, or .csv file.'
-      );
-
-    error.status = 415;
-    throw error;
-  }
-
-  try {
-    let sourceWorkbook;
-
-    if (extension === '.csv') {
-      sourceWorkbook =
-        XLSX.read(
-          buffer.toString('utf8'),
-          {
-            type: 'string',
-            raw: true,
-            cellDates: true
-          }
-        );
-    } else {
-      sourceWorkbook =
-        XLSX.read(
-          buffer,
-          {
-            type: 'buffer',
-            raw: true,
-            cellDates: true,
-            cellFormula: true,
-            cellNF: false,
-            cellText: false
-          }
-        );
-    }
-
-    if (
-      !sourceWorkbook?.SheetNames?.length
-    ) {
-      throw new Error(
-        'The spreadsheet does not contain any readable worksheets.'
-      );
-    }
-
-    const workbook =
-      new ExcelJS.Workbook();
-
-    const usedNames =
-      new Set();
-
-    sourceWorkbook.SheetNames.forEach(
-      (
-        originalSheetName,
-        index
-      ) => {
-        const sourceSheet =
-          sourceWorkbook.Sheets[
-            originalSheetName
-          ];
-
-        if (!sourceSheet) {
-          return;
-        }
-
-        const rows =
-          XLSX.utils.sheet_to_json(
-            sourceSheet,
-            {
-              header: 1,
-              defval: null,
-              raw: true,
-              blankrows: true
-            }
-          );
-
-        const worksheet =
-          workbook.addWorksheet(
-            safeSheetName(
-              originalSheetName,
-              index,
-              usedNames
-            )
-          );
-
-        for (
-          const rowValues of rows
-        ) {
-          worksheet.addRow(
-            Array.isArray(
-              rowValues
-            )
-              ? rowValues
-              : []
-          );
-        }
-      }
-    );
-
-    if (
-      !workbook.worksheets.length
-    ) {
-      throw new Error(
-        'No readable worksheets were found in the spreadsheet.'
-      );
-    }
-
-    console.log(
-      'SPREADSHEET LOADED:',
-      {
-        fileName,
-        sheets:
-          workbook.worksheets.map(
-            sheet => sheet.name
-          )
-      }
-    );
-
-    return workbook;
-
-  } catch (originalError) {
-    console.error(
-      'SPREADSHEET LOAD ERROR:',
-      originalError
-    );
-
-    const error =
-      new Error(
-        `Unable to read spreadsheet: ${
-          originalError?.message ||
-          'Unknown spreadsheet error.'
-        }`
-      );
-
-    error.status = 422;
-
-    throw error;
-  }
 }
 
 function cellValue(cell) {
@@ -314,7 +99,7 @@ function headerMap(worksheet) {
       headerValues(
         worksheet,
         rowNumber
-      );
+      ).map(value => value.length > 80 ? '' : value.replace(/\s*[\[(][^\])]{1,40}[\])]\s*$/, '').trim());
 
     const hasPart =
       values.some(
@@ -328,24 +113,13 @@ function headerMap(worksheet) {
             'partnumber',
             'sku',
             'product code'
-          ].includes(value) ||
-          value.includes(
-            'part number'
-          )
+          ].includes(value)
       );
 
     const hasDescription =
       values.some(
         value =>
-          value ===
-            'description' ||
-          value ===
-            'item description' ||
-          value ===
-            'product description' ||
-          value.includes(
-            'description'
-          )
+          ['description','item description','product description','part description'].includes(value)
       );
 
     const hasQuantity =
@@ -359,10 +133,7 @@ function headerMap(worksheet) {
             'stock quantity',
             'on hand',
             'on-hand'
-          ].includes(value) ||
-          value.includes(
-            'quantity'
-          )
+          ].includes(value)
       );
 
     if (
@@ -382,10 +153,8 @@ function headerMap(worksheet) {
           }
 
           if (
-            value.includes(
-              'part number'
-            ) ||
             [
+              'part number',
               'part no',
               'part no.',
               'part #',
@@ -415,9 +184,7 @@ function headerMap(worksheet) {
           }
 
           else if (
-            value.includes(
-              'description'
-            )
+            ['description','item description','product description','part description'].includes(value)
           ) {
             map.description =
               column;
@@ -442,10 +209,7 @@ function headerMap(worksheet) {
               'stock quantity',
               'on hand',
               'on-hand'
-            ].includes(value) ||
-            value.includes(
-              'quantity'
-            )
+            ].includes(value)
           ) {
             map.quantity =
               column;
@@ -560,6 +324,8 @@ function headerMap(worksheet) {
         }
       );
 
+      // Narrative cells can mention several field names without forming a table.
+      if (!map.quantity || !(map.partNumber || map.description)) continue;
       return {
         row: rowNumber,
         map
@@ -743,15 +509,7 @@ function findDemandHeader(
         }
 
         else if (
-          [
-            'demand quantity',
-            'demand qty',
-            'quantity sold',
-            'sales quantity',
-            'units sold',
-            'qty sold',
-            'demand'
-          ].includes(value)
+          isDemandQuantityHeader(value)
         ) {
           map.quantity =
             column;
@@ -1517,12 +1275,14 @@ function inventorySheets(
 
 export async function detectSpreadsheetType(
   buffer,
-  fileName
+  fileName,
+  parsedWorkbook = null
 ) {
   const workbook =
-    await loadSpreadsheet(
+    parsedWorkbook ?? await loadSpreadsheet(
       buffer,
-      fileName
+      fileName,
+      {rejectSimulated:true}
     );
 
   const demand =
@@ -1580,7 +1340,8 @@ export async function detectSpreadsheetType(
 export async function importInventoryWorkbook(
   buffer,
   fileName,
-  userId
+  userId,
+  parsedWorkbook = null
 ) {
   const fileSha256 =
     spreadsheetHash(
@@ -1594,9 +1355,10 @@ export async function importInventoryWorkbook(
   );
 
   const workbook =
-    await loadSpreadsheet(
+    parsedWorkbook ?? await loadSpreadsheet(
       buffer,
-      fileName
+      fileName,
+      {rejectSimulated:true}
     );
 
   const {
@@ -2196,345 +1958,93 @@ export async function importInventoryWorkbook(
   }
 }
 
-export async function importLegacySalesWorkbook(
-  buffer,
-  fileName,
-  userId,
-  useProxy = false
-) {
-  const fileSha256 =
-    spreadsheetHash(
-      buffer
-    );
-
-  await assertNotImported(
-    'legacy_sales',
-    fileSha256,
-    'This exact sales spreadsheet was already imported.'
-  );
-
-  const workbook =
-    await loadSpreadsheet(
-      buffer,
-      fileName
-    );
-
-  const batch =
-    await createBatch(
-      fileName,
-      fileSha256,
-      'legacy_sales',
-      userId
-    );
-
-  const products =
-    await fetchAll(
-      () =>
-        adminDb
-          .from(
-            'products'
-          )
-          .select(
-            'id,part_number'
-          )
-          .not(
-            'part_number',
-            'is',
-            null
-          )
-    );
-
-  const partLookup =
-    products
-      .filter(
-        product =>
-          product.part_number &&
-          String(
-            product.part_number
-          )
-            .trim()
-            .length >= 4
-      )
-      .sort(
-        (
-          first,
-          second
-        ) =>
-          String(
-            second.part_number
-          ).length -
-          String(
-            first.part_number
-          ).length
-      );
-
-  let read = 0;
-  let imported = 0;
-  let skipped = 0;
-  let proxies = 0;
-
-  const warnings = [];
-
+export async function importLegacySalesWorkbook(buffer, fileName, userId, useProxy = false, parsedWorkbook = null) {
+  if(useProxy)throw Object.assign(new Error('Invoice quantities cannot be assumed. Import actual dated part quantities, or use the labelled forecasting demo.'),{status:422});
+  const fileSha256 = spreadsheetHash(buffer);
+  await assertNotImported('legacy_sales', fileSha256, 'This exact sales spreadsheet was already imported.');
+  const workbook = parsedWorkbook ?? await loadSpreadsheet(buffer, fileName, {rejectSimulated:true});
+  const batch = await createBatch(fileName, fileSha256, 'legacy_sales', userId);
+  let read = 0, imported = 0, skipped = 0, proxies = 0, duplicates = 0, conflicts = 0;
+  const warnings = [], conflictExamples = [];
   try {
-    let foundTable =
-      false;
-
-    for (
-      const worksheet
-      of workbook.worksheets
-    ) {
-      const header =
-        findLegacyHeader(
-          worksheet
-        );
-
-      if (!header) {
-        continue;
+    const [products, existing] = await Promise.all([
+      fetchAll(() => adminDb.from('products').select('id,part_number').not('part_number','is',null)),
+      fetchAll(() => adminDb.from('legacy_sales').select('reference_no,sale_date,amount,raw_items'))
+    ]);
+    const partLookup = new Map(products.filter(product => product.part_number && String(product.part_number).trim().length >= 4
+      && /\d/.test(String(product.part_number))).map(product=>[String(product.part_number).trim().toUpperCase(),product]));
+    // Compile once for the entire upload, rather than testing every SKU for every invoice.
+    const codes=[...partLookup.keys()].sort((a,b)=>b.length-a.length)
+      .map(code=>code.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+    const partPattern=codes.length ? new RegExp('(?:^|[^A-Z0-9_-])('+codes.join('|')+')(?=$|[^A-Z0-9_-])','gi') : null;
+    const matchProduct=items=>{
+      let matched=null,seen=null;
+      if(!partPattern)return null;
+      for(const match of items.matchAll(partPattern)){
+        const product=partLookup.get(match[1].toUpperCase());
+        if(seen && seen!==product.id)return null;
+        seen=product.id;
+        const start=match.index+match[0].length-match[1].length,end=start+match[1].length;
+        if(!/[A-Z0-9_./-]/i.test(items[start-1]||'') && !/[A-Z0-9_./-]/i.test(items[end]||''))matched=product;
       }
-
-      foundTable = true;
-
-      for (
-        let rowNumber =
-          header.row + 1;
-
-        rowNumber <=
-          worksheet.rowCount;
-
-        rowNumber++
-      ) {
-        const row =
-          worksheet.getRow(
-            rowNumber
-          );
-
-        const reference =
-          cleanText(
-            getValue(
-              row,
-              header.map,
-              'reference'
-            ),
-            180
-          );
-
-        const date =
-          excelDate(
-            getValue(
-              row,
-              header.map,
-              'date'
-            )
-          );
-
-        const customer =
-          cleanText(
-            getValue(
-              row,
-              header.map,
-              'customer'
-            ),
-            240
-          );
-
-        const amountRaw =
-          getValue(
-            row,
-            header.map,
-            'amount'
-          );
-
-        const items =
-          cleanText(
-            getValue(
-              row,
-              header.map,
-              'items'
-            ),
-            1500
-          );
-
-        if (
-          !reference &&
-          !date &&
-          !customer &&
-          !items
-        ) {
-          continue;
-        }
-
-        if (
-          (
-            customer ||
-            ''
-          ).toUpperCase() ===
-          'CANCELLED'
-        ) {
-          skipped++;
-          continue;
-        }
-
-        read++;
-
-        const upperItems =
-          (
-            items ||
-            ''
-          ).toUpperCase();
-
-        const matched =
-          partLookup.find(
-            product =>
-              upperItems.includes(
-                String(
-                  product.part_number
-                )
-                  .trim()
-                  .toUpperCase()
-              )
-          ) ||
-          null;
-
-        const {
-          error
-        } =
-          await adminDb
-            .from(
-              'legacy_sales'
-            )
-            .insert({
-              reference_no:
-                reference,
-
-              sale_date:
-                date,
-
-              customer_name:
-                customer,
-
-              amount:
-                numberOr(
-                  amountRaw,
-                  0
-                ),
-
-              raw_items:
-                items,
-
-              matched_product_id:
-                matched?.id ||
-                null,
-
-              import_batch_id:
-                batch.id
-            });
-
-        if (error) {
-          throw error;
-        }
-
-        imported++;
-
-        if (
-          useProxy &&
-          matched &&
-          date
-        ) {
-          const {
-            error:
-              proxyError
-          } =
-            await adminDb
-              .from(
-                'demand_observations'
-              )
-              .insert({
-                product_id:
-                  matched.id,
-
-                occurred_on:
-                  date,
-
-                quantity:
-                  1,
-
-                source:
-                  'legacy_transaction_proxy',
-
-                source_reference:
-                  reference
-              });
-
-          if (!proxyError) {
-            proxies++;
-          } else {
-            console.error(
-              'LEGACY PROXY ERROR:',
-              proxyError
-            );
-          }
-        }
-      }
-    }
-
-    if (!foundTable) {
-      const error =
-        new Error(
-          'No sales table was found. Expected Reference/Ref #, Date, Customer, and Items columns.'
-        );
-
-      error.status = 422;
-
-      throw error;
-    }
-
-    if (!useProxy) {
-      warnings.push(
-        'Sales rows were imported for reporting. No 1-unit demand proxy was created because the proxy option was not enabled.'
-      );
-    }
-
-    await completeBatch(
-      batch.id,
-      {
-        read,
-        imported,
-        skipped,
-        warnings
-      }
-    );
-
-    return {
-      batchId:
-        batch.id,
-
-      detectedType:
-        'legacy-sales',
-
-      rowsRead:
-        read,
-
-      rowsImported:
-        imported,
-
-      rowsSkipped:
-        skipped,
-
-      proxyObservations:
-        proxies,
-
-      warnings
+      return matched;
     };
-
-  } catch (error) {
-    await failBatch(
-      batch.id,
-      warnings,
-      error
-    );
-
-    throw error;
-  }
+    const referenceKey = value => String(value || '').trim().toUpperCase().replace(/\s+/g,'');
+    const fingerprint = row => JSON.stringify([row.sale_date || null, numberOr(row.amount,0),
+      String(row.raw_items || '').trim().replace(/\s+/g,' ')]);
+    const references = new Map();
+    for (const row of existing) {
+      const key = referenceKey(row.reference_no);
+      if (!key) continue;
+      if (!references.has(key)) references.set(key,new Set());
+      references.get(key).add(fingerprint(row));
+    }
+    let foundTable = false;
+    const pending = [];
+    for (const worksheet of workbook.worksheets) {
+      const header = findLegacyHeader(worksheet);
+      if (!header) continue;
+      foundTable = true;
+      for (let rowNumber=header.row+1;rowNumber<=worksheet.rowCount;rowNumber++) {
+        const row = worksheet.getRow(rowNumber);
+        const reference = cleanText(getValue(row,header.map,'reference'),180);
+        const date = excelDate(getValue(row,header.map,'date'));
+        const customer = cleanText(getValue(row,header.map,'customer'),240);
+        const items = cleanText(getValue(row,header.map,'items'),1500);
+        if (!reference && !date && !customer && !items) continue;
+        read++;
+        if (!reference || ['CANCELLED','CANCELED'].includes((customer || '').toUpperCase())) {skipped++;continue;}
+        const upperItems = (items || '').toUpperCase();
+        // A multi-part invoice cannot be assigned wholly to its first matching code.
+        const matched = matchProduct(upperItems);
+        const record = {reference_no:reference,sale_date:date,customer_name:customer,
+          amount:numberOr(getValue(row,header.map,'amount'),0),raw_items:items,
+          matched_product_id:matched?.id || null,import_batch_id:batch.id};
+        const key = referenceKey(reference), signature = fingerprint(record), previous = references.get(key);
+        if (previous) {
+          skipped++;
+          if (previous.has(signature)) duplicates++;
+          else {conflicts++;if(conflictExamples.length<8)conflictExamples.push(reference);}
+          continue;
+        }
+        references.set(key,new Set([signature]));
+        pending.push(record);
+      }
+    }
+    if (!foundTable) throw Object.assign(new Error('No sales table was found. Expected Reference/Ref #, Date, Customer, and Items columns.'),{status:422});
+    // Supabase calls are batched: thousands of per-invoice requests timed out on Render.
+    for (let index=0;index<pending.length;index+=500) {
+      const chunk=pending.slice(index,index+500);
+      const saved=await adminDb.from('legacy_sales').insert(chunk);
+      if (saved.error) throw saved.error;
+      imported+=chunk.length;
+    }
+    if (duplicates) warnings.push(`${duplicates} invoice(s) already exist with the same reference, date, amount and description; they were not added again.`);
+    if (conflicts) warnings.push(`${conflicts} invoice reference(s) already exist with different details and were left unchanged. Review the source receipts. Examples: ${conflictExamples.join(', ')}`);
+    warnings.push('Past invoices were saved. Forecasting needs actual dated part quantities in a separate import.');
+    await completeBatch(batch.id,{read,imported,skipped,warnings});
+    return {batchId:batch.id,detectedType:'legacy-sales',rowsRead:read,rowsImported:imported,rowsSkipped:skipped,proxyObservations:proxies,warnings};
+  } catch (error) {await failBatch(batch.id,warnings,error);throw error;}
 }
 
 function scoreDemandSheet(
@@ -2706,7 +2216,8 @@ function bestDemandSheet(
 export async function importDemandTrainingWorkbook(
   buffer,
   fileName,
-  userId
+  userId,
+  parsedWorkbook = null
 ) {
   const fileSha256 =
     spreadsheetHash(
@@ -2714,10 +2225,15 @@ export async function importDemandTrainingWorkbook(
     );
 
   const workbook =
-    await loadSpreadsheet(
+    parsedWorkbook ?? await loadSpreadsheet(
       buffer,
-      fileName
+      fileName,
+      {rejectSimulated:true}
     );
+
+  if (containsSimulatedDemand(workbook)) {
+    throw simulatedDemandError();
+  }
 
   const selected =
     bestDemandSheet(
@@ -3017,6 +2533,12 @@ export async function importDemandTrainingWorkbook(
       `Automatically selected "${selected.ws.name}" because it contains the strongest usable Date + Part Number + Demand Quantity dataset. The uploaded filename was not used to determine the dataset type.`
     );
 
+    if (workbook.worksheets.length > 1) {
+      warnings.push(
+        `Only the dated part quantities in "${selected.ws.name}" were imported. The other ${workbook.worksheets.length - 1} worksheet(s) were not imported; financial amounts and suggested quantities are not converted into sales quantities.`
+      );
+    }
+
     await completeBatch(
       batch.id,
       {
@@ -3075,11 +2597,14 @@ export async function importSpreadsheetAuto(
   requestedType = 'auto',
   useProxy = false
 ) {
+  const workbook = await loadSpreadsheet(buffer,fileName,{rejectSimulated:true});
+  if(containsSimulatedDemand(workbook))throw simulatedDemandError();
   const type =
     requestedType === 'auto'
       ? await detectSpreadsheetType(
           buffer,
-          fileName
+          fileName,
+          workbook
         )
       : requestedType;
 
@@ -3089,7 +2614,8 @@ export async function importSpreadsheetAuto(
     return importInventoryWorkbook(
       buffer,
       fileName,
-      userId
+      userId,
+      workbook
     );
   }
 
@@ -3103,7 +2629,8 @@ export async function importSpreadsheetAuto(
       buffer,
       fileName,
       userId,
-      useProxy
+      useProxy,
+      workbook
     );
   }
 
@@ -3116,7 +2643,8 @@ export async function importSpreadsheetAuto(
     return importDemandTrainingWorkbook(
       buffer,
       fileName,
-      userId
+      userId,
+      workbook
     );
   }
 

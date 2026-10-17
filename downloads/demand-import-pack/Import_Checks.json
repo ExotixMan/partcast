@@ -1,0 +1,42 @@
+{
+  "actual_import_checks": {
+    "verified": true,
+    "database": "isolated PostgreSQL with real PartCast importers",
+    "invoices_imported": 5666,
+    "repacked_duplicate_invoices_added": 0,
+    "demand_rows": 30,
+    "matched_parts": 16,
+    "new_formatting_matches": 3,
+    "all_27_existing_rows_preserved": true,
+    "blank_pending_receipts_ignored": 32,
+    "stock_unchanged": true,
+    "products_created": 0,
+    "review_workbook_rejected_before_mutations": true,
+    "live_database_modified": false
+  },
+  "actual_forecast_readiness": {
+    "ready": false,
+    "as_of_date": "2026-10-17",
+    "record_count": 30,
+    "part_count": 16,
+    "eligible_part_count": 2,
+    "current_part_count": 0,
+    "status": "stale_history"
+  },
+  "labelled_simulation_checks": {
+    "verified": true,
+    "dataset_type": "SIMULATED_DEMO",
+    "parts": 9,
+    "simulated_rows": 6570,
+    "selected_method": "direct_period_xgboost",
+    "validation_wape_percent": 8.6155,
+    "test_wape_percent": 17.5016,
+    "baseline_28_day_test_wape_percent": 21.1573,
+    "baseline_365_day_test_wape_percent": 12.3028,
+    "test_windows": 18,
+    "future_estimates": 9,
+    "store_database_calls": 0,
+    "actual_imports_reject_simulation": true,
+    "production_accuracy_established": false
+  }
+}

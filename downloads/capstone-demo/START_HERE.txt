@@ -1,0 +1,32 @@
+PARTCAST — SEPARATE FORECASTING DEMO
+
+This workbook contains SIMULATED quantities for nine identified part numbers.
+It is not actual customer sales, even though its part numbers are real.
+Original training, validation and test rows have not been changed to improve scores.
+
+HOW TO USE
+1. Deploy the API and website from the latest Codex branch commit.
+2. Sign in as Owner, Admin or Super Admin.
+3. Open Demand planning -> Practice demo.
+4. Choose PartCast_Forecasting_DEMO.xlsx and click Test XGBoost demo.
+5. Review MAE, RMSE, WAPE, baseline comparisons and estimated next-period units.
+
+Do not upload the demo through Import spreadsheets. That route rejects simulations.
+This demo does not replace actual history or change stock, customer debts or restock suggestions.
+Python with numpy, pandas, scikit-learn and xgboost is required on the API.
+
+MEASURED RESULTS — rerun on 17 October 2026
+6,570 daily rows; nine parts; 730 days; 18 complete 30-day test part-periods.
+Training: 15 October 2024–16 June 2026.
+Validation: 17 June–15 August 2026.
+Test: 16 August–14 October 2026.
+Validation-selected XGBoost strategy: direct 30-day total.
+XGBoost test WAPE: 17.5016%; MAE: 3.0725 units per part-period; RMSE: 5.0789.
+28-day average test WAPE: 21.1573%.
+365-day average test WAPE: 12.3028%, better than XGBoost on this sample.
+Lower error is better. WAPE is not a conventional accuracy percentage.
+These already-inspected simulated periods are not a new independent real-store test.
+Actual store accuracy remains unestablished. Do not present these results as actual-sales validation.
+
+The JSON and Excel files provide the comparison and individual period results.
+The workbook can demonstrate a functioning forecasting pipeline; it cannot guarantee future demand.

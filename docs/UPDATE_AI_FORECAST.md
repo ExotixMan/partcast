@@ -21,10 +21,14 @@ API environment variables required:
 - `SETUP_SECRET`
 - `CRON_SECRET`
 - `IP_HASH_SECRET`
-- `BREVO_API_KEY` (optional until supplier email is enabled)
-- `BREVO_SENDER_EMAIL` (optional until supplier email is enabled)
+- `GMAIL_CLIENT_ID`
+- `GMAIL_CLIENT_SECRET`
+- `GMAIL_REFRESH_TOKEN`
+- `GMAIL_SENDER_EMAIL` (required for login codes and supplier email)
 - `GEMINI_API_KEY` (optional; Smart Local chatbot works without it)
 - `GEMINI_MODEL=gemini-2.5-flash`
+
+For the current release, apply only missing migrations through 0008 and follow [required Gmail login and stable encryption-key setup](LOGIN_ROLES_FORECASTING.md). This older forecast-import procedure does not replace the current role/security upgrade.
 
 Frontend variables:
 

@@ -4,15 +4,26 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { adminDb, userDb } from '../supabase.js';
-import { requireRole } from '../middleware/auth.js';
+import { requireRole,authorizeApi } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { fetchAll, cleanText } from '../utils/helpers.js';
 import { importInventoryWorkbook, importLegacySalesWorkbook, importDemandTrainingWorkbook, importSpreadsheetAuto, isSupportedSpreadsheetName } from '../services/importers.js';
 import { buildReportWorkbook } from '../utils/excel.js';
-import { runForecastPython } from '../utils/ml.js';
+import { runForecastPython,forecastingStatus,checkForecastReadiness } from '../utils/ml.js';
+import {getDataEnvironment,markForecastMetrics} from '../services/dataEnvironment.js';
+import { createDemoJobs } from '../services/forecastDemo.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
 
+import storeRoutes from './store.js';
+import {storeReport} from '../utils/storeReports.js';
+import {amount,positiveAmount,category,barcode,reportDates,dateQuery} from '../utils/storeValidation.js';
+import {neededRestock,normalizeRestock} from '../utils/restock.js';
+import {summarizeRecordedSales} from '../utils/recordedSales.js';
+const storeDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const router = Router();
+router.use(authorizeApi);
+router.use(async(req,res,next)=>{try{req.dataEnvironment=await getDataEnvironment();next();}catch(error){next(error);}});
+router.use(storeRoutes);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
@@ -28,7 +39,31 @@ const rolesWrite = requireRole('owner','admin','inventory_staff');
 const rolesAdmin = requireRole('owner','admin');
 const assistantLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 
-router.get('/me', (req, res) => res.json({ user: req.user }));
+router.get('/me', (req, res) => { const {accessToken,...user}=req.user;res.json({user:{...user,data_environment:req.dataEnvironment.mode}}); });
+
+router.get('/offline-snapshot', async (req,res,next) => {
+  try {
+    const [products,suppliers] = await Promise.all([
+      fetchAll(() => adminDb.from('inventory_status').select('id,part_number,sub_number,description,brand,unit,location,current_stock,minimum_stock,safety_stock,unit_cost,selling_price,stock_status,updated_at,category,barcode,search_aliases,photo_paths').eq('active',true).order('id')),
+      fetchAll(() => adminDb.from('suppliers').select('id,name').eq('active',true).order('id'))
+    ]);
+    res.json({products,suppliers,savedAt:new Date().toISOString()});
+  } catch(e){next(e);}
+});
+router.get('/notifications', async (req,res,next) => {
+  try {
+    const [{data,error},{data:reads,error:readError}] = await Promise.all([
+      adminDb.from('stock_notifications').select('*,product:products(description,part_number,current_stock,unit,minimum_stock)').is('resolved_at',null).order('created_at',{ascending:false}).limit(100),
+      adminDb.from('notification_reads').select('notification_id').eq('user_id',req.user.id)
+    ]);
+    if(error||readError)throw error||readError;
+    const ids=new Set((reads||[]).map(r=>r.notification_id));
+    res.json({data:(data||[]).map(r=>({...r,read:ids.has(r.id)}))});
+  }catch(e){next(e);}
+});
+router.post('/notifications/:id/read',async (req,res,next)=>{
+  try{const id=z.string().uuid().parse(req.params.id);const {error}=await adminDb.from('notification_reads').upsert({notification_id:id,user_id:req.user.id},{onConflict:'notification_id,user_id'});if(error)throw error;res.json({ok:true});}catch(e){next(e);}
+});
 
 router.patch('/me', async (req,res,next) => {
   try {
@@ -48,7 +83,7 @@ router.get('/dashboard', async (req, res, next) => {
       adminDb.rpc('get_top_moving_products', { p_days: 90, p_limit: 8, p_direction: 'desc' }),
       adminDb.rpc('get_top_moving_products', { p_days: 90, p_limit: 8, p_direction: 'asc' }),
       adminDb.from('latest_completed_forecast_run').select('*').maybeSingle(),
-      adminDb.from('reorder_recommendations').select('*').gt('recommended_quantity', 0).order('recommended_quantity', { ascending: false }).limit(8)
+      neededRestock(adminDb.from('reorder_recommendations').select('*')).order('recommended_quantity', { ascending: false }).limit(8)
     ]);
     for (const r of [metrics, trend, fast, slow, latestRun, reorder]) if (r.error) throw r.error;
     res.json({
@@ -57,7 +92,7 @@ router.get('/dashboard', async (req, res, next) => {
       fastMoving: fast.data || [],
       slowMoving: slow.data || [],
       latestForecastRun: latestRun.data || null,
-      reorder: reorder.data || []
+      reorder: (reorder.data || []).map(normalizeRestock)
     });
   } catch (e) { next(e); }
 });
@@ -69,7 +104,8 @@ router.get('/products', async (req, res, next) => {
     const q = String(req.query.q || '').trim().replace(/[^a-zA-Z0-9_\-./ ()]/g, '').slice(0, 80);
     const status = String(req.query.status || 'all');
     let query = adminDb.from('inventory_status').select('*', { count: 'exact' }).eq('active', true);
-    if (q) query = query.or(`part_number.ilike.%${q}%,description.ilike.%${q}%,brand.ilike.%${q}%`);
+    if (q) query = query.or(`part_number.ilike.%${q}%,description.ilike.%${q}%,brand.ilike.%${q}%,barcode.ilike.%${q}%,alias_text.ilike.%${q}%`);
+    if(req.query.category && req.query.category!=='all') query=query.eq('category',category.parse(req.query.category));
     if (status === 'low') query = query.eq('stock_status', 'low');
     if (status === 'out') query = query.eq('stock_status', 'out');
     query = query.order('description').range((page - 1) * pageSize, page * pageSize - 1);
@@ -85,7 +121,7 @@ router.get('/products/:id', async (req, res, next) => {
       adminDb.from('products').select('*').eq('id', req.params.id).single(),
       adminDb.from('product_suppliers').select('*,supplier:suppliers(*)').eq('product_id', req.params.id),
       adminDb.from('inventory_transactions').select('*').eq('product_id', req.params.id).order('occurred_at',{ascending:false}).limit(50),
-      adminDb.from('demand_forecasts').select('forecast_date,predicted_quantity,run_id').eq('product_id', req.params.id).gte('forecast_date', new Date().toISOString().slice(0,10)).order('forecast_date').limit(90)
+      adminDb.from('demand_forecasts').select('forecast_date,predicted_quantity,run_id').eq('product_id', req.params.id).gte('forecast_date', storeDay()).order('forecast_date').limit(90)
     ]);
     if (product.error) throw product.error;
     res.json({ product: product.data, suppliers: suppliers.data || [], transactions: tx.data || [], forecasts: forecasts.data || [] });
@@ -97,15 +133,16 @@ router.post('/products', rolesWrite, async (req, res, next) => {
     const body = z.object({
       part_number: z.string().trim().max(120).nullable().optional(),
       sub_number: z.string().trim().max(120).nullable().optional(),
+      category:category.optional(),barcode,search_aliases:z.array(z.string().trim().min(1).max(80)).max(20).optional(),
       description: z.string().trim().min(2).max(500),
       brand: z.string().trim().max(120).nullable().optional(),
       unit: z.string().trim().max(40).nullable().optional(),
       location: z.string().trim().max(80).nullable().optional(),
-      current_stock: z.coerce.number().min(0).default(0),
-      minimum_stock: z.coerce.number().min(0).default(0),
-      safety_stock: z.coerce.number().min(0).default(0),
-      unit_cost: z.coerce.number().min(0).default(0),
-      selling_price: z.coerce.number().min(0).default(0)
+      current_stock: amount.default(0),
+      minimum_stock: amount.default(0),
+      safety_stock: amount.default(0),
+      unit_cost: amount.default(0),
+      selling_price: amount.default(0)
     }).parse(req.body);
     const initial = body.current_stock;
     const { data, error } = await adminDb.from('products').insert({ ...body, current_stock: 0 }).select('*').single();
@@ -131,14 +168,15 @@ router.patch('/products/:id', rolesWrite, async (req, res, next) => {
     const body = z.object({
       part_number: z.string().trim().max(120).nullable().optional(),
       sub_number: z.string().trim().max(120).nullable().optional(),
+      category:category.optional(),barcode,search_aliases:z.array(z.string().trim().min(1).max(80)).max(20).optional(),
       description: z.string().trim().min(2).max(500).optional(),
       brand: z.string().trim().max(120).nullable().optional(),
       unit: z.string().trim().max(40).nullable().optional(),
       location: z.string().trim().max(80).nullable().optional(),
-      minimum_stock: z.coerce.number().min(0).optional(),
-      safety_stock: z.coerce.number().min(0).optional(),
-      unit_cost: z.coerce.number().min(0).optional(),
-      selling_price: z.coerce.number().min(0).optional(),
+      minimum_stock: amount.optional(),
+      safety_stock: amount.optional(),
+      unit_cost: amount.optional(),
+      selling_price: amount.optional(),
       active: z.boolean().optional()
     }).parse(req.body);
     const { data, error } = await adminDb.from('products').update(body).eq('id', req.params.id).select('*').single();
@@ -151,33 +189,25 @@ router.patch('/products/:id', rolesWrite, async (req, res, next) => {
 router.post('/inventory/movement', rolesWrite, async (req, res, next) => {
   try {
     const body = z.object({
+      client_operation_id: z.string().uuid(),
       product_id: z.string().uuid(),
       tx_type: z.enum(['stock_in','stock_out','sale']),
-      quantity: z.coerce.number().positive(),
-      unit_cost: z.coerce.number().min(0).nullable().optional(),
-      unit_price: z.coerce.number().min(0).nullable().optional(),
+      quantity: positiveAmount,
+      unit_cost: amount.nullable().optional(),
+      unit_price: amount.nullable().optional(),
       reference_no: z.string().trim().max(180).nullable().optional(),
       supplier_id: z.string().uuid().nullable().optional(),
       customer_name: z.string().trim().max(240).nullable().optional(),
-      total_amount: z.coerce.number().min(0).nullable().optional(),
+      total_amount: amount.nullable().optional(),
       notes: z.string().trim().max(1000).nullable().optional(),
       occurred_at: z.string().datetime().optional()
     }).parse(req.body);
-    const { data, error } = await userDb(req.user.accessToken).rpc('apply_inventory_transaction', {
-      p_product_id: body.product_id,
-      p_tx_type: body.tx_type,
-      p_quantity: body.quantity,
-      p_unit_cost: body.unit_cost ?? null,
-      p_unit_price: body.unit_price ?? null,
-      p_reference_no: body.reference_no ?? null,
-      p_supplier_id: body.supplier_id ?? null,
-      p_customer_name: body.customer_name ?? null,
-      p_total_amount: body.total_amount ?? null,
-      p_notes: body.notes ?? null,
-      p_occurred_at: body.occurred_at ?? new Date().toISOString()
+    const {client_operation_id,...payload}=body;
+    const { data, error } = await userDb(req.user.accessToken).rpc('sync_inventory_movement', {
+      p_operation_id: client_operation_id, p_payload: payload
     });
     if (error) throw error;
-    await audit(req, body.tx_type, 'inventory_transaction', data, { product_id: body.product_id, quantity: body.quantity });
+    await audit(req, body.tx_type, 'inventory_transaction', data, { product_id: body.product_id, quantity: body.quantity }).catch(() => console.error('Movement audit logging failed.'));
     res.status(201).json({ transactionId: data });
   } catch (e) { next(e); }
 });
@@ -188,8 +218,9 @@ router.get('/transactions', async (req, res, next) => {
     const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize) || 25));
     const type = String(req.query.type || 'all');
     let q = adminDb.from('inventory_transactions')
-      .select('*,product:products(part_number,description,brand),supplier:suppliers(name)', { count: 'exact' });
-    if (type !== 'all') q = q.eq('tx_type', type);
+      .select('*,product:products(part_number,description,brand,unit),supplier:suppliers(name)', { count: 'exact' });
+    if (type !== 'all') q = q.eq('tx_type', z.enum(['initial','stock_in','stock_out','sale']).parse(type));
+    q=dateQuery(q,reportDates(req.query));
     const { data, error, count } = await q.order('occurred_at',{ascending:false}).range((page-1)*pageSize, page*pageSize-1);
     if (error) throw error;
     res.json({ data, count, page, pageSize });
@@ -198,7 +229,7 @@ router.get('/transactions', async (req, res, next) => {
 
 router.get('/suppliers', async (req, res, next) => {
   try {
-    const { data, error } = await adminDb.from('suppliers').select('*').eq('active',true).order('name');
+    const { data, error } = await adminDb.from('suppliers').select(req.user.role==='cashier'?'id,name':'*').eq('active',true).order('name');
     if (error) throw error;
     res.json({ data });
   } catch (e) { next(e); }
@@ -235,7 +266,7 @@ router.patch('/suppliers/:id', rolesAdmin, async (req, res, next) => {
 router.post('/products/:productId/suppliers/:supplierId', rolesAdmin, async (req, res, next) => {
   try {
     const body = z.object({
-      latest_unit_cost: z.coerce.number().min(0).default(0),
+      latest_unit_cost: amount.default(0),
       lead_time_days: z.coerce.number().int().min(0).max(365).default(7),
       supplier_part_number: z.string().trim().max(120).nullable().optional(),
       is_primary: z.boolean().default(false)
@@ -253,10 +284,11 @@ router.post('/products/:productId/suppliers/:supplierId', rolesAdmin, async (req
 router.get('/reorder', async (req, res, next) => {
   try {
     let q = adminDb.from('reorder_recommendations').select('*');
-    if (String(req.query.onlyNeeded ?? 'true') !== 'false') q = q.gt('recommended_quantity',0);
+    if (req.query.supplierId) q=q.eq('supplier_id',z.string().uuid().parse(req.query.supplierId));
+    if (String(req.query.onlyNeeded ?? 'true') !== 'false') q = neededRestock(q);
     const { data, error } = await q.order('recommended_quantity',{ascending:false});
     if (error) throw error;
-    res.json({ data });
+    res.json({ data: (data||[]).map(normalizeRestock) });
   } catch (e) { next(e); }
 });
 
@@ -275,7 +307,7 @@ router.get('/forecast/products', async (req,res,next) => {
     if (!latest) return res.json({ run: null, data: [] });
     const rows = await fetchAll(() => adminDb.from('demand_forecasts')
       .select('product_id,forecast_date,predicted_quantity,product:products(part_number,description,brand)')
-      .eq('run_id', latest.id).gte('forecast_date', new Date().toISOString().slice(0,10)).order('forecast_date'));
+      .eq('run_id', latest.id).gte('forecast_date', storeDay()).order('forecast_date'));
     const grouped = new Map();
     for (const row of rows) {
       const current = grouped.get(row.product_id) || {
@@ -298,28 +330,69 @@ router.get('/forecast/products', async (req,res,next) => {
 
 router.get('/forecast/product/:id', async (req,res,next) => {
   try {
+    const productId=z.string().uuid().parse(req.params.id);
+    const {data:latest,error:latestError}=await adminDb.from('latest_completed_forecast_run').select('id').maybeSingle();
+    if(latestError)throw latestError;
+    if(!latest)return res.json({run:null,data:[]});
     const { data, error } = await adminDb.from('demand_forecasts')
-      .select('forecast_date,predicted_quantity,run_id,forecast_runs!inner(status,completed_at)')
-      .eq('product_id',req.params.id).eq('forecast_runs.status','completed')
-      .gte('forecast_date',new Date().toISOString().slice(0,10)).order('forecast_date').limit(120);
+      .select('forecast_date,predicted_quantity,run_id')
+      .eq('product_id',productId).eq('run_id',latest.id)
+      .gte('forecast_date',storeDay()).order('forecast_date').limit(90);
     if (error) throw error;
-    res.json({ data });
+    res.json({ run:latest,data });
   } catch(e){ next(e); }
+});
+
+router.get('/forecast/status',async(req,res,next)=>{try{res.json(await forecastingStatus());}catch(e){next(e);}});
+
+const demoLimiter = rateLimit({windowMs:15*60*1000,limit:4,keyGenerator:req=>req.user.id,standardHeaders:'draft-8',legacyHeaders:false});
+const demoJobs = createDemoJobs();
+router.post('/forecast/demo', rolesAdmin, (req,res)=>res.status(409).json({error:'Refresh PartCast, then use the background forecasting demo.'}));
+router.post('/forecast/demo/jobs', rolesAdmin, demoLimiter, upload.single('file'), (req,res,next)=>{
+  if (!req.file) return res.status(400).json({error:'Choose a labelled demo workbook first.'});
+  try { res.status(202).json(demoJobs.start(req.file.buffer, req.file.originalname, req.user.id)); }
+  catch(error) { next(error); }
+});
+router.get('/forecast/demo/jobs/:id', rolesAdmin, (req,res,next)=>{
+  try {res.json(demoJobs.get(z.string().uuid().parse(req.params.id),req.user.id));}
+  catch(error) {next(error);}
+});
+
+async function demandForForecast(environment) {
+  return fetchAll(() => adminDb.from('demand_observations')
+    .select('product_id,occurred_on,quantity,source,product:products(part_number,description,unit)')
+    .in('source', environment.sources)
+    .order('occurred_on').order('id'));
+}
+router.get('/forecast/recorded-sales', rolesAdmin, async (req,res,next) => {
+  try {
+    const {from,to}=reportDates(req.query);
+    const asOfDate=storeDay();
+    // Validate before querying; this route deliberately does not start Python.
+    summarizeRecordedSales([],{from,to,asOfDate,dataMode:req.dataEnvironment.mode});
+    res.json(summarizeRecordedSales(await demandForForecast(req.dataEnvironment),{from,to,asOfDate,dataMode:req.dataEnvironment.mode}));
+  } catch(error) {next(error);}
+});
+router.get('/forecast/readiness', rolesAdmin, async (req,res,next) => {
+  try {
+    const includeProxy = z.enum(['true','false']).default('false').parse(req.query.includeProxy) === 'true';
+    if(includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
+    const observations = await demandForForecast(req.dataEnvironment);
+    const report = await checkForecastReadiness({observations,asOfDate:storeDay()});
+    const products = new Map(observations.map(row=>[row.product_id,row.product]));
+    res.json({...report, products:report.products.map(row=>({...row,...products.get(row.product_id)}))});
+  } catch(error) {next(error);}
 });
 
 router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
   try {
     const body = z.object({ horizonDays:z.coerce.number().int().min(7).max(90).default(30), includeProxy:z.boolean().default(false) }).parse(req.body || {});
     const runId = crypto.randomUUID();
-    const observations = await fetchAll(() => {
-      let q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source');
-      q = body.includeProxy
-        ? q.in('source',['actual_sale','imported_training_data','legacy_transaction_proxy'])
-        : q.in('source',['actual_sale','imported_training_data']);
-      return q.order('occurred_on');
-    });
-    if (observations.length < 30) return res.status(422).json({ error: 'Not enough usable demand observations for XGBoost. Import the training-ready spreadsheet or record more actual sales.' });
-
+    if(body.includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
+    const observations = await demandForForecast(req.dataEnvironment);
+    const asOfDate = storeDay();
+    const readiness = await checkForecastReadiness({observations,asOfDate});
+    if (!readiness.ready) return res.status(422).json({error:readiness.message,code:'FORECAST_DATA_NOT_READY',readiness});
     const productIds = [...new Set(observations.map(o=>o.product_id))];
     const { data: created, error: runError } = await adminDb.from('forecast_runs').insert({
       id:runId,status:'running',horizon_days:body.horizonDays,include_proxy:body.includeProxy,
@@ -328,7 +401,7 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
     if (runError) throw runError;
 
     try {
-      const { result, modelBuffer } = await runForecastPython({ observations, horizonDays:body.horizonDays });
+      const { result, modelBuffer } = await runForecastPython({ observations, horizonDays:body.horizonDays,asOfDate });
       const modelPath = `models/${runId}.json`;
       const upload = await adminDb.storage.from('partcast-models').upload(modelPath, modelBuffer, { contentType:'application/json', upsert:true });
       if (upload.error) throw upload.error;
@@ -338,13 +411,13 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
         if (error) throw error;
       }
       const { error: completeError } = await adminDb.from('forecast_runs').update({
-        status:'completed',model_version:result.model_version,metrics:result.metrics,
+        status:'completed',model_version:result.model_version,metrics:markForecastMetrics(result.metrics,req.dataEnvironment),
         training_date_min:result.training_date_min,training_date_max:result.training_date_max,
         model_storage_path:modelPath,completed_at:new Date().toISOString()
       }).eq('id',runId);
       if (completeError) throw completeError;
       await audit(req,'train','forecast_run',runId,{rows:observations.length,products:productIds.length,includeProxy:body.includeProxy});
-      res.json({ runId, metrics:result.metrics, forecastCount:forecastRows.length });
+      res.json({ runId, metrics:markForecastMetrics(result.metrics,req.dataEnvironment), forecastCount:forecastRows.length });
     } catch (inner) {
       await adminDb.from('forecast_runs').update({status:'failed',error_message:String(inner.message).slice(0,1000),completed_at:new Date().toISOString()}).eq('id',runId);
       throw inner;
@@ -399,44 +472,43 @@ router.get('/imports', rolesAdmin, async (req,res,next) => {
   } catch(e){next(e);}
 });
 
+router.get('/imports/sales', rolesAdmin, async (req,res,next) => {
+  try {
+    const {from,to}=reportDates(req.query);
+    const page=z.coerce.number().int().min(1).max(500000).default(1).parse(req.query.page);
+    const pageSize=z.coerce.number().int().min(1).max(50).default(20).parse(req.query.pageSize);
+    const search=z.string().trim().max(120).default('').parse(req.query.q);
+    // Only literal words/reference characters may enter PostgREST's OR grammar.
+    const literal=search.replace(/[^\p{L}\p{N} #/_-]/gu,' ').trim().replace(/_/g,'\\_');
+    if(search&&!/[\p{L}\p{N}]/u.test(literal))throw Object.assign(new Error('Enter letters or numbers to search invoices.'),{status:422});
+    let query=adminDb.from('legacy_sales').select('id,reference_no,sale_date,amount,raw_items',{count:'exact'});
+    if(from)query=query.gte('sale_date',from);
+    if(to)query=query.lte('sale_date',to);
+    if(literal)query=query.or(`reference_no.ilike.%${literal}%,raw_items.ilike.%${literal}%`);
+    const {data,count,error}=await query.order('sale_date',{ascending:false,nullsFirst:false}).order('id').range((page-1)*pageSize,page*pageSize-1);
+    if(error)throw error;
+    res.json({data:data||[],count:count||0,page,pageSize});
+  }catch(e){next(e);}
+});
+
 router.get('/reports/:type.xlsx', async (req,res,next) => {
   try {
     const type = req.params.type;
-    let sheets;
-    if (type === 'inventory') {
-      const rows = await fetchAll(() => adminDb.from('products').select('part_number,description,brand,current_stock,minimum_stock,safety_stock,unit,location,unit_cost,selling_price').eq('active',true).order('description'));
-      sheets=[{name:'Inventory',rows,columns:[
-        {header:'Part Number',key:'part_number'},{header:'Description',key:'description'},{header:'Brand',key:'brand'},
-        {header:'Current Stock',key:'current_stock'},{header:'Minimum Stock',key:'minimum_stock'},{header:'Safety Stock',key:'safety_stock'},
-        {header:'Unit',key:'unit'},{header:'Location',key:'location'},{header:'Unit Cost',key:'unit_cost'},{header:'Selling Price',key:'selling_price'}
-      ]}];
-    } else if (type === 'reorder') {
-      const {data,error}=await adminDb.from('reorder_recommendations').select('*').gt('recommended_quantity',0).order('recommended_quantity',{ascending:false});
-      if(error) throw error;
-      sheets=[{name:'Reorder Recommendations',rows:data,columns:[
-        {header:'Part Number',key:'part_number'},{header:'Description',key:'description'},{header:'Current Stock',key:'current_stock'},
-        {header:'Predicted Demand',key:'predicted_quantity'},{header:'Recommended Qty',key:'recommended_quantity'},
-        {header:'Supplier',key:'supplier_name'},{header:'Supplier Email',key:'supplier_email'},{header:'Estimated Cost',key:'estimated_order_cost'}
-      ]}];
-    } else if (type === 'transactions') {
-      const rows = await fetchAll(() => adminDb.from('inventory_transactions').select('occurred_at,tx_type,quantity,reference_no,customer_name,total_amount,notes,product:products(part_number,description),supplier:suppliers(name)').order('occurred_at',{ascending:false}));
-      const flat=rows.map(r=>({...r,part_number:r.product?.part_number,description:r.product?.description,supplier_name:r.supplier?.name}));
-      sheets=[{name:'Transactions',rows:flat,columns:[
-        {header:'Date',key:'occurred_at'},{header:'Type',key:'tx_type'},{header:'Part Number',key:'part_number'},
-        {header:'Description',key:'description'},{header:'Quantity',key:'quantity'},{header:'Reference',key:'reference_no'},
-        {header:'Supplier',key:'supplier_name'},{header:'Customer',key:'customer_name'},{header:'Amount',key:'total_amount'},{header:'Notes',key:'notes'}
-      ]}];
-    } else return res.status(404).json({error:'Unknown report type.'});
-
+    const sheets=await storeReport(type,req.query);
     const buffer = await buildReportWorkbook({title:`PartCast ${type}`,sheets});
     res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition',`attachment; filename="partcast-${type}-${new Date().toISOString().slice(0,10)}.xlsx"`);
+    res.setHeader('Content-Disposition',`attachment; filename="partcast-${type}-${storeDay()}.xlsx"`);
     res.send(buffer);
   } catch(e){next(e);}
 });
 
 router.get('/data-quality', async (req,res,next) => {
   try {
+    if(req.dataEnvironment.mode==='simulated_demo'){
+      const {count,error}=await adminDb.from('demand_observations').select('*',{count:'exact',head:true}).eq('source','simulated_demo');
+      if(error)throw error;
+      return res.json({dataMode:'simulated_demo',demoDemandRows:count||0,demoHistoryDays:req.dataEnvironment.historyDays,actualDemandRows:0,importedTrainingRows:0,proxyDemandRows:0,legacySalesRows:0,unmatchedLegacySales:0});
+    }
     const [actual, imported, proxy, legacy, unmatched] = await Promise.all([
       adminDb.from('demand_observations').select('*',{count:'exact',head:true}).eq('source','actual_sale'),
       adminDb.from('demand_observations').select('*',{count:'exact',head:true}).eq('source','imported_training_data'),
@@ -444,15 +516,16 @@ router.get('/data-quality', async (req,res,next) => {
       adminDb.from('legacy_sales').select('*',{count:'exact',head:true}),
       adminDb.from('legacy_sales').select('*',{count:'exact',head:true}).is('matched_product_id',null)
     ]);
+    for(const result of [actual,imported,proxy,legacy,unmatched])if(result.error)throw result.error;
     res.json({actualDemandRows:actual.count||0,importedTrainingRows:imported.count||0,proxyDemandRows:proxy.count||0,legacySalesRows:legacy.count||0,unmatchedLegacySales:unmatched.count||0});
   } catch(e){next(e);}
 });
 
-router.get('/assistant/status', (req,res) => res.json(assistantMode()));
+router.get('/assistant/status',async(req,res,next)=>{try{res.json(req.user.role==='cashier'?{mode:'database',model:null}:await assistantMode());}catch(e){next(e);}});
 router.post('/assistant/chat', assistantLimiter, async (req,res,next) => {
   try {
-    const body = z.object({ message: z.string().trim().min(1).max(1000) }).parse(req.body || {});
-    const result = await answerAssistant(body.message);
+    const body = z.object({ message: z.string().trim().min(1).max(1000),language:z.enum(['en','fil']).optional() }).parse(req.body || {});
+    const result = await answerAssistant(body.message,body.language,req.user.role);
     res.json(result);
   } catch(e){ next(e); }
 });
