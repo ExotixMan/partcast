@@ -63,7 +63,7 @@ test('offline basket includes all parts and sends once after reconnect',async({p
 test('barcode lookup, unknown guided add and inventory categories work',async({page,context})=>{
  const api=await fixture(context);await page.goto('/counter');await page.getByRole('button',{name:'Scan',exact:true}).click();await page.getByLabel('Barcode number').fill('123456789012');await page.getByRole('button',{name:'Find this barcode'}).click();await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue('1');
  await page.getByRole('button',{name:'Clear basket'}).click();await page.getByRole('button',{name:'Scan',exact:true}).click();await page.getByLabel('Barcode number').fill('NEW-001');await page.getByRole('button',{name:'Find this barcode'}).click();await page.getByRole('link',{name:'Add this part'}).click();await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByLabel('Barcode',{exact:true})).toHaveValue('NEW-001');await page.getByLabel('Part name *').fill('New gasket');await page.getByRole('button',{name:'Save part',exact:true}).click();await expect.poll(()=>api.productWrites.length).toBe(1);expect(api.productWrites[0].barcode).toBe('NEW-001');
- await page.getByLabel('Category',{exact:true}).selectOption('lubricants');await expect(page.getByText('Engine oil',{exact:true}).first()).toBeVisible();await expect(page.getByText('Toyota brake pad',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByRole('region',{name:'Your inventory'}).getByLabel('Category',{exact:true}).selectOption('lubricants');await expect(page.getByText('Engine oil',{exact:true}).first()).toBeVisible();await expect(page.getByText('Toyota brake pad',{exact:true})).toHaveCount(0);
 });
 test('supplier review sends the edited message and quantities',async({page,context})=>{
  const api=await fixture(context);await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();await page.getByLabel('Email subject *').fill('Our parts order');await page.getByLabel('Your message *').fill('Please deliver next week.');await page.getByLabel('Quantity *').fill('2.5');await page.getByLabel('Description *').fill('Toyota front brake pad');await page.getByRole('button',{name:'Send email to supplier'}).click();await expect.poll(()=>api.emails.length).toBe(1);expect(api.emails[0].message).toBe('Please deliver next week.');expect(api.emails[0].items[0].quantity).toBe(2.5);expect(api.emails[0].items[0].description).toBe('Toyota front brake pad');
@@ -336,13 +336,19 @@ test('simulated XGBoost demo shows its own metrics and leaves real forecasts unc
   await route.fulfill({json:{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',status:'completed',result:{dataset_type:'SIMULATED_DEMO',filename:'demo.xlsx',selected_method:'direct_period_xgboost',part_count:9,split_summary:{train:{start:'2024-10-15',end:'2026-06-16'},test:{start:'2026-08-16',end:'2026-10-14'}},validation:methods,test:methods,future_periods:[{part_number:'BP-001',start:'2026-10-15',end:'2026-11-13',predicted_units:3.5}]}},headers:{'access-control-allow-origin':'*'}});
  });
  await page.goto('/forecast');
- await page.getByText('Forecasting demo · simulated data',{exact:true}).click();
+ await page.getByRole('button',{name:'Practice demo',exact:true}).click();
+ const download=page.waitForEvent('download');await page.getByRole('link',{name:'Download demo Excel'}).click();
+ const file=await download;expect(file.suggestedFilename()).toBe('PartCast_Forecasting_DEMO.xlsx');
+ const sample=new ExcelJS.Workbook();await sample.xlsx.readFile(await file.path());
+ expect(sample.getWorksheet('IMPORT_Train_5Col').rowCount).toBe(5491);expect(sample.getWorksheet('Validation_5Col').rowCount).toBe(541);expect(sample.getWorksheet('Test_5Col').rowCount).toBe(541);expect(sample.getWorksheet('SIMULATED_DEMAND')).toBeTruthy();
  await expect(page.getByRole('button',{name:'Test XGBoost demo',exact:true})).toBeDisabled();
  await page.getByLabel('Choose the capstone demo workbook').setInputFiles({name:'demo.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('stubbed-demo-request')});
  await page.getByRole('button',{name:'Test XGBoost demo',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Demo results · simulated sales only'})).toBeVisible();
  await expect(page.getByText('17.5%',{exact:true}).first()).toBeVisible();
  await expect(page.getByText('12.3%',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText('Root mean squared error (RMSE)',{exact:true})).toBeVisible();
+ await expect(page.getByText(/A simple baseline performed better on this sample/)).toBeVisible();
  await expect(page.getByRole('table',{name:'Next 30 days · demo quantities'})).toContainText('BP-001');
  expect(calls).toHaveLength(1);
  expect(calls[0].toString()).toContain('demo.xlsx');
@@ -351,6 +357,17 @@ test('simulated XGBoost demo shows its own metrics and leaves real forecasts unc
  await expect(page.getByRole('heading',{name:'Demo results · simulated sales only'})).toBeVisible();
  await page.getByLabel('Website language').selectOption('fil');
  await expect(page.getByRole('heading',{name:'Resulta ng demo · halimbawang benta lamang'})).toBeVisible();
+});
+
+test('an incomplete sales-history response keeps the demand page usable and cannot enable training',async({page,context})=>{
+ await fixture(context);const errors=[];page.on('pageerror',error=>errors.push(error.message));let valid=false;
+ await context.route('http://localhost:10000/api/forecast/readiness**',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  await route.fulfill({json:valid?{ready:false,status:'no_observations',record_count:0,current_part_count:0,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}}:{ready:true},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/forecast');await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toBeVisible();await expect(page.getByText('The sales-history response was incomplete. Check again or ask your Super Admin to update the API.')).toBeVisible();
+ await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
+ valid=true;await page.getByRole('button',{name:'Check sales history again',exact:true}).click();await expect(page.getByText('Record or import actual sales first.',{exact:true})).toBeVisible();expect(errors).toEqual([]);
 });
 test('password is required before Gmail email code; wrong code cannot open the store',async({page,context})=>{
  const calls=[],passwords=[];let verified=false;
@@ -431,6 +448,42 @@ test('stock notifications refresh after stock changes and failed read marking of
  await context.route('http://localhost:10000/api/notifications**',async route=>{const headers={'access-control-allow-origin':'*'};if(route.request().method()==='OPTIONS')return route.fallback();if(route.request().method()==='POST'){if(fail){await route.fulfill({status:503,json:{error:'Please retry marking this alert.'},headers});return;}marked=true;await route.fulfill({json:{ok:true},headers});return;}await route.fulfill({json:{data:stock<=1?[{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',kind:stock?'low':'out',read:marked,created_at:'2026-10-10T02:00:00Z',product:{description:'Toyota brake pad',current_stock:stock,minimum_stock:2,unit:'pcs'}}]:[]},headers});});
  await page.goto('/inventory');await page.getByRole('button',{name:/Stock notifications/}).click();await expect(page.getByRole('dialog')).toContainText('Running low: Toyota brake pad');await page.getByRole('button',{name:'Mark as read'}).click();await expect(page.getByRole('alert')).toContainText('retry');fail=false;await page.getByRole('button',{name:'Mark as read'}).click();await expect(page.getByRole('button',{name:'Mark as read'})).toHaveCount(0);
  stock=0;await page.evaluate(()=>window.dispatchEvent(new Event('partcast:queue')));await expect(page.getByRole('dialog')).toContainText('Out of stock: Toyota brake pad');stock=5;await page.evaluate(()=>window.dispatchEvent(new Event('partcast:queue')));await expect(page.getByRole('dialog')).toContainText('No stock alerts to show');
+});
+
+test('stock alerts prioritize urgency, filter by status and part, preserve read stock issues and work offline',async({page,context})=>{
+ const fixtureApi=await fixture(context);await page.setViewportSize({width:390,height:844});let offline=false;const marked=[];
+ const alerts=[{id:'low',kind:'low',read:false,created_at:'2026-10-17T01:00:00Z',product:{part_number:'OIL-001',description:'Engine oil',current_stock:1,minimum_stock:2,unit:'bottles'}},{id:'out-read',kind:'out',read:true,created_at:'2026-10-17T02:00:00Z',product:{part_number:'FILTER-001',description:'Air filter',current_stock:0,minimum_stock:3,unit:'pcs'}},{id:'out-new',kind:'out',read:false,created_at:'2026-10-17T03:00:00Z',product:{part_number:'BP-001',description:'Toyota brake pad',current_stock:0,minimum_stock:2,unit:'pcs'}}];
+ await context.route('http://localhost:10000/api/notifications**',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();if(offline)return route.abort('internetdisconnected');
+  if(route.request().method()==='POST'){const id=new URL(route.request().url()).pathname.split('/')[3];marked.push(id);alerts.find(row=>row.id===id).read=true;return route.fulfill({json:{ok:true},headers:{'access-control-allow-origin':'*'}});}
+  return route.fulfill({json:{data:alerts},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/inventory');await page.getByRole('button',{name:/Stock notifications/}).click();const dialog=page.getByRole('dialog',{name:'Stock notifications'});
+ await expect(dialog.getByRole('article').first()).toContainText('Toyota brake pad');
+ const filters=dialog.getByRole('group',{name:'Filter stock alerts'});
+ await filters.getByRole('button',{name:'Unread',exact:true}).click();await expect(dialog.getByRole('article')).toHaveCount(2);
+ await dialog.getByRole('article').first().getByRole('button',{name:'Mark as read'}).click();await expect(dialog.getByRole('article')).toHaveCount(1);expect(marked).toEqual(['out-new']);
+ await filters.getByRole('button',{name:'All alerts',exact:true}).click();await expect(dialog.getByRole('article')).toHaveCount(3);
+ await dialog.getByLabel('Find a stock alert').fill('BP-001');await expect(dialog.getByRole('article')).toHaveCount(1);await expect(dialog.getByRole('article')).toContainText('Read');
+ await dialog.getByLabel('Find a stock alert').fill('not-a-part');await expect(dialog.getByText('No alerts match this view.')).toBeVisible();await dialog.getByRole('button',{name:'Show all alerts'}).click();
+ await page.screenshot({path:'test-results/alerts-mobile.png'});
+ for(const width of [360,768,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}
+ await page.screenshot({path:'test-results/alerts-desktop.png'});
+ await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:/Stock notifications/})).toBeFocused();
+ await page.getByLabel('Website language').selectOption('fil');await page.getByRole('button',{name:'Gamitin ang madilim na tema'}).click();
+ await page.getByRole('button',{name:/Mga abiso sa stock/}).click();await expect(page.getByRole('dialog')).toContainText('Bagong abiso');await page.keyboard.press('Escape');
+ offline=true;fixtureApi.disconnect(true);await context.setOffline(true);await page.getByRole('button',{name:/Mga abiso sa stock/}).click();await expect(page.getByRole('dialog')).toContainText('Mga naka-save na abiso');
+ await expect(page.getByRole('dialog').getByRole('button',{name:'Markahang nabasa na'})).toBeDisabled();
+});
+
+test('every application page opens on phone tablet and desktop without page errors',async({page,context})=>{
+ test.setTimeout(120000);await fixture(context,{role:'super_admin'});const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ const paths=['/','/counter','/inventory','/forecast','/forecast?demo=1','/reorder','/reports','/imports','/debts','/transactions','/backups','/users','/settings','/account','/it-settings'];
+ for(const width of [390,768,1280]){
+  await page.setViewportSize({width,height:900});
+  for(const path of paths){await page.goto(path);await expect(page.getByRole('main')).toBeVisible();await expect(page.getByRole('main').getByRole('heading',{level:1})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${path} at ${width}px`).toBe(true);}
+ }
+ expect(errors).toEqual([]);
 });
 
 test('offline sale survives an expired email check and sends after re-verification',async({page,context})=>{

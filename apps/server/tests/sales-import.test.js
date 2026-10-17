@@ -71,14 +71,11 @@ test('an interrupted invoice import can resume without inserting the saved first
   assert.equal(state.proxies.length,0);assert.equal(state.batches[1].status,'completed');
  }finally{adminDb.from=original;}
 });
-test('transaction-count proxies remain explicitly optional and separate from actual sold quantities',async()=>{
- const original=adminDb.from;
- try {
-  const state=database();
-  const result=await importSpreadsheetAuto(await workbook(1),'sales.xlsx','fixture-owner','legacy-sales',true);
-  assert.equal(result.proxyObservations,1);assert.equal(state.proxies.length,1);
-  assert.equal(state.proxies[0].source,'legacy_transaction_proxy');assert.equal(state.proxies[0].quantity,1);
- }finally{adminDb.from=original;}
+test('invoice quantities cannot be assumed and are rejected before a batch or any store writes',async()=>{
+ const original=adminDb.from;let calls=0;
+ adminDb.from=()=>{calls++;throw new Error('Store must remain untouched.');};
+ try{await assert.rejects(importSpreadsheetAuto(await workbook(1),'sales.xlsx','fixture-owner','legacy-sales',true),error=>error.status===422&&/cannot be assumed/.test(error.message));assert.equal(calls,0);}
+ finally{adminDb.from=original;}
 });
 
 test('invoice links require one complete identified code, excluding partial codes, model labels and multi-part bills',async()=>{

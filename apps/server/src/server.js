@@ -9,7 +9,7 @@ import setupRoutes from './routes/setup.js';
 import apiRoutes from './routes/api.js';
 import adminRoutes from './routes/admin.js';
 import loginRoutes from './routes/login.js';
-import jobsRoutes, { autoEmailSuppliers } from './routes/jobs.js';
+import jobsRoutes from './routes/jobs.js';
 
 const app=express();
 app.set('trust proxy',1);
@@ -38,8 +38,3 @@ app.use(notFound);
 app.use(errorHandler);
 
 app.listen(config.PORT,'0.0.0.0',()=>console.log(`PartCast API listening on ${config.PORT}`));
-
-// Check the live store setting so Gmail saved in IT settings works without a restart.
-// The database lease also covers external cron invocations. Disabled by default.
-const emailTimer=setInterval(() => autoEmailSuppliers().catch(() => console.error('Automatic stock email check failed.')),60000);
-emailTimer.unref();

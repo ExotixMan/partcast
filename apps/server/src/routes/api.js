@@ -359,7 +359,7 @@ router.get('/forecast/demo/jobs/:id', rolesAdmin, (req,res,next)=>{
 async function demandForForecast(includeProxy) {
   return fetchAll(() => adminDb.from('demand_observations')
     .select('product_id,occurred_on,quantity,source,product:products(part_number,description,unit)')
-    .in('source', includeProxy ? ['actual_sale','imported_training_data','legacy_transaction_proxy'] : ['actual_sale','imported_training_data'])
+    .in('source', ['actual_sale','imported_training_data'])
     .order('occurred_on').order('id'));
 }
 router.get('/forecast/recorded-sales', rolesAdmin, async (req,res,next) => {
@@ -374,7 +374,8 @@ router.get('/forecast/recorded-sales', rolesAdmin, async (req,res,next) => {
 router.get('/forecast/readiness', rolesAdmin, async (req,res,next) => {
   try {
     const includeProxy = z.enum(['true','false']).default('false').parse(req.query.includeProxy) === 'true';
-    const observations = await demandForForecast(includeProxy);
+    if(includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
+    const observations = await demandForForecast(false);
     const report = await checkForecastReadiness({observations,asOfDate:storeDay()});
     const products = new Map(observations.map(row=>[row.product_id,row.product]));
     res.json({...report, products:report.products.map(row=>({...row,...products.get(row.product_id)}))});
@@ -385,7 +386,8 @@ router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
   try {
     const body = z.object({ horizonDays:z.coerce.number().int().min(7).max(90).default(30), includeProxy:z.boolean().default(false) }).parse(req.body || {});
     const runId = crypto.randomUUID();
-    const observations = await demandForForecast(body.includeProxy);
+    if(body.includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
+    const observations = await demandForForecast(false);
     const asOfDate = storeDay();
     const readiness = await checkForecastReadiness({observations,asOfDate});
     if (!readiness.ready) return res.status(422).json({error:readiness.message,code:'FORECAST_DATA_NOT_READY',readiness});

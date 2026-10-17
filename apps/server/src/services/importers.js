@@ -1959,6 +1959,7 @@ export async function importInventoryWorkbook(
 }
 
 export async function importLegacySalesWorkbook(buffer, fileName, userId, useProxy = false, parsedWorkbook = null) {
+  if(useProxy)throw Object.assign(new Error('Invoice quantities cannot be assumed. Import actual dated part quantities, or use the labelled forecasting demo.'),{status:422});
   const fileSha256 = spreadsheetHash(buffer);
   await assertNotImported('legacy_sales', fileSha256, 'This exact sales spreadsheet was already imported.');
   const workbook = parsedWorkbook ?? await loadSpreadsheet(buffer, fileName, {rejectSimulated:true});
@@ -2037,21 +2038,10 @@ export async function importLegacySalesWorkbook(buffer, fileName, userId, usePro
       const saved=await adminDb.from('legacy_sales').insert(chunk);
       if (saved.error) throw saved.error;
       imported+=chunk.length;
-      if (useProxy) {
-        const rows=chunk.filter(row=>row.matched_product_id && row.sale_date).map(row=>({
-          product_id:row.matched_product_id,occurred_on:row.sale_date,quantity:1,
-          source:'legacy_transaction_proxy',source_reference:row.reference_no
-        }));
-        if (rows.length) {
-          const result=await adminDb.from('demand_observations').insert(rows);
-          if (result.error) warnings.push('A batch of transaction-count proxies could not be saved. The invoice records were retained.');
-          else proxies+=rows.length;
-        }
-      }
     }
     if (duplicates) warnings.push(`${duplicates} invoice(s) already exist with the same reference, date, amount and description; they were not added again.`);
     if (conflicts) warnings.push(`${conflicts} invoice reference(s) already exist with different details and were left unchanged. Review the source receipts. Examples: ${conflictExamples.join(', ')}`);
-    if (!useProxy) warnings.push('Sales rows were imported for reporting. No 1-unit demand proxy was created because the proxy option was not enabled.');
+    warnings.push('Past invoices were saved. Forecasting needs actual dated part quantities in a separate import.');
     await completeBatch(batch.id,{read,imported,skipped,warnings});
     return {batchId:batch.id,detectedType:'legacy-sales',rowsRead:read,rowsImported:imported,rowsSkipped:skipped,proxyObservations:proxies,warnings};
   } catch (error) {await failBatch(batch.id,warnings,error);throw error;}

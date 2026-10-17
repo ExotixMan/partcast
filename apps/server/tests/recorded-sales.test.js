@@ -57,7 +57,7 @@ test('HTTP recorded sales require verified manager access, reject invalid ranges
       maybeSingle:async()=>({data:verified?{expires_at:'2099-01-01T00:00:00Z'}:null,error:null}),
       range:async()=>{assert.equal(table,'demand_observations');reads++;return {data:[row('2020-01-01',5,'imported_training_data'),row('2020-01-02',2)],error:null};}};
   };
-  const app=express();app.use('/api',authenticate,router);app.use(errorHandler);
+  const app=express();app.use(express.json());app.use('/api',authenticate,router);app.use(errorHandler);
   const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
   const base=`http://127.0.0.1:${server.address().port}/api/forecast/recorded-sales`,headers={Authorization:'Bearer '+token};
   try {
@@ -66,6 +66,9 @@ test('HTTP recorded sales require verified manager access, reject invalid ranges
     role='owner';verified=false;assert.equal((await fetch(base,{headers})).status,428);verified=true;
     assert.equal((await fetch(base+'?from=2020-01-02&to=2020-01-01',{headers})).status,422);
     assert.equal((await fetch(base+'?from=bad-date',{headers})).status,400);assert.equal(reads,0);
+    assert.equal((await fetch(base.replace('/recorded-sales','/readiness')+'?includeProxy=true',{headers})).status,422);
+    assert.equal((await fetch(base.replace('/recorded-sales','/train'),{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({includeProxy:true})})).status,422);
+    assert.equal(reads,0);
     const response=await fetch(base+'?from=2020-01-01&to=2020-01-02&includeProxy=true',{headers});
     assert.equal(response.status,200);const body=await response.json();assert.equal(body.mode,'recorded_sales');
     assert.equal(body.record_count,2);assert.equal(body.data[0].recorded_quantity,7);assert.equal(body.includes_forecasts,false);

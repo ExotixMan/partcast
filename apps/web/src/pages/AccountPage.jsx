@@ -7,8 +7,9 @@ import Toast from '../components/Toast.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../lib/api.js';
 import { supabase } from '../lib/supabase.js';
+import PartCatalogLink from '../components/PartCatalogLink.jsx';
 export default function AccountPage() {
-  useLocale();
+  const {language}=useLocale();
   const {
     profile,
     session,
@@ -98,6 +99,7 @@ export default function AccountPage() {
         <form className="mt-5 space-y-4" onSubmit={changePassword}><label className="block" htmlFor="account-password"><span className="label">{t("New password")}</span><input id="account-password" type="password" minLength={10} required autoComplete="new-password" aria-describedby="password-help" className="input" value={password} onChange={event => setPassword(event.target.value)} /></label><label className="block" htmlFor="account-confirm-password"><span className="label">{t("Enter the new password again")}</span><input id="account-confirm-password" type="password" minLength={10} required autoComplete="new-password" className="input" value={confirm} onChange={event => setConfirm(event.target.value)} /></label><p className="rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-600">{t("After changing your password, you will be signed out. Sign in again using the new password.")}</p><button className="btn-primary w-full sm:w-auto" type="submit" disabled={Boolean(busy) || !password || !confirm}><ShieldCheck size={17} aria-hidden="true" />{busy === 'password' ? t('Changing password…') : t('Change my password')}</button></form>
       </section>
     </div>
+    <section className="panel mt-5 p-5 sm:p-6" aria-labelledby="store-information-heading"><h2 id="store-information-heading" className="text-lg font-bold text-slate-950">{t('About NPG Autoparts')}</h2><p className="mt-2 text-sm text-slate-600">{t('Toyota parts specialist')}</p><dl className="mt-3 text-sm"><dt className="text-slate-500">{t('Store opened')}</dt><dd className="mt-1 font-semibold text-slate-900"><time dateTime="2011-09-19">{new Intl.DateTimeFormat(language==='fil'?'fil-PH':'en-PH',{dateStyle:'long',timeZone:'Asia/Manila'}).format(new Date('2011-09-19T00:00:00+08:00'))}</time></dd></dl><PartCatalogLink/><p className="mt-2 text-xs leading-5 text-slate-500">{t('Check vehicle model and fitment before ordering. The catalog is an external reference.')}</p></section>
     <Toast toast={toast} onClose={() => setToast(null)} />
   </>;
 }

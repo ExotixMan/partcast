@@ -3,8 +3,6 @@ import crypto from 'node:crypto';
 import { adminDb } from '../supabase.js';
 import { buildBackupWorkbook } from '../utils/excel.js';
 import { fetchAll } from '../utils/helpers.js';
-import { recommendationHash, sendSupplierEmail } from '../utils/email.js';
-import {neededRestock,normalizeRestock} from '../utils/restock.js';
 import { runForecastPython } from '../utils/ml.js';
 import { config } from '../config.js';
 
@@ -60,11 +58,9 @@ async function createBackup(actorId = null) {
 }
 
 async function trainForecast({ includeProxy=false, horizonDays=30, actorId=null }) {
+  if(includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
   const observations = await fetchAll(() => {
-    let q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source');
-    q = includeProxy
-      ? q.in('source',['actual_sale','imported_training_data','legacy_transaction_proxy'])
-      : q.in('source',['actual_sale','imported_training_data']);
+    const q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source').in('source',['actual_sale','imported_training_data']);
     return q.order('occurred_on');
   });
   if (observations.length < 30) return { skipped:true, reason:'Not enough demand observations.' };
@@ -94,52 +90,9 @@ async function trainForecast({ includeProxy=false, horizonDays=30, actorId=null 
   }
 }
 
-async function sendAutomaticSuppliers(actorId = null) {
-  const { data: setting } = await adminDb.from('system_settings').select('value').eq('key','auto_supplier_email_enabled').maybeSingle();
-  if (setting?.value !== true) return { skipped:true, reason:'Automatic supplier email is disabled.' };
-  const { data: cooldownSetting } = await adminDb.from('system_settings').select('value').eq('key','supplier_email_cooldown_days').maybeSingle();
-  const cooldownDays = Number(cooldownSetting?.value || 3);
-  const { data: rawRows, error } = await neededRestock(adminDb.from('reorder_recommendations').select('*')).not('supplier_id','is',null).not('supplier_email','is',null).order('supplier_name');
-  if(error) throw error;
-  const rows=(rawRows||[]).map(normalizeRestock);
-
-  const grouped = new Map();
-  for(const row of rows || []){
-    if(!grouped.has(row.supplier_id)) grouped.set(row.supplier_id,[]);
-    grouped.get(row.supplier_id).push(row);
-  }
-  const results=[];
-  let attempted=0;
-  for(const [supplierId,items] of grouped){
-    const supplier={id:supplierId,name:items[0].supplier_name,email:items[0].supplier_email};
-    const hash=recommendationHash(items);
-    const since=new Date(Date.now()-cooldownDays*86400000).toISOString();
-    const { data:last }=await adminDb.from('supplier_email_logs').select('*').eq('supplier_id',supplierId).eq('status','sent').gte('sent_at',since).limit(1);
-    if(last?.length){ results.push({supplier:supplier.name,status:'skipped',reason:'same recommendation recently sent'}); continue; }
-    if(attempted>=10)break;
-    attempted++;
-    try{
-      const provider=await sendSupplierEmail({supplier,items});
-      await adminDb.from('supplier_email_logs').insert({supplier_id:supplierId,recipient_email:supplier.email,subject:`NPG Autoparts replenishment request`,recommendation_hash:hash,item_count:items.length,status:'sent',provider_message_id:provider.messageId||null,sent_by:actorId});
-      results.push({supplier:supplier.name,status:'sent',items:items.length});
-    }catch(e){
-      await adminDb.from('supplier_email_logs').insert({supplier_id:supplierId,recipient_email:supplier.email,subject:`NPG Autoparts replenishment request`,recommendation_hash:hash,item_count:items.length,status:'failed',error_message:String(e.message).slice(0,500),sent_by:actorId});
-      results.push({supplier:supplier.name,status:'failed',error:e.message});
-    }
-  }
-  return {skipped:false,results};
-}
-
-async function autoEmailSuppliers(actorId = null) {
-  const {data:setting,error:settingError}=await adminDb.from('system_settings').select('value').eq('key','auto_supplier_email_enabled').maybeSingle();
-  if(settingError)throw settingError;
-  if(setting?.value!==true)return {skipped:true,reason:'Automatic supplier email is disabled.'};
-  const token=crypto.randomUUID();
-  const {data:claimed,error}=await adminDb.rpc('claim_job',{p_name:'supplier-email',p_token:token,p_seconds:600});
-  if(error)throw error;
-  if(!claimed)return {skipped:true,reason:'Another stock email check is running.'};
-  try{return await sendAutomaticSuppliers(actorId);}
-  finally{const released=await adminDb.rpc('release_job',{p_name:'supplier-email',p_token:token});if(released.error)console.error('Email lease release failed.');}
+async function autoEmailSuppliers() {
+  // Compatibility for existing cron URLs; purchasing stays under staff control.
+  return {skipped:true,reason:'Supplier emails require staff review. Open Restock to edit and send a request.'};
 }
 
 router.post('/backup', async (req,res,next)=>{ try{res.json({backup:await createBackup(null)});}catch(e){next(e);} });

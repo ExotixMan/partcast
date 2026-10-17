@@ -53,12 +53,20 @@ Draft `extra_columns` contains `{id: <uuid>, label: <1–50 characters>}` entrie
 - `GET /api/forecast/runs`
 - `GET /api/forecast/product/:id`
 - `POST /api/forecast/train`
+- `POST /api/forecast/demo/jobs` and `GET /api/forecast/demo/jobs/:id`
+  (verified managers; separate simulated evaluation with no store-data writes)
 - `GET /api/data-quality`
 - `GET /api/imports/sales` — verified manager access; saved invoice references,
   dates, descriptions and amounts. Supports `q`, inclusive `from`/`to` dates,
   `page` (default 1) and `pageSize` (default 20, maximum 50). Returns
   `{ data, count, page, pageSize }`. Invoice records are separate from actual
   sold quantities and counter transactions.
+
+Store readiness/training rejects `includeProxy=true`. Imported quantities are
+used, but invoice-count estimates are excluded. `useProxy=true` is rejected
+before a past-sales batch is created. The labelled sample is downloadable at
+`/examples/PartCast_Forecasting_DEMO.xlsx` on the website and runs only in
+**Demand planning → Practice demo**.
 
 ## Imports / reports / backups
 
@@ -90,6 +98,11 @@ Reports accept `from=YYYY-MM-DD`, `to=YYYY-MM-DD` (inclusive Philippines calenda
 - `GET /api/admin/system-status` (Super Admin)
 - `GET /api/admin/settings`
 - `PATCH /api/admin/settings/:key` (Owner)
+
+The retired `auto_supplier_email_enabled` and
+`include_legacy_proxy_by_default` flags cannot be enabled. Existing cron
+supplier-email URLs return a skipped result; staff edit and send requests
+through the manual supplier-email endpoint. See [capstone scope](CAPSTONE_SCOPE.md).
 
 ## Scheduled jobs
 

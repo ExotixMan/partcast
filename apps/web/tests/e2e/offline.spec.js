@@ -218,6 +218,9 @@ async function planningData(context,{metrics={}}={}){
  await context.route('http://localhost:10000/api/forecast/**',async route=>{
   if(route.request().method()==='OPTIONS')return route.fallback();
   const path=new URL(route.request().url()).pathname;
+  if(path.endsWith('/status'))return route.fulfill({json:{ready:true},headers});
+  if(path.endsWith('/readiness'))return route.fulfill({json:{ready:false,status:'no_observations',record_count:0,current_part_count:0,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}},headers});
+  if(path.endsWith('/recorded-sales'))return route.fulfill({json:{data:[],record_count:0,part_count:0},headers});
   const body=path.endsWith('/runs')?{data:[run]}:path.endsWith('/products')?{run,data:[{product_id:productId,part_number:'BP-001',description:'Toyota brake pad',predicted_total:1.5,forecast_days:2}]}:{data:[{run_id:'older-run',forecast_date:'2026-10-10',predicted_quantity:99},{run_id:run.id,forecast_date:'2026-10-10',predicted_quantity:0.5},{run_id:run.id,forecast_date:'2026-10-11',predicted_quantity:1}]};
   await route.fulfill({json:body,headers});
  });
@@ -288,8 +291,9 @@ test('owner pages fit on a phone and their visible form controls have labels',as
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  for(const [path,title] of [['/imports','Import spreadsheets'],['/backups','Backup copies'],['/users','Staff access'],['/settings','Settings']]){
   await page.goto(path);await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible();
-  await expect(page.locator('main').getByRole('status')).toHaveCount(0);
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${path} overflows`).toBe(true);
+  await expect(page.locator('main').getByRole('status').filter({hasText:/Loading|Opening|Checking|Getting/})).toHaveCount(0);
+  const layout=await page.evaluate(()=>({fits:document.documentElement.scrollWidth<=innerWidth,overflow:[...document.querySelectorAll('main *')].filter(el=>el.getClientRects().length&&el.getBoundingClientRect().right>innerWidth).slice(0,5).map(el=>({tag:el.tagName,class:el.className,right:el.getBoundingClientRect().right}))}));
+  expect(layout.fits,`${path} overflows: ${JSON.stringify(layout.overflow)}`).toBe(true);
   const unlabeled=await page.locator('main').evaluate(main=>[...main.querySelectorAll('input,select,textarea')].filter(el=>el.getClientRects().length&&!el.labels?.length&&!el.getAttribute('aria-label')&&!el.getAttribute('aria-labelledby')).map(el=>el.outerHTML));
   expect(unlabeled,`${path} controls need labels`).toEqual([]);
  }

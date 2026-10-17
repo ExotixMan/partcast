@@ -15,6 +15,11 @@ const daily = [{
   icon: House,
   end: true
 }, {
+  to: '/forecast',
+  label: 'Demand planning',
+  hint: 'Plan the next stock order',
+  icon: ChartNoAxesCombined
+}, {
   to: '/counter',
   label: 'Sell or receive',
   hint: 'Sales and deliveries in one place',
@@ -38,10 +43,6 @@ const tools = [{
   to: '/transactions',
   label: 'Stock history',
   icon: History
-}, {
-  to: '/forecast',
-  label: 'Demand planning',
-  icon: ChartNoAxesCombined
 }, {
   to: '/reports',
   label: 'Reports',
@@ -122,7 +123,7 @@ function SidebarContent({
 export default function AppShell() {
   useLocale();
   const {profile} = useAuth();
-  const quickLinks = daily.filter(n => n.to !== '/reorder' && canOpenPage(profile?.role,n.to));
+  const quickLinks = daily.filter(n => ['/', '/counter', '/inventory'].includes(n.to) && canOpenPage(profile?.role,n.to));
   const [open, setOpen] = useState(false);
   const drawerRef = useRef(null);
   const location = useLocation();

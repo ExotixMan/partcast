@@ -1,7 +1,7 @@
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BarChart3, CalendarDays, ChevronDown, ClipboardList, RefreshCw, Search, TriangleAlert } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '../lib/api.js';
 import PageHeader from '../components/PageHeader.jsx';
@@ -30,6 +30,9 @@ export default function ForecastPage() {
     profile
   } = useAuth();
   const canTrain = ['super_admin', 'owner', 'admin'].includes(profile?.role);
+  const [params,setParams]=useSearchParams();
+  const demoView=canTrain&&params.get('demo')==='1';
+  const switcher=canTrain&&<div role="group" aria-label={t('Demand planning workspace')} className="mb-5 flex flex-wrap gap-2"><button className={demoView?'btn-secondary':'btn-primary'} aria-pressed={!demoView} onClick={()=>setParams({})}>{t('Store demand')}</button><button className={demoView?'btn-primary':'btn-secondary'} aria-pressed={demoView} onClick={()=>setParams({demo:'1'})}>{t('Practice demo')}</button></div>;
   const [runtime,setRuntime] = useState(null);
   const [runs, setRuns] = useState([]);
   const [quality, setQuality] = useState(null);
@@ -43,7 +46,7 @@ export default function ForecastPage() {
   const [loadError, setLoadError] = useState('');
   const [partError, setPartError] = useState('');
   const [training, setTraining] = useState(false);
-  const [includeProxy, setIncludeProxy] = useState(false);
+  const includeProxy = false;
   const [horizon, setHorizon] = useState(30);
   const [view, setView] = useState('chart');
   const [toast, setToast] = useState(null);
@@ -66,14 +69,15 @@ export default function ForecastPage() {
     }
   }
   useEffect(() => {
+    if(demoView)return;
     load();
     api.get('/api/forecast/status').then(setRuntime).catch(e=>setRuntime({ready:false,message:e.message}));
-  }, []);
+  }, [demoView]);
   useEffect(() => {
     let active = true;
     setForecast([]);
     setPartError('');
-    if (!selected) {
+    if (demoView || !selected) {
       setLoadingPart(false);
       return;
     }
@@ -88,7 +92,7 @@ export default function ForecastPage() {
     return () => {
       active = false;
     };
-  }, [selected, forecastRun?.id, runs]);
+  }, [selected, forecastRun?.id, runs,demoView]);
   const filtered = useMemo(() => forecastProducts.filter(p => `${p.part_number || ''} ${p.description}`.toLowerCase().includes(query.toLowerCase())), [forecastProducts, query]);
   const selectedProduct = forecastProducts.find(p => p.product_id === selected);
   const latest = runs.find(r => r.status === 'completed');
@@ -117,12 +121,13 @@ export default function ForecastPage() {
       setTraining(false);
     }
   }
+  if(demoView)return <><PageHeader title={t('Practice demand forecasting')} subtitle={t('Run XGBoost on a separate sample, then inspect its errors and estimates.')} />{switcher}<ForecastDemo initiallyOpen /></>;
   if (loading) return <Loading label={t("Loading sales estimates…")} />;
   return <>
     <PageHeader title={t("Plan ahead")} subtitle={t("See which parts customers may need next, then decide what to restock.")} actions={<Link className="btn-secondary" to="/reorder">{t("View restock list ")}<ArrowRight size={17} /></Link>} />
 
-    {canTrain && <RecordedSales refreshKey={readinessRefresh} />}
-    {canTrain && <ForecastDemo />}
+    {switcher}
+    {quality&&<p className="mb-5 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600">{t('Saved invoices: {v0}. Forecasting uses dated quantities sold per part; invoice amounts are kept separately.',{v0:Number(quality.legacySalesRows||0).toLocaleString()})}</p>}
 
     {loadError && <div role="alert" className="mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-amber-950">{t("We could not load your sales estimates.")}</p><p className="mt-1 text-sm text-amber-900">{t(loadError)}</p></div><button className="btn-secondary shrink-0" onClick={load}><RefreshCw size={16} />{t("Try again")}</button></div>}
 
@@ -135,11 +140,12 @@ export default function ForecastPage() {
     </section>
 
     {canTrain&&<ForecastReadiness includeProxy={includeProxy} refreshKey={readinessRefresh} onChange={setReadiness} />}
+    {canTrain && <RecordedSales refreshKey={readinessRefresh} />}
 
     <div className="mt-5 grid gap-3 sm:grid-cols-3">
       <div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Parts with current estimates")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{forecastProducts.length.toLocaleString()}</p><p className="mt-1 text-sm text-slate-500">{t("From the latest completed update")}</p></div>
       <div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Sales records saved")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{Number(quality?.actualDemandRows || 0).toLocaleString()}</p><p className="mt-1 text-sm text-slate-500">{t("Actual demand recorded in PartCast")}</p></div>
-      <div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Imported history records")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{Number(quality?.importedTrainingRows || 0).toLocaleString()}</p><p className="mt-1 text-sm text-slate-500">{t("Prepared sales data used for planning")}</p></div>
+      <div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Imported sold quantities")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{Number(quality?.importedTrainingRows || 0).toLocaleString()}</p><p className="mt-1 text-sm text-slate-500">{t("Actual quantities from imported sales")}</p></div>
     </div>
 
     {(metrics?.coverage_warning || metrics?.stale_product_count > 0) && <section className="mt-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-5"><TriangleAlert size={21} className="mt-0.5 shrink-0 text-amber-700" /><div><h2 className="font-bold text-amber-950">{t("Check your sales history before ordering")}</h2>{metrics.coverage_warning && <p className="mt-1 text-sm leading-6 text-amber-900">{t("Some imported sales may be missing. Record every sale so the estimate reflects what customers actually buy.")}</p>}{metrics.stale_product_count > 0 && <p className="mt-1 text-sm leading-6 text-amber-900">{metrics.stale_product_count}{t(" parts were left out because their latest usable sales records are more than 31 days old. Add recent sales records, then update the estimates.")}</p>}</div></section>}
@@ -174,7 +180,7 @@ export default function ForecastPage() {
 
     <ForecastAccuracy metrics={metrics}/>
 
-    <details className="panel mt-5 overflow-hidden"><summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 p-5 font-semibold text-slate-900">{t("Sales data and update history ")}<ChevronDown size={19} aria-hidden="true" /></summary><div className="border-t border-slate-100 p-5"><div className="grid gap-5 lg:grid-cols-2"><div><h2 className="font-bold text-slate-950">{t("What records are being used?")}</h2><dl className="mt-3 space-y-3 text-sm"><div className="flex items-start justify-between gap-4"><dt className="text-slate-600">{t("Imported sales history")}</dt><dd className="font-semibold">{Number(quality?.importedTrainingRows || 0).toLocaleString()}</dd></div><div className="flex items-start justify-between gap-4"><dt className="text-slate-600">{t("Old sales rows")}</dt><dd className="font-semibold">{Number(quality?.legacySalesRows || 0).toLocaleString()}</dd></div><div className="flex items-start justify-between gap-4"><dt className="text-slate-600">{t("Old sales not matched to a part")}</dt><dd className="font-semibold">{Number(quality?.unmatchedLegacySales || 0).toLocaleString()}</dd></div><div className="flex items-start justify-between gap-4"><dt className="text-slate-600">{t("Old transaction-count estimates")}</dt><dd className="font-semibold">{Number(quality?.proxyDemandRows || 0).toLocaleString()}</dd></div></dl><p className="mt-3 text-sm leading-6 text-slate-500">{t("Unmatched sales cannot help estimate a specific part\u2019s demand. Ask your manager to check the imported part numbers.")}</p>{canTrain && <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4"><input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-red-600" checked={includeProxy} disabled={training} onChange={event => setIncludeProxy(event.target.checked)} /><span><span className="block text-sm font-semibold text-amber-950">{t("Include old transaction-count estimates")}</span><span className="mt-1 block text-sm leading-6 text-amber-900">{t("Optional: treats an old transaction as 1 unit when its actual quantity is unknown. This can reduce accuracy. Your prepared sales spreadsheet is already included without this option.")}</span></span></label>}</div><div><h2 className="font-bold text-slate-950">{t("Recent updates")}</h2><div className="mt-3 divide-y divide-slate-100">{runs.length ? runs.slice(0, 8).map(run => <div className="py-3 first:pt-0" key={run.id}><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-slate-900">{time(run.started_at)}</p><StatusBadge status={run.status} /></div><p className="mt-1 text-sm text-slate-500">{Number(run.training_rows || 0).toLocaleString()}{t(" past records \xB7 ")}{Number(run.product_count || 0).toLocaleString()}{t(" parts \xB7 ")}{run.horizon_days || '—'}{t(" days ahead")}</p>{run.metrics && <details className="mt-2 text-sm"><summary className="cursor-pointer text-slate-600">{t("Technical accuracy details")}</summary><dl className="mt-2 grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-3"><div><dt className="text-slate-500">{t("Average error (MAE)")}</dt><dd>{run.metrics.mae ?? '—'}{t(" units")}</dd></div><div><dt className="text-slate-500">{t("Larger-error measure (RMSE)")}</dt><dd>{run.metrics.rmse ?? '—'}{t(" units")}</dd></div><div><dt className="text-slate-500">{t("Fit score (R\xB2)")}</dt><dd>{run.metrics.r2 ?? '—'}</dd></div><div><dt className="text-slate-500">{t("Overall error (WAPE)")}</dt><dd>{run.metrics.wape_percent ?? '—'}%</dd></div></dl></details>}</div>) : <p className="text-sm leading-6 text-slate-500">{t("No estimates have been calculated yet. Add recent sales history, then ask your manager to update the estimate.")}</p>}</div></div></div></div></details>
+    <details className="panel mt-5 overflow-hidden"><summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 p-5 font-semibold text-slate-900">{t("Sales data and update history ")}<ChevronDown size={19} aria-hidden="true" /></summary><div className="border-t border-slate-100 p-5"><div className="grid gap-5 lg:grid-cols-2"><div><h2 className="font-bold text-slate-950">{t("What records are being used?")}</h2><dl className="mt-3 space-y-3 text-sm"><div className="flex items-start justify-between gap-4"><dt className="text-slate-600">{t("Imported sales history")}</dt><dd className="font-semibold">{Number(quality?.importedTrainingRows || 0).toLocaleString()}</dd></div><div className="flex items-start justify-between gap-4"><dt className="text-slate-600">{t("Old sales rows")}</dt><dd className="font-semibold">{Number(quality?.legacySalesRows || 0).toLocaleString()}</dd></div><div className="flex items-start justify-between gap-4"><dt className="text-slate-600">{t("Old sales not matched to a part")}</dt><dd className="font-semibold">{Number(quality?.unmatchedLegacySales || 0).toLocaleString()}</dd></div></dl><p className="mt-3 text-sm leading-6 text-slate-500">{t("Unmatched sales cannot help estimate a specific part\u2019s demand. Ask your manager to check the imported part numbers.")}</p></div><div><h2 className="font-bold text-slate-950">{t("Recent updates")}</h2><div className="mt-3 divide-y divide-slate-100">{runs.length ? runs.slice(0, 8).map(run => <div className="py-3 first:pt-0" key={run.id}><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-slate-900">{time(run.started_at)}</p><StatusBadge status={run.status} /></div><p className="mt-1 text-sm text-slate-500">{Number(run.training_rows || 0).toLocaleString()}{t(" past records \xB7 ")}{Number(run.product_count || 0).toLocaleString()}{t(" parts \xB7 ")}{run.horizon_days || '—'}{t(" days ahead")}</p>{run.metrics && <details className="mt-2 text-sm"><summary className="cursor-pointer text-slate-600">{t("Technical accuracy details")}</summary><dl className="mt-2 grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-3"><div><dt className="text-slate-500">{t("Average error (MAE)")}</dt><dd>{run.metrics.mae ?? '—'}{t(" units")}</dd></div><div><dt className="text-slate-500">{t("Larger-error measure (RMSE)")}</dt><dd>{run.metrics.rmse ?? '—'}{t(" units")}</dd></div><div><dt className="text-slate-500">{t("Fit score (R\xB2)")}</dt><dd>{run.metrics.r2 ?? '—'}</dd></div><div><dt className="text-slate-500">{t("Overall error (WAPE)")}</dt><dd>{run.metrics.wape_percent ?? '—'}%</dd></div></dl></details>}</div>) : <p className="text-sm leading-6 text-slate-500">{t("No estimates have been calculated yet. Add recent sales history, then ask your manager to update the estimate.")}</p>}</div></div></div></div></details>
     <Toast toast={toast} onClose={() => setToast(null)} />
   </>;
 }

@@ -101,6 +101,7 @@ router.patch('/settings/:key', requireRole('owner'), async(req,res,next)=>{
     else if(key==='forecast_horizon_days') value=z.coerce.number().int().min(7).max(90).parse(req.body?.value);
     else if(key==='supplier_email_cooldown_days') value=z.coerce.number().int().min(1).max(30).parse(req.body?.value);
     else value=z.coerce.number().int().min(1).max(365).parse(req.body?.value);
+    if(['auto_supplier_email_enabled','include_legacy_proxy_by_default'].includes(key)&&value===true)throw Object.assign(new Error('This option is unavailable. Review supplier requests manually and use actual sold quantities for store forecasts.'),{status:422});
     const {data,error}=await adminDb.from('system_settings').upsert({key,value,updated_by:req.user.id,updated_at:new Date().toISOString()},{onConflict:'key'}).select('*').single();
     if(error)throw error;
     await audit(req,'update','setting',key,{value});

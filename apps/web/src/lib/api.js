@@ -157,7 +157,7 @@ async function ledger(path,body){
 }
 export const api = {
   get: (path, options) => request(path, options),
-  post: (path, body) => ['/api/inventory/movement','/api/inventory/batch'].includes(path) ? movement(body,path.endsWith('/batch')) : ['/api/debts','/api/debts/payment'].includes(path)?ledger(path,body): request(path, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body ?? {}) }),
+  post: (path, body, options = {}) => ['/api/inventory/movement','/api/inventory/batch'].includes(path) ? movement(body,path.endsWith('/batch')) : ['/api/debts','/api/debts/payment'].includes(path)?ledger(path,body): request(path, { ...options, method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body ?? {}) }),
   patch: (path, body) => request(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) }),
   delete: path=>request(path,{method:'DELETE'}),
   photo:async path=>{const userId=currentSession?.user?.id;if(!userId)throw new ApiError('Please sign in.',401);try{if(!navigator.onLine)throw new ApiError('Offline',0);const blob=await networkRequest(path,{responseType:'image'});if(userId===currentSession?.user?.id)await saveCache(userId,path,blob);return blob;}catch(e){if(!e.status){const cached=await readCache(userId,path);if(cached)return cached.value;}throw e;}},

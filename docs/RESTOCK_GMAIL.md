@@ -27,9 +27,9 @@ Use **Inventory → Edit details** to change limits and part information. Use **
 
 ## Gmail sends both login codes and supplier emails
 
-Manual supplier requests and automatic low-stock requests use the **same saved Gmail connection** as login codes. A Super Admin configures it in IT settings or through the API service's `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` and `GMAIL_SENDER_EMAIL` environment values. Gmail send permission is required. Existing encrypted settings override environment fallback; preserve the original stable encryption key.
+Reviewed manual supplier requests use the **same saved Gmail connection** as login codes. A Super Admin configures it in IT settings or through the API service's `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` and `GMAIL_SENDER_EMAIL` environment values. Gmail send permission is required. Existing encrypted settings override environment fallback; preserve the original stable encryption key.
 
-Brevo is no longer used by the application. Its old variables can be removed from Render after deploying this version. Store settings checks Gmail's configuration, and automatic supplier email retains the existing enable switch, supplier cooldown, ten-supplier limit per check, and database lease. Requests go to the saved supplier email; login codes go to the authenticated staff email. Google sending limits still apply. Connection checks and tests do not establish real message delivery; confirm with a controlled test supplier before enabling automatic sends.
+Brevo is no longer used by the application. Its old variables can be removed from Render after deploying this version. Store settings checks Gmail's configuration. Unattended supplier requests have been removed to align with the paper's decision-support scope; previous cron URLs return a skipped result without sending. Requests go to the saved supplier email after staff review; login codes go to the authenticated staff email. Google sending limits still apply. Connection checks and tests do not establish real message delivery; confirm with a controlled test supplier.
 
 ## Add columns or another part to the supplier email
 

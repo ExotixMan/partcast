@@ -2,7 +2,7 @@ import { t, useLocale } from "../context/LocaleContext.jsx";
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useEffect, useState } from 'react';
-import { AlertTriangle, ArrowDownToLine, ArrowRight, Boxes, CheckCircle2, CircleDollarSign, PackageX, RefreshCw, Search, ShoppingCart, Truck } from 'lucide-react';
+import { AlertTriangle, ArrowDownToLine, ArrowRight, ChartNoAxesCombined, Boxes, CheckCircle2, CircleDollarSign, PackageX, RefreshCw, Search, ShoppingCart, Truck } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '../lib/api.js';
 import Loading from '../components/Loading.jsx';
@@ -15,6 +15,12 @@ const peso = value => new Intl.NumberFormat('en-PH', {
   maximumFractionDigits: 0
 }).format(Number(value || 0));
 const actions = [{
+  to: '/forecast',
+  title: 'Plan demand',
+  text: 'Review sales history and estimate the next stock order.',
+  icon: ChartNoAxesCombined,
+  tone: 'red'
+}, {
   to: '/counter',
   title: 'Record a sale',
   text: 'Choose the part and enter how many you sold.',
@@ -77,7 +83,7 @@ export default function DashboardPage() {
         }}>
           <label htmlFor="home-part-search" className="label">{t("Find a part")}</label><div className="flex gap-2"><div className="relative min-w-0 flex-1"><Search size={19} className="pointer-events-none absolute left-3 top-4 text-slate-500" /><input id="home-part-search" className="input pl-10" placeholder={t("Part number, name or brand")} value={search} onChange={e => setSearch(e.target.value)} /></div><button className="btn-primary" type="submit">{t("Find")}<ArrowRight size={17} /></button></div>
         </form>
-        <div aria-label={t("Common actions")} className="order-2 grid gap-3 md:grid-cols-3 xl:order-3 xl:col-span-2">{actions.map(({
+        <div aria-label={t("Common actions")} className="order-2 grid gap-3 md:grid-cols-2 xl:order-3 xl:col-span-2">{actions.map(({
             to,
             title,
             text,

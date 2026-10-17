@@ -37,7 +37,7 @@ export async function sendSupplierEmail({ supplier, items, subject, message, ext
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <p>This is an automated inventory replenishment request from NPG Autoparts. A staff member will review your reply before a purchase is finalized.</p>
+      <p>This request was reviewed and sent by NPG Autoparts staff. Please confirm availability and prices; a purchase is finalized separately.</p>
     </div>`;
 
   const text=[`Hello ${supplier.contact_person||supplier.name},`,message||'Please confirm availability, price, and expected delivery schedule for these parts.',
