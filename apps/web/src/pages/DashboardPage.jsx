@@ -1,4 +1,5 @@
 import { t, useLocale } from "../context/LocaleContext.jsx";
+import {suggestedQuantity} from '../lib/restock.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useEffect, useState } from 'react';
@@ -106,7 +107,7 @@ export default function DashboardPage() {
                   v0: metrics.outOfStock || 0,
                   v1: metrics.lowStock || 0
                 }) : t('Review low stock and demand estimates before ordering.')}</p></div></div><Link to="/reorder" className="btn-secondary">{t("Review restocking")}<ArrowRight size={17} /></Link></div>
-        {(data.reorder || []).length ? <ul className="divide-y divide-slate-100">{data.reorder.map(r => <li key={r.product_id} className="flex flex-wrap items-center gap-3 px-5 py-4"><div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{t(r.description)}</p><p className="mt-1 text-sm text-slate-600">{r.part_number || t('No part number')} · {Number(r.current_stock)}{t(" available \xB7 Suggested order: ")}{Math.ceil(Number(r.recommended_quantity))}</p></div><StatusBadge status={r.status} /></li>)}</ul> : <div className="px-5 py-7 text-sm text-slate-600">{attention ? t('Open restocking to review low-stock parts and set up recommendations.') : t('There are no saved restock recommendations to show.')}</div>}
+        {(data.reorder || []).length ? <ul className="divide-y divide-slate-100">{data.reorder.map(r => <li key={r.product_id} className="flex flex-wrap items-center gap-3 px-5 py-4"><div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{t(r.description)}</p><p className="mt-1 text-sm text-slate-600">{r.part_number || t('No part number')} · {Number(r.current_stock)}{t(" available \xB7 Suggested order: ")}{suggestedQuantity(r)}</p></div><StatusBadge status={r.status} /></li>)}</ul> : <div className="px-5 py-7 text-sm text-slate-600">{attention ? t('Open restocking to review low-stock parts and set up recommendations.') : t('There are no saved restock recommendations to show.')}</div>}
       </section>
       <details className="panel group mt-6">
         <summary className="flex min-h-16 flex-wrap items-center justify-between gap-2 rounded-2xl px-5 py-4 font-semibold text-slate-900 hover:bg-slate-50"><span>{t("Sales & store insights")}</span><span className="text-sm font-normal text-slate-600 group-open:hidden">{t("View sales trends and popular parts")}</span><span className="hidden text-sm font-normal text-slate-600 group-open:inline">{t("Hide details")}</span></summary>

@@ -66,7 +66,19 @@ test('barcode lookup, unknown guided add and inventory categories work',async({p
  await expect(page.getByRole('dialog')).toHaveCount(0);await page.getByRole('region',{name:'Your inventory'}).getByLabel('Category',{exact:true}).selectOption('lubricants');await expect(page.getByText('Engine oil',{exact:true}).first()).toBeVisible();await expect(page.getByText('Toyota brake pad',{exact:true})).toHaveCount(0);
 });
 test('supplier review sends the edited message and quantities',async({page,context})=>{
- const api=await fixture(context);await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();await page.getByLabel('Email subject *').fill('Our parts order');await page.getByLabel('Your message *').fill('Please deliver next week.');await page.getByLabel('Quantity *').fill('2.5');await page.getByLabel('Description *').fill('Toyota front brake pad');await page.getByRole('button',{name:'Send email to supplier'}).click();await expect.poll(()=>api.emails.length).toBe(1);expect(api.emails[0].message).toBe('Please deliver next week.');expect(api.emails[0].items[0].quantity).toBe(2.5);expect(api.emails[0].items[0].description).toBe('Toyota front brake pad');
+ const api=await fixture(context);await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();await expect(page.getByLabel('Quantity *')).toHaveValue('2');await page.getByLabel('Email subject *').fill('Our parts order');await page.getByLabel('Your message *').fill('Please deliver next week.');await page.getByLabel('Quantity *').fill('2.5');await page.getByLabel('Description *').fill('Toyota front brake pad');await page.getByRole('button',{name:'Send email to supplier'}).click();await expect.poll(()=>api.emails.length).toBe(1);expect(api.emails[0].message).toBe('Please deliver next week.');expect(api.emails[0].items[0].quantity).toBe(2.5);expect(api.emails[0].items[0].description).toBe('Toyota front brake pad');
+});
+for(const width of [390,1440])test(`small purchase suggestions keep forecast totals and costs clear at ${width}px`,async({page,context})=>{
+ await page.setViewportSize({width,height:900});await fixture(context);
+ const data=[{product_id:p1,part_number:'BP-001',description:'Toyota brake pad',unit:'pcs',supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test',current_stock:0,minimum_stock:1,predicted_quantity:11,recommended_quantity:11,estimated_unit_cost:100,estimated_order_cost:1100,status:'out_of_stock'}];
+ await context.route('http://localhost:10000/api/reorder**',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({json:{data},headers:{'access-control-allow-origin':'*'}}));
+ await page.goto('/reorder');
+ const row=(width<1024?page.getByRole('article'):page.getByRole('row')).filter({hasText:'Toyota brake pad'});
+ await expect(row).toContainText('11');await expect(row).toContainText('2 units');await expect(row).toContainText('₱200.00');await expect(row).not.toContainText('₱1,100.00');
+ await expect(page.getByText(/Suggested purchases are 1–2 units per part/)).toBeVisible();
+ await page.getByRole('button',{name:'Review supplier email'}).click();await expect(page.getByLabel('Quantity *')).toHaveValue('2');await page.getByRole('button',{name:'Keep reviewing'}).click();
+ await page.getByLabel('Website language').selectOption('fil');await expect(row).toContainText('2');await expect(page.getByText(/Ang mungkahing bilhin ay 1–2 yunit/)).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 test('supplier table supports custom columns, extra assigned parts, validation and a matching mobile preview',async({page,context})=>{
  await page.setViewportSize({width:390,height:844});const api=await fixture(context);await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();

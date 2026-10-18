@@ -1245,5 +1245,9 @@
   "Google returned an unexpected Gmail authorization response. Try again or ask the Super Admin to check the connection.": "Hindi inaasahan ang sagot ng Google sa pahintulot sa Gmail. Subukan muli o hilingin sa Super Admin na suriin ang koneksyon.",
   "Your password is correct. Request an email code to finish signing in.": "Tama ang iyong password. Humingi ng email code upang matapos ang pag-sign in.",
   "Request a code first. If sending fails, check the message above.": "Humingi muna ng code. Kung hindi maipadala, tingnan ang mensahe sa itaas.",
-  "Ask your Super Admin to check Gmail settings if an email code cannot be sent.": "Hilingin sa Super Admin na suriin ang mga setting ng Gmail kung hindi maipadala ang email code."
+  "Ask your Super Admin to check Gmail settings if an email code cannot be sent.": "Hilingin sa Super Admin na suriin ang mga setting ng Gmail kung hindi maipadala ang email code.",
+  "Suggested purchases are 1–2 units per part, following the owner’s buying practice. Review sales, shelf stock and delivery time before ordering again.": "Ang mungkahing bilhin ay 1–2 yunit bawat piyesa, ayon sa karaniwang pagbili ng may-ari. Suriin ang benta, stock sa estante at oras ng delivery bago muling umorder.",
+  "Suggested this purchase": "Mungkahi para sa pagbiling ito",
+  "Estimated sales for the period": "Tinatayang benta sa buong panahon",
+  "Sales estimates cover the full remaining forecast period. Your next purchase is limited to 1–2 units per part, so several small orders may be needed. Estimated cost is for this purchase only.": "Saklaw ng pagtataya ang buong natitirang panahon ng pagpaplano. Hanggang 1–2 yunit bawat piyesa ang susunod na bilhin, kaya maaaring kailanganin ang ilang maliliit na order. Para lamang sa pagbiling ito ang tinatayang halaga."
 }

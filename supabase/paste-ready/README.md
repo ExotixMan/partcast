@@ -4,7 +4,7 @@ Use the SQL Editor in the intended project: **`ragdjkdcrvexqfadlqbf`**, whose AP
 
 These files install the complete PartCast schema on a fresh project, or upgrade a recognized existing PartCast schema. They replace application access policies/functions and preserve Auth accounts, inventory, sales, customer debts/payments, photos, saved encrypted connections and synchronization receipts. They do not reset or delete the database. Unrecognized/partial schemas stop with an error rather than guessing how to change your records.
 
-**For an existing store already running migrations 0001–0007, this Restock update needs only [0008_restock_threshold.sql](../migrations/0008_restock_threshold.sql).** Run that entire file once; the complete two-part installation is unnecessary for this upgrade. It preserves store records and includes stock exactly at the low-stock limit in restocking suggestions. See [Restock and Gmail setup](../../docs/RESTOCK_GMAIL.md).
+**For an existing store through 0008, run [0009_small_restock_orders.sql](../migrations/0009_small_restock_orders.sql)** to limit suggested purchases to 1–2 units per part. Stores through 0007 should apply [0008_restock_threshold.sql](../migrations/0008_restock_threshold.sql) first. These view upgrades preserve store records; the complete two-part installation is unnecessary for this change. See [Restock and Gmail setup](../../docs/RESTOCK_GMAIL.md).
 
 ## Run the full scripts in order
 

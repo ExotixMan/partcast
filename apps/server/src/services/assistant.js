@@ -1,6 +1,7 @@
 import {getIntegration,integrationReady} from '../utils/integrations.js';
 import {normalizeQuestion,isTagalog,explainParts,productTerms} from '../utils/partTerms.js';
 import { adminDb } from '../supabase.js';
+import {neededRestock,normalizeRestock} from '../utils/restock.js';
 
 function safeNumber(value) {
   const number = Number(value);
@@ -111,7 +112,7 @@ async function loadContext(message) {
     ? adminDb
         .from('reorder_recommendations')
         .select(
-          'product_id,part_number,description,current_stock,minimum_stock,safety_stock,predicted_quantity,recommended_quantity,supplier_name,estimated_order_cost,status'
+          'product_id,part_number,description,current_stock,minimum_stock,safety_stock,predicted_quantity,recommended_quantity,supplier_name,estimated_unit_cost,estimated_order_cost,status'
         )
         .or(
           `part_number.ilike.%${safeTerm}%,description.ilike.%${safeTerm}%`
@@ -143,12 +144,11 @@ async function loadContext(message) {
       .order('current_stock', { ascending: true })
       .limit(12),
 
-    adminDb
+    neededRestock(adminDb
       .from('reorder_recommendations')
       .select(
-        'product_id,part_number,description,current_stock,predicted_quantity,recommended_quantity,supplier_name,estimated_order_cost,status'
-      )
-      .gt('recommended_quantity', 0)
+        'product_id,part_number,description,current_stock,predicted_quantity,recommended_quantity,supplier_name,estimated_unit_cost,estimated_order_cost,status'
+      ))
       .order('recommended_quantity', { ascending: false })
       .limit(10),
 
@@ -177,7 +177,7 @@ async function loadContext(message) {
     adminDb
       .from('reorder_recommendations')
       .select(
-        'product_id,part_number,description,current_stock,predicted_quantity,recommended_quantity,status'
+        'product_id,part_number,description,current_stock,predicted_quantity,recommended_quantity,estimated_unit_cost,status'
       )
       .gt('predicted_quantity', 0)
       .order('predicted_quantity', { ascending: false })
@@ -205,13 +205,13 @@ async function loadContext(message) {
     searchTerm,
     metrics: metrics.data || {},
     lowStock: lowStock.data || [],
-    reorders: reorders.data || [],
+    reorders: (reorders.data || []).map(normalizeRestock),
     matchingProducts: products.data || [],
-    matchingDemand: productDemand.data || [],
+    matchingDemand: (productDemand.data || []).map(normalizeRestock),
     sales: summarizeSales(salesTrend.data || []),
     fastMoving: fastMoving.data || [],
     slowMoving: slowMoving.data || [],
-    demandLeaders: demandLeaders.data || [],
+    demandLeaders: (demandLeaders.data || []).map(normalizeRestock),
     demandEstimate: latestEstimate.data
       ? {
           available: true,
@@ -289,7 +289,7 @@ export function localAnswer(message, context) {
           safeNumber(item.recommended_quantity)
         )} unit(s)${supplier}`;
       })
-      .join('; ')}.`;
+      .join('; ')}. Suggested purchases are limited to 1–2 units per part at a time. Review sales and stock before ordering again.`;
   }
 
   if (/best sell|best-selling|best selling|fast moving|fast-moving|top selling|most sold/.test(question)) {
@@ -359,9 +359,9 @@ export function localAnswer(message, context) {
         item.current_stock
       )} unit(s)${
         safeNumber(item.recommended_quantity) > 0
-          ? `, and the suggested restock is about ${Math.ceil(
+          ? `, and the suggested next purchase is about ${Math.ceil(
               safeNumber(item.recommended_quantity)
-            )} unit(s)`
+            )} unit(s), following the store's 1–2 unit purchase limit`
           : ', and no additional restock is currently suggested'
       }.`;
     }
@@ -474,6 +474,8 @@ When discussing future demand, call it "expected demand", "demand estimate", or 
 
 Use ONLY the supplied store context. Never invent quantities, prices, sales, suppliers, or demand. If information is unavailable, say that the store records do not currently show enough information.
 
+The owner purchases only 1–2 units per part at a time. Suggested order quantities in the context are for that next purchase. Expected demand covers the full planning period and can be higher; it can require several small purchases. Never turn the full-period demand estimate into a larger suggested single order. Ask the owner to review sales, stock and supplier delivery time before ordering again.
+
 Do not reveal customer names, supplier email addresses, credentials, secrets, or private technical information.
 
 Reply in ${language==='fil'?'clear Tagalog (common English car-part terms are allowed)':'English'}. Distinguish coolant fluid from the radiator component; do not treat related parts as interchangeable.
@@ -555,7 +557,7 @@ export function tagalogStoreAnswer(message,context){
  return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.predicted_quantity} yunit`).join('; '):'Walang sapat na naitalang pagtataya para sa piyesang ito.'}`;
  }else if(context.searchTerm){rows=context.matchingProducts;prefix='Mula sa tala ng tindahan';}
  else return null;
- return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.current_stock} ${p.unit||'yunit'}${/price/.test(q)?`, ${money(p.selling_price)} bawat isa`:''}${/where/.test(q)?`, lokasyon: ${p.location||'hindi pa naitala'}`:''}${/restock/.test(q)?`, mungkahing order: ${Math.ceil(Number(p.recommended_quantity||0))}`:''}`).join('; '):'Walang katugmang piyesa sa mga tala.'}`;
+ return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.current_stock} ${p.unit||'yunit'}${/price/.test(q)?`, ${money(p.selling_price)} bawat isa`:''}${/where/.test(q)?`, lokasyon: ${p.location||'hindi pa naitala'}`:''}${/restock/.test(q)?`, mungkahing order: ${Math.ceil(Number(p.recommended_quantity||0))}`:''}`).join('; '):'Walang katugmang piyesa sa mga tala.'}${/restock/.test(q)&&rows.length?' Hanggang 1–2 yunit lamang bawat piyesa sa bawat order. Suriin ang benta at stock bago muling umorder.':''}`;
 }
 async function cashierAnswer(message,fil){
  const q=normalizeQuestion(message);

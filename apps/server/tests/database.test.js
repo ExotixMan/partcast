@@ -30,6 +30,7 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
  await db.exec('grant select on all tables in schema public to authenticated;');
  await db.exec(await readFile(new URL('../../../supabase/migrations/0007_verified_login_and_access.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0008_restock_threshold.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../../../supabase/migrations/0009_small_restock_orders.sql',import.meta.url),'utf8'));
  await db.exec(`insert into auth.users(id) values('${staff}'),('${inactive}');update public.profiles set active=true where id='${staff}';insert into products(id,description,current_stock,minimum_stock)values('${product}','Brake pad',5,2);`);
  await db.exec(`insert into login_verifications(session_id,user_id,expires_at) values('${staff}','${staff}',now()+interval '12 hours'),('${inactive}','${inactive}',now()+interval '12 hours');`);
  const claims=async id=>{await db.exec(`reset role;select set_config('request.jwt.claim.sub','${id}',false);select set_config('request.jwt.claim.role','authenticated',false);select set_config('request.jwt.claims','{"session_id":"${id}","amr":[{"method":"password"}]}',false);set role authenticated;`);};
@@ -184,7 +185,39 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
   assert.deepEqual(rows.map(r=>r.unit),['pcs','litres','pcs']);
   assert.equal((await db.query('select n.id from stock_notifications n join reorder_recommendations r on r.product_id=n.product_id where n.resolved_at is null and r.recommended_quantity<=0')).rows.length,0);
   await db.exec(await readFile(new URL('../../../supabase/migrations/0008_restock_threshold.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../../../supabase/migrations/0009_small_restock_orders.sql',import.meta.url),'utf8'));
   assert.equal(Number((await db.query('select current_stock from products where id=$1',['12345678-1234-4234-8234-123456789001'])).rows[0].current_stock),2);
+ });
+ await t.test('small purchases preserve forecast demand and stock while limiting quantities and pricing the next order',async()=>{
+  await db.exec('reset role;');
+  await db.exec(await readFile(new URL('../../../supabase/migrations/0009_small_restock_orders.sql',import.meta.url),'utf8'));
+  const prefix='87654321-1234-4234-8234-12345678900',run='87654321-1234-4234-8234-123456789100',supplier='87654321-1234-4234-8234-123456789200';
+  await db.exec(`insert into products(id,description,current_stock,minimum_stock,unit_cost,active)values
+   ('${prefix}1','Eleven expected sales',0,0,50,true),
+   ('${prefix}2','One expected sale',0,0,40,true),
+   ('${prefix}3','Healthy stock',5,2,10,true),
+   ('${prefix}4','Fractional shortfall',1,0,20,true),
+   ('${prefix}5','High low-stock limit',0,10,10,true),
+   ('${prefix}6','Inactive part',0,0,10,false);
+   insert into suppliers(id,name)values('${supplier}','Small-order supplier');
+   insert into product_suppliers(product_id,supplier_id,latest_unit_cost,is_primary)values('${prefix}1','${supplier}',30,true);
+   insert into forecast_runs(id,status,horizon_days,completed_at)values('${run}','completed',30,now());
+   insert into demand_forecasts(run_id,product_id,forecast_date,predicted_quantity)values
+    ('${run}','${prefix}1',current_date+1,5.5),('${run}','${prefix}1',current_date+2,5.5),
+    ('${run}','${prefix}2',current_date+1,1),('${run}','${prefix}4',current_date+1,1.2),
+    ('${run}','${prefix}6',current_date+1,11);`);
+  const query="select product_id,current_stock,predicted_quantity,recommended_quantity,estimated_order_cost,status from reorder_recommendations where product_id::text like '87654321%' order by product_id";
+  const before=(await db.query(query)).rows;
+  assert.deepEqual(before.map(r=>Number(r.recommended_quantity)),[2,1,0,1,2]);
+  assert.deepEqual(before.map(r=>Number(r.predicted_quantity)),[11,1,0,1.2,0]);
+  assert.deepEqual(before.map(r=>Number(r.estimated_order_cost)),[60,40,0,20,20]);
+  assert.deepEqual(before.map(r=>r.status),['out_of_stock','out_of_stock','ok','forecast_reorder','out_of_stock']);
+  assert.deepEqual(before.map(r=>Number(r.current_stock)),[0,0,5,1,0]);
+  const preserved=(await db.query('select * from demand_forecasts where run_id=$1 order by product_id,forecast_date',[run])).rows;
+  await db.exec(await readFile(new URL('../../../supabase/migrations/0009_small_restock_orders.sql',import.meta.url),'utf8'));
+  assert.deepEqual((await db.query(query)).rows,before);
+  assert.deepEqual((await db.query('select * from demand_forecasts where run_id=$1 order by product_id,forecast_date',[run])).rows,preserved);
+  assert.equal((await db.query("select reloptions from pg_class where oid='public.reorder_recommendations'::regclass")).rows[0].reloptions.includes('security_invoker=true'),true);
  });
  await db.close();
 });
