@@ -13,7 +13,7 @@ export const partTerms=[
  {term:'tire',names:['tire','tyre','gulong']},
  {term:'clutch',names:['clutch','klats']}
 ];
-export const isTagalog=q=>/\b(magkano|meron|mayroon|ilang|ilan|saan|ano|paano|benta|ubos|kulang|langis|gulong|utang|po|ba|ng|natin|kailangan|pareho|tubig|baterya)\b/i.test(q)||/^may\s+.+/i.test(q);
+export const isTagalog=q=>/\b(magkano|meron|mayroon|ilang|ilan|saan|ano|anong|alin|paano|benta|ubos|kulang|langis|gulong|utang|po|ba|ng|natin|kailangan|pareho|tubig|baterya|pwedeng|puwedeng|dapat|orderin|iorder|dagdagan|mabenta|piraso|natira|paubos|konti|kaunti)\b/i.test(q)||/^may\s+.+/i.test(q);
 export function partMatches(q){
  const text=q.toLowerCase();let matches=partTerms.filter(p=>p.names.some(n=>new RegExp(`\\b${n}\\b`,'i').test(text)));
  if(matches.some(p=>p.term==='coolant')){
@@ -25,16 +25,16 @@ export function partMatches(q){
 export function normalizeQuestion(message){
  let q=message.toLowerCase();if(isTagalog(message))q=q.replace(/\bmay\b/g,'available');
  for(const p of partTerms){for(const name of [...p.names].sort((a,b)=>b.length-a.length))q=q.replace(new RegExp(`\\b${name}\\b`,'g'),p.term);}
- const swaps=[[/magkano|presyo/g,'price'],[/ubos|wala nang stock|walang stock/g,'out of stock'],[/kulang|kaunti na|konti na/g,'low stock'],[/kailangang iorder|kailangan.*dagdagan|oorderin|mag.?restock/g,'restock'],[/\b(?:naibenta|nabenta|benta)\b/g,'sales'],[/ngayon/g,'today'],[/linggo/g,'week'],[/buwan/g,'month'],[/\b(?:nasaan|saan)\b/g,'where'],[/\b(?:meron|mayroon|may stock)\b/g,'available'],[/\b(?:ilang|ilan|dami)\b/g,'quantity']];
+ const swaps=[[/\bpaubos\b/g,'low stock'],[/mabagal mabenta|hindi mabenta|di mabenta/g,'slow moving'],[/mabilis mabenta|mabenta|patok/g,'fast moving'],[/\b(?:i-?order|orderin|umorder|irestock|i-restock|dagdagan)\b/g,'restock'],[/magkano|presyo/g,'price'],[/\bubos\b|wala nang stock|walang stock/g,'out of stock'],[/kulang|kaunti na|konti na/g,'low stock'],[/kailangang iorder|kailangan.*dagdagan|oorderin|mag.?restock/g,'restock'],[/\b(?:naibenta|nabenta|benta)\b/g,'sales'],[/ngayon/g,'today'],[/linggo/g,'week'],[/buwan/g,'month'],[/\b(?:nasaan|saan)\b/g,'where'],[/\b(?:meron|mayroon|may stock)\b/g,'available'],[/\b(?:ilang|ilan|dami)\b/g,'quantity']];
  for(const [re,word] of swaps)q=q.replace(re,word);
  return q;
 }
 export function explainParts(message,fil=false){
  const q=message.toLowerCase();
- if(/coolant|antifreeze|tubig.*radiator/.test(q)&&/radiator|radiyador/.test(q)&&/same|pareho|different|kaibahan|term|equals|katulad/.test(q))return fil?'Ang coolant (radiator fluid o antifreeze) ay likidong pampalamig. Ang radiator ay piyesa na nagpapalamig sa likido. Magkaugnay sila pero magkaibang produkto; itanong kung coolant fluid o radiator assembly ang kailangan.':'Coolant, radiator fluid, and antifreeze refer to cooling fluid. A radiator is the component that cools the fluid. They are related but different products; confirm whether you need coolant fluid or a radiator assembly.';
+ if(/coolant|antifreeze|tubig.*radiator/.test(q)&&/radiator|radiyador/.test(q)&&/same|pareho|different|kaibahan|term|equals|katulad/.test(q))return fil?'Ang coolant ay liquid na tumutulong magpalamig ng makina. Tinatawag din itong radiator fluid o antifreeze.\n\nAng radiator naman ang piyesa na nagpapalamig sa coolant.\n\nMagkaibang produkto ito. Itanong kung coolant o buong radiator ang kailangan.':'Coolant, radiator fluid, and antifreeze refer to cooling fluid. A radiator is the component that cools the fluid. They are related but different products; confirm whether you need coolant fluid or a radiator assembly.';
  const matches=partMatches(q);
  if(matches.length&&/\b(?:what is|what does|meaning|ano ang|ano yung|terminology|tawag|ibig sabihin)\b/.test(q)){
- const p=matches[0];return fil?`${p.term}: mga karaniwang tawag ay ${p.names.join(', ')}. Gamitin ang alinman dito sa paghahanap. Tiyakin ang tamang sukat at modelo ng sasakyan bago bumili.`:`Common names for ${p.term}: ${p.names.join(', ')}. You can use these names to search. Confirm the vehicle model and size before buying.`;
+ const p=matches[0];return fil?`${p.term}: tinatawag din na ${p.names.join(', ')}. Gamitin ang alinman dito sa paghahanap. Tiyakin ang tamang sukat at modelo ng sasakyan bago bumili.`:`Common names for ${p.term}: ${p.names.join(', ')}. You can use these names to search. Confirm the vehicle model and size before buying.`;
  }
  return null;
 }

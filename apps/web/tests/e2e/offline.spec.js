@@ -46,7 +46,7 @@ test('mobile: saved inventory survives offline reload, queued sale sends on reco
  await page.getByRole('button',{name:'Open Store Assistant'}).click();
  await page.getByRole('textbox',{name:'Message to Store Assistant'}).fill('How do I record a sale?');
  await page.getByRole('button',{name:'Send message'}).click();
- await expect(page.getByText(/Open Sell or receive, choose Sell parts/)).toBeVisible();
+ await expect(page.getByText(/Open Sell or receive and choose Sell parts/)).toBeVisible();
  await page.getByRole('button',{name:'Close Store Assistant'}).click();
  await page.getByRole('link',{name:'Sell or receive',exact:true}).filter({visible:true}).click();
  await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();
@@ -63,7 +63,8 @@ test('mobile: saved inventory survives offline reload, queued sale sends on reco
  await expect(page.getByText('Connected',{exact:true})).toBeVisible();
  expect(backend.getStock()).toBe(3);
  await page.setViewportSize({width:820,height:1180});
- await page.getByRole('button',{name:'Send changes'}).click();
+ await expect(page.getByRole('button',{name:'Send changes'})).toBeHidden();
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await expect(page.getByText('Connected',{exact:true})).toBeVisible();
  expect(backend.requests.length).toBe(1);
  expect(errors).toEqual([]);
@@ -78,7 +79,7 @@ for(const size of [{name:'tablet',width:820,height:1180},{name:'desktop',width:1
   await page.getByRole('button',{name:'Open Store Assistant'}).click();
   await page.getByRole('textbox',{name:'Message to Store Assistant'}).fill('How do I record a sale?');
   await page.getByRole('button',{name:'Send message'}).click();
-  await expect(page.getByText(/Open Sell or receive, choose Sell parts/)).toBeVisible();
+  await expect(page.getByText(/Open Sell or receive and choose Sell parts/)).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.screenshot({path:`/tmp/partcast-${size.name}.png`,fullPage:true});
  });

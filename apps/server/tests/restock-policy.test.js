@@ -36,11 +36,11 @@ test('older database results use small purchases in APIs, supplier defaults and 
    assert.equal(row.recommended_quantity,2);assert.equal(row.estimated_order_cost,200);assert.equal(row.predicted_quantity,11);assert.equal(row.current_stock,0);
   }
   const en=await answerAssistant('Which parts should I restock?','en','owner');
-  assert.match(en.answer,/about 2 unit/);assert.doesNotMatch(en.answer,/about 11 unit/);assert.match(en.answer,/1–2 units per part/);
+  assert.match(en.answer,/Order: \*\*2 pcs\*\*/);assert.doesNotMatch(en.answer,/Order: \*\*11/);assert.match(en.answer,/1–2 units per part/);
   const fil=await answerAssistant('restock','fil','owner');
-  assert.match(fil.answer,/mungkahing order: 2/);assert.doesNotMatch(fil.answer,/mungkahing order: 11/);
+  assert.match(fil.answer,/Order: \*\*2 piraso\*\*/);assert.doesNotMatch(fil.answer,/Order: \*\*11/);
   const demand=await answerAssistant('forecast BP-001','en','owner');
-  assert.match(demand.answer,/expected demand of about 11/);assert.match(demand.answer,/suggested next purchase is about 2/);
+  assert.match(demand.answer,/May sell: \*\*11 pcs\*\*/);assert.match(demand.answer,/Next purchase: \*\*2 pcs\*\*/);
   let response=await fetch(base+'/api/admin/supplier-email/'+supplier,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   assert.equal(response.status,200);assert.equal(messages.length,1);assert.match(messages[0],/BP-001 \| Brake pad \| 2 pcs/);
   const draft={subject:'Reviewed order',message:'Please confirm this one-off quantity.',items:[{product_id:product,part_number:'BP-001',description:'Brake pad',unit:'pcs',quantity:11}]};

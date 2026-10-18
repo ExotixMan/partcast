@@ -77,7 +77,7 @@ for(const width of [390,1440])test(`small purchase suggestions keep forecast tot
  await expect(row).toContainText('11');await expect(row).toContainText('2 units');await expect(row).toContainText('₱200.00');await expect(row).not.toContainText('₱1,100.00');
  await expect(page.getByText(/Suggested purchases are 1–2 units per part/)).toBeVisible();
  await page.getByRole('button',{name:'Review supplier email'}).click();await expect(page.getByLabel('Quantity *')).toHaveValue('2');await page.getByRole('button',{name:'Keep reviewing'}).click();
- await page.getByLabel('Website language').selectOption('fil');await expect(row).toContainText('2');await expect(page.getByText(/Ang mungkahing bilhin ay 1–2 yunit/)).toBeVisible();
+ await page.getByLabel('Website language').selectOption('fil');await expect(row).toContainText('2');await expect(page.getByText(/Karaniwang 1–2 lang bawat piyesa/)).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 test('supplier table supports custom columns, extra assigned parts, validation and a matching mobile preview',async({page,context})=>{
@@ -97,9 +97,47 @@ test('restock list updates after stock changes and a removed custom column leave
  await page.getByRole('button',{name:'Keep reviewing'}).click();data=[];await page.evaluate(()=>window.dispatchEvent(new Event('partcast:queue')));await expect(page.getByRole('heading',{name:'No parts are currently suggested for restocking'})).toBeVisible();
 });
 test('Tagalog and dark mode persist; assistant clarifies coolant versus radiator',async({page,context})=>{
- await fixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/debts');await page.getByLabel('Website language').selectOption('fil');await expect(page.getByRole('heading',{name:'Utang ng customer'})).toBeVisible();await page.getByRole('button',{name:'Gamitin ang madilim na tema'}).click();expect(await page.locator('html').getAttribute('data-theme')).toBe('dark');
+ await fixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/debts');await page.getByLabel('Website language').selectOption('fil');await expect(page.getByRole('heading',{name:'Utang ng customer'})).toBeVisible();await page.getByRole('button',{name:'Laki ng text at kulay'}).click();await page.getByRole('button',{name:'Gamitin ang dark mode'}).click();await page.getByRole('button',{name:'Tapos na',exact:true}).click();expect(await page.locator('html').getAttribute('data-theme')).toBe('dark');
  await page.reload();await expect(page.getByRole('heading',{name:'Utang ng customer'})).toBeVisible();expect(await page.locator('html').getAttribute('lang')).toBe('fil');expect(await page.locator('html').getAttribute('data-theme')).toBe('dark');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await page.getByRole('button',{name:'Buksan ang katulong sa tindahan'}).click();await page.getByLabel('Mensahe sa katulong sa tindahan').fill('Pareho ba ang coolant at radiator?');await page.getByRole('button',{name:'Ipadala ang mensahe'}).click();await expect(page.getByText(/magkaibang produkto/)).toBeVisible();
+ await page.getByRole('button',{name:'Buksan ang katulong sa tindahan'}).click();await page.getByLabel('Mensahe sa katulong sa tindahan').fill('Pareho ba ang coolant at radiator?');await page.getByRole('button',{name:'Ipadala ang mensahe'}).click();await expect(page.getByText(/magkaibang produkto/i)).toBeVisible();
+});
+test('assistant replies show readable part lists, everyday Tagalog and safe text on a phone',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:390,height:844});await page.emulateMedia({reducedMotion:'reduce'});
+ let submitted;
+ await context.route('http://localhost:10000/api/assistant/chat',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();submitted=route.request().postDataJSON();
+  const answer=submitted.message==='test safe text'?'<img src=x onerror="window.__unexpected=1">':
+   'Ito ang puwedeng orderin:\n\n- OIL FILTER\n  Part no. 90915-YZZD2\n  Order: **2 piraso**\n- FUEL FILTER\n  Part no. 23303-64010\n  Order: **1 piraso**\n- BEARING ASSY\n  Part no. C014\n  Order: **2 piraso**\n\n1–2 lang bawat piyesa sa isang order. Tingnan muna ang stock bago umorder ulit.';
+  await route.fulfill({json:{answer,mode:'database'},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/');await page.getByLabel('Website language').selectOption('fil');await page.getByRole('button',{name:'Buksan ang katulong sa tindahan'}).click();
+ await page.getByRole('button',{name:'Ano ang dapat orderin?',exact:true}).click();
+ const log=page.getByRole('log');await expect(log.getByRole('listitem')).toHaveCount(3);
+ await expect(log.getByText('90915-YZZD2',{exact:false})).toBeVisible();await expect(log.locator('strong').first()).toHaveText('2 piraso');
+ await expect(log.getByText('Base sa mga na-save na record')).toBeAttached();expect(submitted.language).toBe('fil');
+ expect(await log.locator('.assistant-reply').last().evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+ expect(await log.locator('.assistant-reply').last().evaluate(el=>getComputedStyle(el).fontFamily)).toContain('Arial');
+ await page.screenshot({path:'/tmp/partcast-chat-phone.png'});
+ await page.getByRole('textbox',{name:'Mensahe sa katulong sa tindahan'}).fill('test safe text');await page.getByRole('button',{name:'Ipadala ang mensahe'}).click();
+ await expect(log.getByText('<img src=x onerror="window.__unexpected=1">',{exact:true})).toBeAttached();await expect(log.locator('img')).toHaveCount(0);expect(await page.evaluate(()=>window.__unexpected)).toBeUndefined();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+test('larger text persists and daily workflows fit phone, tablet and desktop',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:320,height:840});const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.goto('/');await page.getByRole('button',{name:'Text and display'}).click();await page.getByRole('button',{name:'Larger text',exact:true}).click();await page.getByRole('button',{name:'Done',exact:true}).click();
+ await expect(page.locator('html')).toHaveAttribute('data-text-size','large');
+ for(const width of [320,768,1440]){
+  await page.setViewportSize({width,height:1000});
+  for(const path of ['/','/counter','/inventory','/forecast','/reorder','/debts','/sales','/reports']){
+   await page.goto(path);await expect(page.locator('main h1')).toBeVisible();
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}px ${path}`).toBe(true);
+  }
+ }
+ await page.goto('/inventory');await expect(page.getByRole('heading',{name:'Inventory',exact:true})).toBeVisible();await expect(page.getByRole('region',{name:'Your inventory'})).toBeVisible();await expect(page.locator('html')).toHaveAttribute('data-text-size','large');expect(await page.locator('html').evaluate(el=>getComputedStyle(el).fontSize)).toBe('18px');
+ await page.screenshot({path:'/tmp/partcast-inventory-desktop.png'});
+ await page.getByRole('button',{name:'Text and display'}).click();await page.getByRole('button',{name:'Use dark mode'}).click();await page.getByRole('button',{name:'Done',exact:true}).click();
+ await page.reload();await expect(page.locator('html')).toHaveAttribute('data-theme','dark');await expect(page.locator('html')).toHaveAttribute('data-text-size','large');
+ expect(errors).toEqual([]);
 });
 test('part photos validate upload and show saved images',async({page,context})=>{
  const api=await fixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/inventory');const card=page.getByRole('article').filter({hasText:'Toyota brake pad'});await card.getByRole('button',{name:'Edit details'}).click();
@@ -483,7 +521,7 @@ test('stock alerts prioritize urgency, filter by status and part, preserve read 
  for(const width of [360,768,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}
  await page.screenshot({path:'test-results/alerts-desktop.png'});
  await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:/Stock notifications/})).toBeFocused();
- await page.getByLabel('Website language').selectOption('fil');await page.getByRole('button',{name:'Gamitin ang madilim na tema'}).click();
+ await page.getByLabel('Website language').selectOption('fil');await page.getByRole('button',{name:'Laki ng text at kulay'}).click();await page.getByRole('button',{name:'Gamitin ang dark mode'}).click();await page.getByRole('button',{name:'Tapos na',exact:true}).click();
  await page.getByRole('button',{name:/Mga abiso sa stock/}).click();await expect(page.getByRole('dialog')).toContainText('Bagong abiso');await page.keyboard.press('Escape');
  offline=true;fixtureApi.disconnect(true);await context.setOffline(true);await page.getByRole('button',{name:/Mga abiso sa stock/}).click();await expect(page.getByRole('dialog')).toContainText('Mga naka-save na abiso');
  await expect(page.getByRole('dialog').getByRole('button',{name:'Markahang nabasa na'})).toBeDisabled();

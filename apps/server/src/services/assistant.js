@@ -2,6 +2,7 @@ import {getIntegration,integrationReady} from '../utils/integrations.js';
 import {normalizeQuestion,isTagalog,explainParts,productTerms} from '../utils/partTerms.js';
 import { adminDb } from '../supabase.js';
 import {neededRestock,normalizeRestock} from '../utils/restock.js';
+import {partReply,replyList,partUnit} from '../utils/assistantReplies.js';
 
 function safeNumber(value) {
   const number = Number(value);
@@ -112,7 +113,7 @@ async function loadContext(message) {
     ? adminDb
         .from('reorder_recommendations')
         .select(
-          'product_id,part_number,description,current_stock,minimum_stock,safety_stock,predicted_quantity,recommended_quantity,supplier_name,estimated_unit_cost,estimated_order_cost,status'
+          'product_id,part_number,description,current_stock,minimum_stock,safety_stock,predicted_quantity,recommended_quantity,unit,supplier_name,estimated_unit_cost,estimated_order_cost,status'
         )
         .or(
           `part_number.ilike.%${safeTerm}%,description.ilike.%${safeTerm}%`
@@ -147,7 +148,7 @@ async function loadContext(message) {
     neededRestock(adminDb
       .from('reorder_recommendations')
       .select(
-        'product_id,part_number,description,current_stock,predicted_quantity,recommended_quantity,supplier_name,estimated_unit_cost,estimated_order_cost,status'
+        'product_id,part_number,description,current_stock,predicted_quantity,recommended_quantity,unit,supplier_name,estimated_unit_cost,estimated_order_cost,status'
       ))
       .order('recommended_quantity', { ascending: false })
       .limit(10),
@@ -177,7 +178,7 @@ async function loadContext(message) {
     adminDb
       .from('reorder_recommendations')
       .select(
-        'product_id,part_number,description,current_stock,predicted_quantity,recommended_quantity,estimated_unit_cost,status'
+        'product_id,part_number,description,current_stock,predicted_quantity,recommended_quantity,unit,estimated_unit_cost,status'
       )
       .gt('predicted_quantity', 0)
       .order('predicted_quantity', { ascending: false })
@@ -235,217 +236,68 @@ function technicalQuestion(question) {
 export function localAnswer(message, context) {
   const question = String(message || '').toLowerCase();
   const metrics = context.metrics || {};
-
+  const stockLine = item => `In stock: ${units(item.current_stock)} ${partUnit(item)}`;
   if (technicalQuestion(question) && !/forecast|demand|xgboost/.test(question)) {
-    return 'I can help you with store information instead. You can ask me about available stock, out-of-stock items, sales, best-selling or slow-moving parts, prices, suppliers, restocking, inventory value, or expected demand.';
+    return 'Ask me about stock, prices, sales or what to order next.';
   }
-
   if (/out of stock|out-of-stock|unavailable|no stock/.test(question)) {
-    const rows = context.lowStock
-      .filter(item => item.stock_status === 'out')
-      .slice(0, 6);
-
-    if (!rows.length) {
-      return `You currently have ${safeNumber(metrics.outOfStock).toLocaleString()} out-of-stock item(s).`;
-    }
-
-    return `You currently have ${safeNumber(metrics.outOfStock).toLocaleString()} out-of-stock item(s). Some of them are: ${rows
-      .map(item => `${item.part_number || 'No part number'} – ${item.description}`)
-      .join('; ')}.`;
+    const rows = context.lowStock.filter(item => item.stock_status === 'out').slice(0, 6);
+    if (!rows.length) return `Out-of-stock parts: ${units(metrics.outOfStock)}.`;
+    return replyList('These parts are out of stock:', rows.map(item => partReply(item)));
   }
-
   if (/low stock|running low|nearly out|almost out/.test(question)) {
-    const rows = context.lowStock
-      .filter(item => item.stock_status === 'low')
-      .slice(0, 6);
-
-    if (!rows.length) {
-      return `There are currently ${safeNumber(metrics.lowStock).toLocaleString()} low-stock item(s).`;
-    }
-
-    return `There are ${safeNumber(metrics.lowStock).toLocaleString()} low-stock item(s). Priority items include: ${rows
-      .map(
-        item =>
-          `${item.part_number || 'No part number'} – ${item.description} (${units(
-            item.current_stock
-          )} ${item.unit || 'unit(s)'} left)`
-      )
-      .join('; ')}.`;
+    const rows = context.lowStock.filter(item => item.stock_status === 'low').slice(0, 6);
+    if (!rows.length) return `Parts running low: ${units(metrics.lowStock)}.`;
+    return replyList('These parts are running low:', rows.map(item => partReply(item, [stockLine(item)])));
   }
-
   if (/restock|reorder|replenish|order more|need to order/.test(question)) {
-    if (!context.reorders.length) {
-      return 'Nothing is currently flagged as needing restocking based on the store records available to me.';
-    }
-
-    return `The top items to consider restocking are: ${context.reorders
-      .slice(0, 6)
-      .map(item => {
-        const supplier = item.supplier_name
-          ? ` from ${item.supplier_name}`
-          : '';
-
-        return `${item.part_number || 'No part number'} – ${item.description}: about ${Math.ceil(
-          safeNumber(item.recommended_quantity)
-        )} unit(s)${supplier}`;
-      })
-      .join('; ')}. Suggested purchases are limited to 1–2 units per part at a time. Review sales and stock before ordering again.`;
+    if (!context.reorders.length) return 'No parts need restocking based on the saved stock and sales estimates.';
+    return replyList('Check these parts for your next order:', context.reorders.slice(0, 6).map(item => partReply(item, [
+      `Order: **${units(item.recommended_quantity)} ${partUnit(item)}**`,
+      item.supplier_name ? `Supplier: ${item.supplier_name}` : null
+    ])), 'Buy 1–2 units per part at a time. Check your shelves and delivery time before ordering again.');
   }
-
   if (/best sell|best-selling|best selling|fast moving|fast-moving|top selling|most sold/.test(question)) {
-    const rows = context.fastMoving.filter(item => safeNumber(item.quantity) > 0);
-
-    if (!rows.length) {
-      return 'I do not see enough recent item-level sales yet to identify the best-selling parts.';
-    }
-
-    return `Your fastest-moving parts from recent recorded sales are: ${rows
-      .slice(0, 6)
-      .map(
-        item =>
-          `${item.part_number || 'No part number'} – ${item.description} (${units(
-            item.quantity
-          )} sold)`
-      )
-      .join('; ')}.`;
+    const rows = context.fastMoving.filter(item => safeNumber(item.quantity) > 0).slice(0, 6);
+    if (!rows.length) return 'There are not enough saved sales to show your best-selling parts yet.';
+    return replyList('These parts sold the most recently:', rows.map(item => partReply(item, [`Sold: **${units(item.quantity)}**`])));
   }
-
   if (/slow moving|slow-moving|not selling|least sold|slow seller/.test(question)) {
     const rows = context.slowMoving.slice(0, 6);
-
-    if (!rows.length) {
-      return 'I do not see enough recent sales information to identify slow-moving parts yet.';
-    }
-
-    return `Some of the slow-moving parts are: ${rows
-      .map(
-        item =>
-          `${item.part_number || 'No part number'} – ${item.description} (${units(
-            item.quantity
-          )} sold recently)`
-      )
-      .join('; ')}.`;
+    if (!rows.length) return 'There are not enough saved sales to show slow-selling parts yet.';
+    return replyList('These parts have fewer recent sales:', rows.map(item => partReply(item, [`Sold: **${units(item.quantity)}**`])));
   }
-
-  if (/sales today|today.*sales/.test(question)) {
-    return `Today's recorded sales are ${money(context.sales.today.revenue)} from ${units(
-      context.sales.today.quantity
-    )} unit(s) sold.`;
-  }
-
-  if (/sales.*week|week.*sales|last 7 days|past 7 days/.test(question)) {
-    return `For the last 7 days, recorded sales are ${money(
-      context.sales.last7Days.revenue
-    )} from ${units(context.sales.last7Days.quantity)} unit(s) sold.`;
-  }
-
-  if (/sales|revenue|income/.test(question)) {
-    return `For the last 30 days, recorded sales are ${money(
-      context.sales.last30Days.revenue
-    )} from ${units(context.sales.last30Days.quantity)} unit(s) sold.`;
-  }
-
+  if (/sales today|today.*sales/.test(question)) return `Today's saved sales: **${money(context.sales.today.revenue)}**.\n\nQuantity sold: ${units(context.sales.today.quantity)} units.`;
+  if (/sales.*week|week.*sales|last 7 days|past 7 days/.test(question)) return `Saved sales in the last 7 days: **${money(context.sales.last7Days.revenue)}**.\n\nQuantity sold: ${units(context.sales.last7Days.quantity)} units.`;
+  if (/sales|revenue|income/.test(question)) return `Saved sales in the last 30 days: **${money(context.sales.last30Days.revenue)}**.\n\nQuantity sold: ${units(context.sales.last30Days.quantity)} units.`;
   if (/expected demand|demand|forecast|prediction|predict|likely to sell|may sell/.test(question)) {
-    if (!context.demandEstimate.available) {
-      return 'There is not enough completed demand information yet for me to give a reliable expected-demand summary.';
-    }
-
+    if (!context.demandEstimate.available) return 'A sales estimate is not ready yet. Open Demand planning to check it.';
     if (context.searchTerm && context.matchingDemand.length) {
       const item = context.matchingDemand[0];
-
-      return `${item.part_number || 'No part number'} – ${item.description} has an expected demand of about ${units(
-        item.predicted_quantity
-      )} unit(s) over the current ${context.demandEstimate.horizonDays}-day planning period. Current stock is ${units(
-        item.current_stock
-      )} unit(s)${
-        safeNumber(item.recommended_quantity) > 0
-          ? `, and the suggested next purchase is about ${Math.ceil(
-              safeNumber(item.recommended_quantity)
-            )} unit(s), following the store's 1–2 unit purchase limit`
-          : ', and no additional restock is currently suggested'
-      }.`;
+      return replyList(`Expected sales over ${context.demandEstimate.horizonDays} days:`, [partReply(item, [
+        `May sell: **${units(item.predicted_quantity)} ${partUnit(item)}**`, stockLine(item),
+        safeNumber(item.recommended_quantity) > 0 ? `Next purchase: **${units(item.recommended_quantity)} ${partUnit(item)}**` : 'No extra stock is suggested now.'
+      ])], 'This is an estimate. Your next purchase stays at 1–2 units per part.');
     }
-
-    if (!context.demandLeaders.length) {
-      return 'A demand estimate is available, but there are no products with a positive expected quantity in the current planning period.';
-    }
-
-    return `The parts with the highest expected demand are: ${context.demandLeaders
-      .slice(0, 6)
-      .map(
-        item =>
-          `${item.part_number || 'No part number'} – ${item.description} (about ${units(
-            item.predicted_quantity
-          )} unit(s))`
-      )
-      .join('; ')}.`;
+    if (!context.demandLeaders.length) return 'There are no positive sales estimates for this period yet.';
+    return replyList(`Parts that may sell over ${context.demandEstimate.horizonDays} days:`, context.demandLeaders.slice(0, 6).map(item => partReply(item, [`May sell: **${units(item.predicted_quantity)} ${partUnit(item)}**`])), 'These are sales estimates for the full period, not quantities to order now.');
   }
-
   if (/supplier|where.*order|who.*supply/.test(question) && context.searchTerm) {
     const item = context.matchingDemand[0];
-
-    if (!item) {
-      return `I could not find a matching inventory item for “${context.searchTerm}”.`;
-    }
-
-    if (!item.supplier_name) {
-      return `${item.part_number || 'No part number'} – ${item.description} does not have a primary supplier recorded yet.`;
-    }
-
-    return `The recorded supplier for ${item.part_number || 'this item'} – ${item.description} is ${item.supplier_name}.`;
+    if (!item) return `No matching part found for “${context.searchTerm}”. Try its part number.`;
+    return replyList('Supplier details:', [partReply(item, [item.supplier_name ? `Supplier: ${item.supplier_name}` : 'No supplier is saved for this part yet.'])]);
   }
-
-  if (/inventory value|stock value|value of inventory/.test(question)) {
-    return `The current inventory cost value is about ${money(
-      metrics.inventoryValue
-    )}. The estimated retail value is about ${money(metrics.retailValue)}.`;
-  }
-
-  if (/how many products|number of products|total products|inventory count/.test(question)) {
-    return `There are ${safeNumber(metrics.totalProducts).toLocaleString()} active products in the store inventory. ${safeNumber(
-      metrics.lowStock
-    ).toLocaleString()} are low in stock and ${safeNumber(
-      metrics.outOfStock
-    ).toLocaleString()} are out of stock.`;
-  }
-
+  if (/inventory value|stock value|value of inventory/.test(question)) return `Stock at purchase cost: **${money(metrics.inventoryValue)}**.\n\nStock at selling price: ${money(metrics.retailValue)}.`;
+  if (/how many products|number of products|total products|inventory count/.test(question)) return `Parts in inventory: **${units(metrics.totalProducts)}**.\n\n- Running low: ${units(metrics.lowStock)}\n- Out of stock: ${units(metrics.outOfStock)}`;
   if (context.searchTerm && /stock|available|price|cost|where|location|part|have|sell/.test(question)) {
-    if (!context.matchingProducts.length) {
-      return `I could not find an active inventory item matching “${context.searchTerm}”. Try the part number, brand, or a word from the item description.`;
-    }
-
-    if(context.matchingProducts.length>1)return `I found several matching parts. Confirm the part number and vehicle fit: ${context.matchingProducts.slice(0,6).map(p=>`${p.part_number||'No part number'} – ${p.description}: ${units(p.current_stock)} ${p.unit||'units'}${/price|how much/.test(question)?`, ${money(p.selling_price)} each`:''}${/where|location/.test(question)?`, ${p.location||'location not recorded'}`:''}`).join('; ')}.`;
-    const product = context.matchingProducts[0];
-
-    if (/price|selling price|how much/.test(question)) {
-      return `${product.part_number || 'No part number'} – ${product.description} is priced at ${money(
-        product.selling_price
-      )} per ${product.unit || 'unit'}.`;
-    }
-
-    if (/cost|purchase cost|unit cost/.test(question)) {
-      return `${product.part_number || 'No part number'} – ${product.description} has a recorded unit cost of ${money(
-        product.unit_cost
-      )}.`;
-    }
-
-    if (/where|location|located/.test(question)) {
-      return `${product.part_number || 'No part number'} – ${product.description} is recorded at ${
-        product.location || 'no location has been assigned yet'
-      }.`;
-    }
-
-    return `${product.part_number || 'No part number'} – ${product.description}: ${units(
-      product.current_stock
-    )} ${product.unit || 'unit(s)'} currently in stock. ${
-      product.stock_status === 'out'
-        ? 'It is out of stock.'
-        : product.stock_status === 'low'
-          ? 'It is running low.'
-          : 'Stock level is currently okay.'
-    }`;
+    if (!context.matchingProducts.length) return `No matching part found for “${context.searchTerm}”. Try the part number or brand.`;
+    return replyList(context.matchingProducts.length > 1 ? 'Choose the part number that matches your customer’s vehicle:' : 'Here is the saved part:', context.matchingProducts.slice(0, 6).map(item => partReply(item, [
+      stockLine(item),
+      /price|selling price|how much/.test(question) ? `Price: **${money(item.selling_price)}** per ${partUnit(item)}` : null,
+      /cost|purchase cost|unit cost/.test(question) ? `Purchase cost: ${money(item.unit_cost)}` : null,
+      /where|location|located/.test(question) ? `Location: ${item.location || 'Not saved yet'}` : null
+    ])));
   }
-
   return null;
 }
 
@@ -453,7 +305,7 @@ async function geminiAnswer(message, context, language) {
   const integration=await getIntegration('gemini');
   const prompt = `You are the NPG Autoparts Store Assistant speaking directly to the store owner.
 
-The owner is not technical. Use simple business language and short, practical answers.
+The owner may be older and unfamiliar with computers. Use short, direct sentences. Put each part on its own bullet, with its exact part number and quantity on separate lines. Use no more than 6 parts. For instructions use up to 4 numbered steps. Keep the whole answer around 120 words when possible. Use blank lines between ideas; never pack a list into a paragraph separated by semicolons. No tables, links, HTML or markdown headings. You may bold a quantity or price.
 
 You may ONLY answer questions about store operations, including:
 - current inventory and stock availability
@@ -478,7 +330,7 @@ The owner purchases only 1–2 units per part at a time. Suggested order quantit
 
 Do not reveal customer names, supplier email addresses, credentials, secrets, or private technical information.
 
-Reply in ${language==='fil'?'clear Tagalog (common English car-part terms are allowed)':'English'}. Distinguish coolant fluid from the radiator component; do not treat related parts as interchangeable.
+Reply in ${language==='fil'?'everyday conversational Tagalog or Taglish, as used in an auto parts store':'plain English'}. In Tagalog, keep familiar words such as stock, order, supplier, delivery, price and part number. Say puwede, benta and piraso. Avoid formal words such as yunit, pagtataya, pangangailangan, imbentaryo and kasalukuyang panahon ng pagpaplano. Distinguish coolant fluid from the radiator component; do not treat related parts as interchangeable.
 
 STORE CONTEXT:
 ${JSON.stringify(context)}
@@ -545,20 +397,41 @@ export async function assistantMode() {
 }
 
 export function tagalogStoreAnswer(message,context){
- const q=normalizeQuestion(message),money=n=>`₱${Number(n||0).toFixed(2)}`;
- let rows,prefix;
- if(/out of stock/.test(q)){rows=context.lowStock.filter(p=>p.stock_status==='out');prefix='Mga ubos na piyesa';}
- else if(/low stock/.test(q)){rows=context.lowStock.filter(p=>p.stock_status==='low');prefix='Mga paubos na piyesa';}
- else if(/restock/.test(q)){rows=context.reorders;prefix='Mga mungkahing idagdag sa stock';}
- else if(/sales/.test(q)){const data=/today/.test(q)?context.sales.today:/week/.test(q)?context.sales.last7Days:context.sales.last30Days;return `Naitalang benta ${/today/.test(q)?'ngayon':/week/.test(q)?'sa huling 7 araw':'sa huling 30 araw'}: ${money(data.revenue)}, mula sa ${data.quantity} na naibentang yunit.`;}
- else if(/demand|forecast|prediction/.test(q)){
- if(!context.demandEstimate.available)return 'Kulang pa ang kasalukuyang datos para sa maaasahang pagtataya ng benta.';
- rows=context.searchTerm?context.matchingDemand:context.demandLeaders;prefix='Tinatayang benta sa kasalukuyang panahon ng pagpaplano';
- return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.predicted_quantity} yunit`).join('; '):'Walang sapat na naitalang pagtataya para sa piyesang ito.'}`;
- }else if(context.searchTerm){rows=context.matchingProducts;prefix='Mula sa tala ng tindahan';}
- else return null;
- return `${prefix}: ${rows.length?rows.slice(0,6).map(p=>`${p.part_number||''} ${p.description}: ${p.current_stock} ${p.unit||'yunit'}${/price/.test(q)?`, ${money(p.selling_price)} bawat isa`:''}${/where/.test(q)?`, lokasyon: ${p.location||'hindi pa naitala'}`:''}${/restock/.test(q)?`, mungkahing order: ${Math.ceil(Number(p.recommended_quantity||0))}`:''}`).join('; '):'Walang katugmang piyesa sa mga tala.'}${/restock/.test(q)&&rows.length?' Hanggang 1–2 yunit lamang bawat piyesa sa bawat order. Suriin ang benta at stock bago muling umorder.':''}`;
+ const q=normalizeQuestion(message), stockLine=p=>`Stock: ${units(p.current_stock)} ${partUnit(p,true)}`;
+ if(/out of stock/.test(q)){
+  const rows=context.lowStock.filter(p=>p.stock_status==='out');
+  return rows.length?replyList('Ubos na ang stock ng mga ito:',rows.slice(0,6).map(p=>partReply(p))):`Ubos na piyesa: ${units(context.metrics?.outOfStock)}.`;
+ }
+ if(/low stock/.test(q)){
+  const rows=context.lowStock.filter(p=>p.stock_status==='low');
+  return rows.length?replyList('Paubos na ang mga ito:',rows.slice(0,6).map(p=>partReply(p,[stockLine(p)]))):`Paubos na piyesa: ${units(context.metrics?.lowStock)}.`;
+ }
+ if(/restock/.test(q))return context.reorders.length?replyList('Ito ang puwedeng orderin:',context.reorders.slice(0,6).map(p=>partReply(p,[
+  `Order: **${units(p.recommended_quantity)} ${partUnit(p,true)}**`,p.supplier_name?`Supplier: ${p.supplier_name}`:null
+ ])),'1–2 lang bawat piyesa sa isang order. Tingnan muna ang stock at oras ng delivery bago umorder ulit.'):'Wala pang kailangang orderin base sa stock at estimate ng benta.';
+ if(/fast moving|best.sell|most sold|top selling|slow moving|not selling/.test(q)){
+  const slow=/slow moving|not selling/.test(q),rows=(slow?context.slowMoving:context.fastMoving).filter(p=>slow||safeNumber(p.quantity)>0);
+  return rows.length?replyList(slow?'Mas kaunti ang benta ng mga ito:':'Ito ang mga mabenta:',rows.slice(0,6).map(p=>partReply(p,[`Nabenta: **${units(p.quantity)}**`]))):'Kulang pa ang na-save na benta para masabi ito.';
+ }
+ if(/sales/.test(q)){
+  const data=/today/.test(q)?context.sales.today:/week/.test(q)?context.sales.last7Days:context.sales.last30Days;
+  return `Na-save na benta ${/today/.test(q)?'ngayon':/week/.test(q)?'sa huling 7 araw':'sa huling 30 araw'}: **${money(data.revenue)}**.\n\nDami ng nabenta: ${units(data.quantity)} unit.`;
+ }
+ if(/demand|forecast|prediction/.test(q)){
+  if(!context.demandEstimate.available)return 'Wala pang estimate ng benta. Tingnan ang Plano ng stock para ma-check ito.';
+  const rows=context.searchTerm?context.matchingDemand:context.demandLeaders;
+  return rows.length?replyList(`Posibleng mabenta sa ${context.demandEstimate.horizonDays} araw:`,rows.slice(0,6).map(p=>partReply(p,[
+   `Puwedeng mabenta: **${units(p.predicted_quantity)} ${partUnit(p,true)}**`,
+   context.searchTerm?stockLine(p):null,
+   context.searchTerm?`Susunod na order: ${units(p.recommended_quantity)} ${partUnit(p,true)}`:null
+  ])),'Estimate lang ito. Iba ang posibleng benta sa dami ng bibilhin ngayon.'):'Wala pang estimate para sa piyesang ito.';
+ }
+ if(context.searchTerm){
+  return context.matchingProducts.length?replyList('Ito ang nakita sa mga record:',context.matchingProducts.slice(0,6).map(p=>partReply(p,[stockLine(p),/price/.test(q)?`Presyo: **${money(p.selling_price)}** bawat ${partUnit(p,true)}`:null,/where/.test(q)?`Nakalagay sa: ${p.location||'Wala pang nakalagay na lokasyon'}`:null]))):'Walang mahanap na piyesa. Subukan ang part number o brand.';
+ }
+ return null;
 }
+
 async function cashierAnswer(message,fil){
  const q=normalizeQuestion(message);
  if(/cost|capital|profit|revenue|sales|benta|forecast|demand|supplier|utang/.test(q))return {answer:fil?'Para sa ulat ng benta, utang, o pagpaplano, tanungin ang may-ari. Makakatulong ako sa paghahanap, presyo at stock ng piyesa.':'Ask the owner about sales reports, customer balances or planning. I can help find parts, selling prices and stock.',mode:'database',model:null};
@@ -567,7 +440,7 @@ async function cashierAnswer(message,fil){
  if(/out of stock/.test(q))query=query.eq('stock_status','out');else if(/low stock/.test(q))query=query.eq('stock_status','low');
  else if(term)query=query.or((terms.length?terms:[term]).map(sanitizeSearchTerm).filter(Boolean).flatMap(t=>[`description.ilike.%${t}%,part_number.ilike.%${t}%,barcode.ilike.%${t}%,alias_text.ilike.%${t}%`]).join(','));
  const {data,error}=await query.order('description').limit(8);if(error)throw error;
- return {answer:(fil?'Mula sa tala ng tindahan: ':'Store records: ')+(data.length?data.map(p=>`${p.part_number||''} ${p.description}: ${units(p.current_stock)} ${p.unit||'units'}${/price/.test(q)?`, ${money(p.selling_price)}`:''}${/where/.test(q)?`, ${p.location|| (fil?'Walang naitalang lokasyon':'No saved location')}`:''}`).join('; '):(fil?'Walang katugmang piyesa.':'No matching parts.')),mode:'database',model:null};
+ return {answer:data.length?replyList(fil?'Ito ang nakita sa mga record:':'Here are the saved parts:',data.map(p=>partReply(p,[`Stock: ${units(p.current_stock)} ${partUnit(p,fil)}`,/price/.test(q)?`${fil?'Presyo':'Price'}: **${money(p.selling_price)}**`:null,/where/.test(q)?`${fil?'Nakalagay sa':'Location'}: ${p.location||(fil?'Wala pang nakalagay':'Not saved yet')}`:null]))):(fil?'Walang mahanap na piyesa.':'No matching parts.'),mode:'database',model:null};
 }
 export async function answerAssistant(message,language,role) {
  const fil=language==='fil'||isTagalog(message),definition=explainParts(message,fil);
@@ -578,5 +451,5 @@ export async function answerAssistant(message,language,role) {
  if(answer)return {answer,mode:'database',model:null,updatedAt:new Date().toISOString()};
  const integration=await getIntegration('gemini');
  if(integrationReady('gemini',integration)){try{return {answer:await geminiAnswer(message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,'[email removed]'),context,fil?'fil':'en'),mode:'gemini',model:integration.model};}catch{console.error('Assistant AI unavailable; using store guidance.');}}
- return {answer:fil?'Maaari kong tingnan ang stock, presyo, benta, supplier, at inaasahang demand. Subukan ang part number o itanong: “Alin ang kailangang dagdagan ng stock?”':'I can check stock, prices, sales, suppliers and expected demand. Try a part number or ask “Which parts need restocking?”',mode:'database',model:null};
+ return {answer:fil?'Puwede kitang tulungan sa stock, presyo at benta. Subukan ang part number o itanong: “Ano ang dapat orderin?”':'I can check stock, prices, sales, suppliers and expected demand. Try a part number or ask “Which parts need restocking?”',mode:'database',model:null};
 }

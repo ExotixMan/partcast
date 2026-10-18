@@ -63,7 +63,7 @@ test('offline baskets project every line and retry one stable operation ID',asyn
 test('Tagalog terminology finds saved parts and distinguishes related cooling components',async()=>{
  await saveCache('terms-staff','/api/offline-snapshot',{products:[{id:'oil',description:'Engine oil',part_number:'OIL1',current_stock:2,minimum_stock:0,unit:'bottles',selling_price:250}]});
  const oil=await answerLocally('Magkano ang langis ng makina?','terms-staff',false,'fil');assert.match(oil.answer,/250.00/);assert.match(oil.answer,/Engine oil/);
- const cooling=await answerLocally('Pareho ba coolant at radiator?','terms-staff',true,'fil');assert.match(cooling.answer,/magkaibang produkto/);assert.equal(cooling.mode,'local');
+ const cooling=await answerLocally('Pareho ba coolant at radiator?','terms-staff',true,'fil');assert.match(cooling.answer,/magkaibang produkto/i);assert.equal(cooling.mode,'local');
  await clearAccount('terms-staff');
 });
 test('basket amounts use decimal cent arithmetic instead of binary product rounding',async()=>{

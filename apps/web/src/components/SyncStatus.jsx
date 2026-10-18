@@ -100,7 +100,7 @@ export default function SyncStatus() {
         }) : t('Saving inventory for offline use…')}</span>
       <div className="ml-auto flex flex-wrap gap-2">
         {items.length > 0 && <button className="min-h-11 rounded-lg px-2 font-semibold text-slate-700 underline underline-offset-4" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{t("Review changes")}</button>}
-        <button className={`${items.length || error || !online ? 'inline-flex' : 'hidden sm:inline-flex'} min-h-11 items-center gap-2 rounded-lg px-2 font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50`} disabled={!navigator.onLine || busy} onClick={async () => {
+        <button className={`${items.length || error || !online ? 'inline-flex' : 'hidden'} min-h-11 items-center gap-2 rounded-lg px-2 font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50`} disabled={!navigator.onLine || busy} onClick={async () => {
           setBusy(true);
           setError('');
           try {

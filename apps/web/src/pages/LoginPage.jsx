@@ -148,7 +148,7 @@ export default function LoginPage() {
     }
   }
   return <div className="flex min-h-screen flex-col bg-[#f8f9fb] px-4 py-6 sm:px-8 sm:py-10">
-    <header className="mx-auto flex w-full max-w-5xl items-center gap-3">
+    <header className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-3">
       <span className="grid h-12 w-12 place-items-center rounded-2xl bg-red-50 text-red-600"><Boxes aria-hidden="true" size={25} /></span>
       <div className="min-w-0"><p className="text-xl font-bold tracking-tight text-slate-900">{t("PartCast")}</p><p className="text-sm text-slate-500">{t("NPG Auto Parts")}</p></div><div className="ml-auto shrink-0"><Preferences /></div>
     </header>

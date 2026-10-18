@@ -17,7 +17,7 @@ const daily = [{
 }, {
   to: '/forecast',
   label: 'Demand planning',
-  hint: 'Plan the next stock order',
+  hint: 'See what may sell next',
   icon: ChartNoAxesCombined
 }, {
   to: '/counter',
@@ -81,7 +81,7 @@ function NavigationItem({
   useLocale();
   return <NavLink to={item.to} end={item.end} onClick={close} className={({
     isActive
-  }) => `group flex min-h-12 items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${isActive ? 'bg-red-50 font-bold text-red-700' : 'font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}>
+  }) => `group flex min-h-14 items-center gap-3 rounded-xl px-3 py-3 text-base transition ${isActive ? 'border-l-4 border-red-600 bg-red-50 font-bold text-red-800' : 'border-l-4 border-transparent font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-950'}`}>
     <item.icon size={20} strokeWidth={1.8} className="shrink-0" />
     <span className="min-w-0"><span className="block">{t(item.label)}</span>{item.hint && <span className="mt-0.5 block text-xs font-normal text-slate-600">{t(item.hint)}</span>}</span>
     <ChevronRight size={15} className="ml-auto shrink-0 opacity-40" aria-hidden="true" />
@@ -171,7 +171,7 @@ export default function AppShell() {
       </aside>
     </div>}
     <div className="min-w-0 lg:pl-64" inert={open ? true : undefined}>
-      <header className="sticky top-0 z-20 flex min-h-18 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-20 flex min-h-18 items-center gap-2 border-b border-slate-200 bg-white px-3 py-3 sm:px-6 lg:px-8">
         <button aria-label={t("Open navigation")} aria-expanded={open} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-700 lg:hidden" onClick={() => setOpen(true)}><Menu size={21} /></button>
         <div className="hidden min-w-0 sm:block"><p className="truncate text-sm font-semibold text-slate-900">{t(current?.label) || t('PartCast')}</p><p className="text-xs text-slate-500">{t("NPG Auto Parts")}</p></div>
         <div className="ml-auto flex shrink-0 items-center gap-2"><button aria-label={t("Open Store Assistant")} className="btn-secondary hidden lg:inline-flex" onClick={help}><CircleHelp size={18} />{t("Need help?")}</button><Preferences /><NotificationCenter /></div>

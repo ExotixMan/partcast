@@ -150,6 +150,7 @@ export default function ForecastPage({demo=false}) {
       {forecastProducts.length > 0 ? <>
         <div className="grid gap-4 border-b border-slate-100 p-4 sm:p-5 lg:grid-cols-2"><div><label className="label" htmlFor="forecast-part-search">{t("Search by part number or name")}</label><div className="relative"><Search size={18} aria-hidden="true" className="absolute left-3 top-3.5 text-slate-400" /><input id="forecast-part-search" className="input pl-10" type="search" placeholder={t("For example: brake pad")} value={query} onChange={event => setQuery(event.target.value)} /></div></div><div><label className="label" htmlFor="forecast-part-choice">{t("Choose a part")}</label><select id="forecast-part-choice" className="input" value={filtered.some(p => p.product_id === selected) ? selected : ''} onChange={event => setSelected(event.target.value)}><option value="" disabled>{filtered.length ? t('Select a part from the list') : t('No matching parts')}</option>{filtered.map(p => <option key={p.product_id} value={p.product_id}>{p.part_number || t('No part number')} · {t(p.description)}</option>)}</select></div>{query && !filtered.length && <p className="text-sm text-slate-600 lg:col-span-2" role="status">{t("No estimated parts match \u201C")}{query}{t("\u201D. Try another part number or clear your search.")}</p>}</div>
         {selectedProduct && <div className="border-b border-slate-100 bg-slate-50 px-4 py-4 sm:px-5"><p className="text-sm font-semibold text-red-700">{selectedProduct.part_number || t('No part number')}</p><h3 className="mt-1 text-lg font-bold text-slate-950">{t(selectedProduct.description)}</h3><p className="mt-2 text-sm text-slate-600"><strong className="text-slate-900">{t("About ")}{units(selectedProduct.predicted_total)}{t(" units")}</strong>{t(" estimated across ")}{selectedProduct.forecast_days}{t(" upcoming days.")}</p></div>}
+        <p className="border-b border-slate-100 px-4 py-4 text-base leading-7 text-slate-700 sm:px-5">{t("Daily estimates are averages. For example, 0.7 a day means about 7 units over 10 days. Some days may have no sales.")}</p>
         {loadingPart ? <Loading label={t("Loading this part’s estimate…")} /> : partError ? <div role="alert" className="p-5 text-sm text-amber-900">{t("This part\u2019s estimate could not be loaded. ")}{partError}<button className="btn-secondary mt-3 block" onClick={load}>{t("Try again")}</button></div> : forecast.length ? <>
           {view === 'chart' ? <><p className="px-4 pt-5 text-sm text-slate-600 sm:px-5">{t("Estimated units customers may buy each day")}</p><div className="h-[300px] px-2 pb-2 pt-5 sm:h-[360px] sm:px-5" role="img" aria-label={t("Estimated daily sales for {v0}. Use Daily list to read the values.", {
               v0: selectedProduct?.description || t('the selected part')
@@ -159,12 +160,12 @@ export default function ForecastPage({demo=false}) {
                   bottom: 8,
                   left: 0
                 }}><CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="forecast_date" tick={{
-                    fontSize: 12,
-                    fill: '#64748b'
+                    fontSize: 14,
+                    fill: '#475569'
                   }} tickFormatter={day} minTickGap={30} /><YAxis width={40} tick={{
-                    fontSize: 12,
-                    fill: '#64748b'
-                  }} /><Tooltip labelFormatter={day} formatter={value => [units(value), 'Estimated units']} contentStyle={{
+                    fontSize: 14,
+                    fill: '#475569'
+                  }} /><Tooltip labelFormatter={day} formatter={value => [units(value), t('Estimated units')]} contentStyle={{
                     borderRadius: 12,
                     border: '1px solid #e2e8f0'
                   }} /><Line type="monotone" dataKey="predicted_quantity" stroke="#dc2626" strokeWidth={3} dot={false} /></LineChart></ResponsiveContainer></div></> : <div className="max-h-[380px] overflow-y-auto"><table className="w-full text-left text-sm"><caption className="sr-only">{t("Daily sales estimates for ")}{selectedProduct?.description}</caption><thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th scope="col" className="px-5 py-3 font-semibold">{t("Date")}</th><th scope="col" className="px-5 py-3 text-right font-semibold">{t("Estimated units sold")}</th></tr></thead><tbody className="divide-y divide-slate-100">{forecast.map(row => <tr key={`${row.run_id}-${row.forecast_date}`}><td className="px-5 py-3">{day(row.forecast_date)}</td><td className="px-5 py-3 text-right font-semibold">{units(row.predicted_quantity)}</td></tr>)}</tbody></table></div>}
