@@ -107,9 +107,9 @@ test('sign-in connection failures show a retry action and release the submit but
  await expect(page.getByText(/Cannot reach the store server/)).toHaveCount(0);
  await page.getByLabel('Email address').fill('staff@example.test');
  await page.getByLabel('Password',{exact:true}).fill('test-only-password');
- await page.getByRole('button',{name:'Sign in securely'}).click();
+ await page.getByRole('button',{name:'Continue'}).click();
  await expect(page.getByText(/Cannot reach the sign-in service/)).toBeVisible({timeout:20000});
- await expect(page.getByRole('button',{name:'Sign in securely'})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Continue'})).toBeEnabled();
 });
 
 test('reports download Excel and reject an HTML page returned by a misconfigured API',async({page,context})=>{
@@ -196,7 +196,22 @@ test('light sign-in supports password visibility on a phone',async({page,context
  await page.getByRole('button',{name:'Show password',exact:true}).click();await expect(password).toHaveAttribute('type','text');
  await page.getByRole('button',{name:'Hide password',exact:true}).click();await expect(password).toHaveAttribute('type','password');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await page.screenshot({path:'/tmp/partcast-redesign-login.png',fullPage:true});
+ await password.fill('');
+ await password.blur();
+ for(const [name,width,height] of [['phone',320,840],['tablet',820,1180],['desktop',1440,1000]]){
+  await page.setViewportSize({width,height});
+  await expect(page.getByRole('heading',{name:'Sign in',exact:true})).toBeVisible();
+  await expect(page.getByRole('list',{name:'Sign-in steps'}).locator('[aria-current="step"]')).toHaveText('1. Password');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(await page.locator('.login-page').evaluate(el=>[el,...el.querySelectorAll('*')].some(node=>getComputedStyle(node).backgroundImage.includes('gradient')))).toBe(false);
+  await page.screenshot({path:`/tmp/partcast-login-${name}.png`,fullPage:true});
+ }
+ await page.setViewportSize({width:320,height:840});await page.getByRole('button',{name:'Text and display'}).click();await page.getByRole('button',{name:'Larger text',exact:true}).click();await page.getByRole('button',{name:'Done',exact:true}).click();
+ await page.getByLabel('Website language').selectOption('fil');await expect(page.getByRole('heading',{name:'Mag-sign in',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Susunod',exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:'/tmp/partcast-login-tagalog.png',fullPage:true});
+ await page.getByRole('button',{name:'Laki ng text at kulay'}).click();await page.getByRole('button',{name:'Gamitin ang dark mode'}).click();await page.getByRole('button',{name:'Tapos na',exact:true}).click();
+ await expect(page.locator('html')).toHaveAttribute('data-theme','dark');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
 for(const size of [{name:'small-phone',width:320,height:740},{name:'tablet',width:820,height:1180},{name:'desktop',width:1440,height:1000}]){

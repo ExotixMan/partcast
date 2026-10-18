@@ -19,6 +19,12 @@ Common Tagalog labels and all assistant layers use familiar store language: stoc
 
 The interface explicitly uses a locally available sans-serif font, increases small text and button labels, improves field borders and separates selected navigation items with a visible edge. **Text and display** opens a simple reading panel with standard/larger text and light/dark choices, saved on the device and available before login. Large text uses an 18-pixel base. Main workflows are checked at 320, 768 and 1440 pixels with large text. Daily forecast averages have a concrete explanation; the quiet sync bar hides its manual-send action when no changes or errors need attention.
 
+## Plain store sign-in
+
+Login uses a single centered form on a solid background, a compact PartCast wordmark and the store name. Password and email-code steps have an active underline. Fields are larger, Show/Hide has a visible label, and the main action appears before resend/change-account links. The email address is read-only once the password session is established, and the six-digit code has its own larger input and instructions. First-account setup uses the same layout. Password verification, required Gmail codes, resend limits, setup requirements and offline session checks remain enforced.
+
+Login styling is scoped to this screen. Light/dark and larger-text preferences remain available before signing in. Input focus uses a clear gray outline, while errors retain red feedback. The production build, 22 web/translation tests and five targeted browser workflows passed; phone, tablet and desktop previews were reviewed, including Tagalog, larger text and the email-code step. Browser checks also verify no gradient backgrounds are present. Updated screenshots are in [design previews](design-previews/README.md).
+
 ## Accessibility and responsive behavior
 
 Controls use at least 44-pixel touch targets, primary fields and buttons generally use 48 pixels, and inputs use 16-pixel text to avoid automatic phone zoom. Text labels accompany actions and stock statuses so meaning does not depend on color. Focus indicators, a skip-to-content link, keyboard-trapped dialogs, Escape closing, focus restoration, and reduced-motion support are included. Optional sections stay open while a user corrects an invalid field.

@@ -421,6 +421,7 @@ test('an incomplete sales-history response keeps the demand page usable and cann
  valid=true;await page.getByRole('button',{name:'Refresh sales data',exact:true}).click();await expect(page.getByText('Record or import actual sales first.',{exact:true})).toBeVisible();expect(errors).toEqual([]);
 });
 test('password is required before Gmail email code; wrong code cannot open the store',async({page,context})=>{
+ await page.setViewportSize({width:390,height:844});
  const calls=[],passwords=[];let verified=false;
  const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'*'};
  await context.route('http://localhost:10000/**',async route=>{
@@ -439,8 +440,10 @@ test('password is required before Gmail email code; wrong code cannot open the s
  await route.fulfill({json:{},headers});
  });
  await page.goto('/counter');await expect(page.getByLabel('Password',{exact:true})).toBeVisible();await expect(page.getByLabel('Email sign-in code')).toHaveCount(0);
- await page.getByLabel('Email address',{exact:true}).fill('staff@example.test');await page.getByLabel('Password',{exact:true}).fill('wrong-password');await page.getByRole('button',{name:'Sign in securely'}).click();await expect(page.getByRole('alert')).toBeVisible();expect(calls).toHaveLength(0);
- await page.getByLabel('Password',{exact:true}).fill('test-only-correct-password');await page.getByRole('button',{name:'Sign in securely'}).click();await expect(page.getByLabel('Email sign-in code')).toBeVisible();await expect.poll(()=>calls.length).toBe(1);await expect(page.getByRole('button',{name:/Resend in/})).toBeDisabled();expect(calls[0].path).toBe('/auth/otp/request');expect(calls[0].body).toEqual({});
+ await page.getByLabel('Email address',{exact:true}).fill('staff@example.test');await page.getByLabel('Password',{exact:true}).fill('wrong-password');await page.getByRole('button',{name:'Continue'}).click();await expect(page.getByRole('alert')).toBeVisible();expect(calls).toHaveLength(0);
+ await page.getByLabel('Password',{exact:true}).fill('test-only-correct-password');await page.getByRole('button',{name:'Continue'}).click();await expect(page.getByLabel('Email sign-in code')).toBeVisible();await expect.poll(()=>calls.length).toBe(1);await expect(page.getByRole('button',{name:/Resend in/})).toBeDisabled();expect(calls[0].path).toBe('/auth/otp/request');expect(calls[0].body).toEqual({});
+ await expect(page.getByLabel('Email address',{exact:true})).toHaveAttribute('readonly','');await expect(page.getByRole('list',{name:'Sign-in steps'}).locator('[aria-current="step"]')).toHaveText('2. Email code');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'/tmp/partcast-login-email-code.png',fullPage:true});
  await page.getByLabel('Email sign-in code').fill('123456');await page.getByRole('button',{name:'Verify code and sign in'}).click();await expect(page.getByRole('alert')).toContainText('code is incorrect');await expect(page.locator('main')).toHaveCount(0);
  await page.getByLabel('Email sign-in code').fill('654321');await page.getByRole('button',{name:'Verify code and sign in'}).click();await expect(page.getByRole('heading',{name:'Hello, Store'})).toBeVisible();expect(passwords).toHaveLength(2);expect(calls.at(-1).body).toEqual({code:'654321'});
 });

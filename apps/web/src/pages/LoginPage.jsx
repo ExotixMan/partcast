@@ -1,6 +1,6 @@
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Boxes, Check, Eye, EyeOff, LockKeyhole, Mail, PackageCheck, Search, ShieldCheck, ShoppingCart } from 'lucide-react';
+import { ArrowRight, Check, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { storeConfigured, storeConnectionIssue } from '../lib/supabase.js';
 import { publicApi, apiConnectionIssue } from '../lib/api.js';
@@ -20,10 +20,9 @@ function PasswordField({
   return <div>
     <label className="label" htmlFor={id}>{t(label)}</label>
     <div className="relative">
-      <LockKeyhole aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={19} />
-      <input id={id} type={visible ? 'text' : 'password'} autoComplete={autoComplete} minLength={minLength} className="input min-h-12 pl-11 pr-14" required value={value} onChange={onChange} aria-describedby={hint ? `${id}-hint` : undefined} />
-      <button type="button" aria-label={t(visible?'Hide {v0}':'Show {v0}',{v0:t(label).toLowerCase()})} aria-pressed={visible} onClick={() => setVisible(current => !current)} className="absolute right-1 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800">
-        {visible ? <EyeOff aria-hidden="true" size={20} /> : <Eye aria-hidden="true" size={20} />}
+      <input id={id} type={visible ? 'text' : 'password'} autoComplete={autoComplete} minLength={minLength} className="input min-h-14 pr-24" required value={value} onChange={onChange} aria-describedby={hint ? `${id}-hint` : undefined} />
+      <button type="button" aria-label={t(visible?'Hide {v0}':'Show {v0}',{v0:t(label).toLowerCase()})} aria-pressed={visible} onClick={() => setVisible(current => !current)} className="absolute right-1 top-1/2 flex min-h-11 -translate-y-1/2 items-center gap-1.5 rounded px-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+        {visible ? <EyeOff aria-hidden="true" size={18} /> : <Eye aria-hidden="true" size={18} />}<span>{visible?t('Hide'):t('Show')}</span>
       </button>
     </div>
     {hint && <p id={`${id}-hint`} className="mt-2 text-sm leading-5 text-slate-500">{t(hint)}</p>}
@@ -147,91 +146,58 @@ export default function LoginPage() {
       setLoading(false);
     }
   }
-  return <div className="flex min-h-screen flex-col bg-[#f8f9fb] px-4 py-6 sm:px-8 sm:py-10">
-    <header className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-3">
-      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-red-50 text-red-600"><Boxes aria-hidden="true" size={25} /></span>
-      <div className="min-w-0"><p className="text-xl font-bold tracking-tight text-slate-900">{t("PartCast")}</p><p className="text-sm text-slate-500">{t("NPG Auto Parts")}</p></div><div className="ml-auto shrink-0"><Preferences /></div>
+  return <div className="login-page flex min-h-[100dvh] flex-col bg-white">
+    <header className="border-b border-slate-200 px-3 py-5 sm:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3">
+        <p className="text-2xl font-bold tracking-tight text-slate-950" aria-label="PartCast">Part<span className="text-red-600">Cast</span><span className="text-red-600">.</span></p>
+        <Preferences />
+      </div>
     </header>
 
-    <div className="mx-auto my-auto grid w-full max-w-5xl gap-10 py-10 lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-20 lg:py-16">
-      <div className="hidden lg:block">
-        <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-red-100 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700"><Check aria-hidden="true" size={16} />{t(" A simpler day at the store")}</p>
-        <h2 className="max-w-md text-4xl font-bold leading-tight tracking-tight text-slate-900">{t("Your parts.")}<br />{t("All in one place.")}</h2>
-        <p className="mt-5 max-w-md text-base leading-7 text-slate-600">{t("Find what you need, keep stock up to date, and know what to order next.")}</p>
-        <div className="mt-8 space-y-5">
-          {[{
-            icon: Search,
-            title: 'Find a part quickly',
-            text: 'Search by its name or part number.'
-          }, {
-            icon: ShoppingCart,
-            title: 'Record a sale',
-            text: 'Choose the part and enter how many you sold.'
-          }, {
-            icon: PackageCheck,
-            title: 'See what needs restocking',
-            text: 'Get a clear list of parts running low.'
-          }].map(({
-            icon: Icon,
-            title,
-            text
-          }) => <div key={title} className="flex items-center gap-4">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600"><Icon aria-hidden="true" size={22} /></span>
-            <div><p className="font-semibold text-slate-800">{t(title)}</p><p className="mt-1 text-sm leading-5 text-slate-500">{t(text)}</p></div>
-          </div>)}
-        </div>
-      </div>
+    <div className="flex flex-1 items-center justify-center px-5 py-9 sm:px-8 sm:py-14">
+      <section className="w-full max-w-[26rem]" aria-labelledby="login-title">
+        <p className="text-sm font-semibold tracking-wide text-slate-600">{t('NPG Auto Parts')}</p>
+        <h1 id="login-title" className="mt-2 text-3xl font-semibold leading-tight tracking-tight text-slate-950">{needsSetup ? t('Create the Super Admin account') : otpMode ? t('Check your email') : t('Sign in')}</h1>
+        <p className="mt-3 text-base leading-7 text-slate-600">{needsSetup ? t('Create the first account once. Have your private setup code ready.') : otpMode ? (otpSent?t('Your password is correct. Enter the code sent to your email to finish signing in.'):t('Your password is correct. Request an email code to finish signing in.')) : t('Use your staff email and password.')}</p>
 
-      <section className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="login-title">
-        <p className="text-sm font-semibold text-red-600">{needsSetup ? t('Welcome to your store') : t('Welcome back')}</p>
-        <h1 id="login-title" className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{needsSetup ? t('Create the Super Admin account') : otpMode ? t('Check your email') : t('Sign in to PartCast')}</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">{needsSetup ? t('Create the first account once. Have your private setup code ready.') : otpMode ? (otpSent?t('Your password is correct. Enter the code sent to your email to finish signing in.'):t('Your password is correct. Request an email code to finish signing in.')) : t('First enter your password. Then confirm the code sent to your email.')}</p>
+        {!needsSetup && <ol className="mt-6 grid grid-cols-2 gap-5 text-sm" aria-label={t('Sign-in steps')}>
+          <li aria-current={!otpMode?'step':undefined} className={`flex min-h-11 items-center gap-2 border-b-2 pb-2 ${otpMode?'border-slate-200 text-slate-600':'border-red-600 font-semibold text-slate-950'}`}>{t('1. Password')}{otpMode&&<Check aria-hidden="true" className="shrink-0 text-emerald-700" size={17}/>}</li>
+          <li aria-current={otpMode?'step':undefined} className={`flex min-h-11 items-center border-b-2 pb-2 ${otpMode?'border-red-600 font-semibold text-slate-950':'border-slate-200 text-slate-600'}`}>{t('2. Email code')}</li>
+        </ol>}
 
-        {!storeConfigured && <p role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t(storeConnectionIssue)}</p>}
-        {serverError && <div role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><p>{t(serverError)}</p><button type="button" className="btn-secondary mt-3 w-full border-amber-200 bg-white text-amber-900" disabled={checkingServer} onClick={checkServer}>{checkingServer ? t('Checking connection…') : t('Check connection again')}</button></div>}
-        {error && <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800">{t(error)}</div>}
+        {!storeConfigured && <p role="alert" className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t(storeConnectionIssue)}</p>}
+        {serverError && <div role="alert" className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><p>{t(serverError)}</p><button type="button" className="btn-secondary mt-3 w-full border-amber-200 bg-white text-amber-900" disabled={checkingServer} onClick={checkServer}>{checkingServer ? t('Checking connection…') : t('Check connection again')}</button></div>}
+        {error && <div role="alert" className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-base leading-7 text-red-800">{t(error)}</div>}
 
-        {needsSetup ? <form onSubmit={submitSetup} className="mt-7 space-y-5" aria-busy={loading}>
-          <PasswordField id="setup-secret" label={t("Setup secret")} value={setup.setupSecret} onChange={e => setSetup({
-            ...setup,
-            setupSecret: e.target.value
-          })} autoComplete="off" hint={t("This is the private setup code provided by the person who set up PartCast.")} />
-          <div><label htmlFor="owner-name" className="label">{t("Owner full name")}</label><input id="owner-name" minLength={2} maxLength={120} autoComplete="name" className="input min-h-12" required value={setup.fullName} onChange={e => setSetup({
-              ...setup,
-              fullName: e.target.value
-            })} /></div>
-          <div><label htmlFor="owner-email" className="label">{t("Email address")}</label><input id="owner-email" maxLength={254} type="email" autoComplete="email" className="input min-h-12" required value={setup.email} onChange={e => setSetup({
-              ...setup,
-              email: e.target.value
-            })} /></div>
-          <PasswordField id="owner-password" value={setup.password} onChange={e => setSetup({
-            ...setup,
-            password: e.target.value
-          })} autoComplete="new-password" minLength={10} hint={t("Use at least 10 characters. Keep your password private.")} />
-          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-12 w-full">{loading ? t('Creating account…') : t('Create Super Admin account')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
-        </form> : <form onSubmit={submitLogin} className="mt-7 space-y-5" aria-busy={loading}>
-          <div><label htmlFor="login-email" className="label">{t("Email address")}</label><div className="relative"><Mail aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={19} /><input id="login-email" type="email" autoComplete="email" spellCheck={false} autoCapitalize="none" className="input min-h-12 pl-11" required value={otpMode ? session.user.email : login.email} onChange={e => setLogin({
-                ...login,
-                email: e.target.value
-              })} placeholder={t("Your email address")} maxLength={254} readOnly={otpMode && otpSent} /></div></div>
-          <ol className="flex gap-3 text-sm" aria-label={t("Sign-in steps")}><li className="flex-1 rounded-lg bg-slate-50 p-3">{t("1. Password")}{otpMode && <Check className="ml-2 inline text-emerald-600" size={16} />}</li><li className={`flex-1 rounded-lg p-3 ${otpMode ? 'bg-red-50 font-semibold text-red-700' : 'bg-slate-50 text-slate-500'}`}>{t("2. Email code")}</li></ol>
-          {otpMode ? <div><label className="label" htmlFor="login-otp">{t("Email sign-in code")}</label><input id="login-otp" className="input" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" value={otp} onChange={e => setOtp(e.target.value.replace(/[^0-9]/g, ''))} /><p className="mt-2 text-sm text-slate-500">{otpSent?t("Check your inbox and spam folder. Enter the code from your most recent email."):t('Request a code first. If sending fails, check the message above.')}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" disabled={loading || resendSeconds > 0} onClick={sendOtp}>{resendSeconds ? t("Resend in {v0}s", {
-                  v0: resendSeconds
-                }) : otpSent ? t('Resend code') : t('Send email code')}</button><button type="button" className="btn-secondary" disabled={loading} onClick={signOut}>{t("Use another account")}</button></div></div> : <PasswordField id="login-password" value={login.password} onChange={e => setLogin({
-            ...login,
-            password: e.target.value
-          })} autoComplete="current-password" />}
+        {needsSetup ? <form onSubmit={submitSetup} className="mt-6 space-y-5" aria-busy={loading}>
+          <PasswordField id="setup-secret" label={t('Setup secret')} value={setup.setupSecret} onChange={e => setSetup({...setup,setupSecret:e.target.value})} autoComplete="off" hint={t('This is the private setup code provided by the person who set up PartCast.')} />
+          <div><label htmlFor="owner-name" className="label">{t('Owner full name')}</label><input id="owner-name" minLength={2} maxLength={120} autoComplete="name" className="input min-h-14" required value={setup.fullName} onChange={e => setSetup({...setup,fullName:e.target.value})} /></div>
+          <div><label htmlFor="owner-email" className="label">{t('Email address')}</label><input id="owner-email" maxLength={254} type="email" autoComplete="email" className="input min-h-14" required value={setup.email} onChange={e => setSetup({...setup,email:e.target.value})} /></div>
+          <PasswordField id="owner-password" value={setup.password} onChange={e => setSetup({...setup,password:e.target.value})} autoComplete="new-password" minLength={10} hint={t('Use at least 10 characters. Keep your password private.')} />
+          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-14 w-full">{loading ? t('Creating account…') : t('Create Super Admin account')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
+        </form> : <form onSubmit={submitLogin} className="mt-6 space-y-5" aria-busy={loading}>
+          <div><label htmlFor="login-email" className="label">{t('Email address')}</label><input id="login-email" type="email" autoComplete="email" spellCheck={false} autoCapitalize="none" className={`input min-h-14 ${otpMode?'bg-slate-50':''}`} required value={otpMode ? session.user.email : login.email} onChange={e => setLogin({...login,email:e.target.value})} placeholder={t('Your email address')} maxLength={254} readOnly={otpMode} /></div>
+          {otpMode ? <div>
+            <label className="label" htmlFor="login-otp">{t('Email sign-in code')}</label>
+            <input id="login-otp" className="input min-h-16 text-center font-mono text-2xl tracking-[0.35em]" inputMode="numeric" autoComplete="one-time-code" aria-describedby="login-otp-help" required minLength={6} maxLength={6} pattern="[0-9]{6}" value={otp} onChange={e => setOtp(e.target.value.replace(/[^0-9]/g, ''))} />
+            <p id="login-otp-help" className="mt-3 text-sm leading-6 text-slate-600">{otpSent?t('Check your inbox and spam folder. Enter the code from your most recent email.'):t('Request a code first. If sending fails, check the message above.')}</p>
+          </div> : <PasswordField id="login-password" value={login.password} onChange={e => setLogin({...login,password:e.target.value})} autoComplete="current-password" />}
 
-          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-12 w-full">{loading ? t('Signing in…') : otpMode ? t('Verify code and sign in') : t('Sign in securely')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
+          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-14 w-full">{loading ? t('Signing in…') : otpMode ? t('Verify code and sign in') : t('Continue')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
+
+          {otpMode && <div className="flex flex-wrap items-center justify-between gap-2">
+            <button type="button" className="min-h-11 rounded px-1 text-sm font-semibold text-red-700 underline underline-offset-4 disabled:cursor-not-allowed disabled:text-slate-500 disabled:no-underline" disabled={loading || resendSeconds > 0} onClick={sendOtp}>{resendSeconds ? t('Resend in {v0}s',{v0:resendSeconds}) : otpSent ? t('Resend code') : t('Send email code')}</button>
+            <button type="button" className="min-h-11 rounded px-1 text-sm font-semibold text-slate-600 underline underline-offset-4 disabled:cursor-not-allowed disabled:opacity-50" disabled={loading} onClick={signOut}>{t('Use another account')}</button>
+          </div>}
         </form>}
 
-        <div className="mt-6 border-t border-slate-100 pt-5">
-          <p className="text-sm font-semibold text-slate-700">{t("Need help signing in?")}</p>
-          <p className="mt-1 text-sm leading-6 text-slate-500">{otpMode?t('Ask your Super Admin to check Gmail settings if an email code cannot be sent.'):t("Ask your store owner to check your account or password.")}</p>
+        <div className="mt-7 border-t border-slate-200 pt-5">
+          <p className="text-sm font-semibold text-slate-800">{t('Need help signing in?')}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-600">{otpMode?t('Ask your Super Admin to check Gmail settings if an email code cannot be sent.'):t('Ask your store owner to check your account or password.')}</p>
         </div>
       </section>
     </div>
 
-    <footer className="mx-auto flex max-w-5xl items-center justify-center gap-2 text-center text-xs leading-5 text-slate-500 sm:text-sm"><ShieldCheck aria-hidden="true" className="shrink-0" size={17} /><p>{t("Your account is for your use only. You need internet to sign in.")}</p></footer>
+    <footer className="px-5 pb-6 text-center text-sm text-slate-600">{t('Internet is needed to sign in.')}</footer>
   </div>;
 }
