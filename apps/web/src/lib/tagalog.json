@@ -1371,5 +1371,20 @@
   "Save supplier and add {v0}": "I-save ang supplier at idagdag ang {v0}",
   "Save supplier and add": "I-save ang supplier at idagdag",
   "Choose an active part and supplier.": "Pumili ng aktibong piyesa at supplier.",
-  "This part is no longer available. Refresh the inventory and try again.": "Hindi na available ang piyesang ito. I-refresh ang stock at subukan ulit."
+  "This part is no longer available. Refresh the inventory and try again.": "Hindi na available ang piyesang ito. I-refresh ang stock at subukan ulit.",
+  "Close": "Isara",
+  "Change supplier": "Palitan ang supplier",
+  "Loading supplier details…": "Kinukuha ang detalye ng supplier…",
+  "Showing saved stock. Connect to update suppliers or send an email.": "Na-save na stock ang nakikita mo. Kumonekta sa internet para mag-update ng supplier o mag-email.",
+  "The list could not refresh. Your last loaded records are still shown.": "Hindi ma-refresh ang listahan. Nakikita mo pa rin ang huling na-load na mga tala.",
+  "Supplier emails start with the parts shown on this page.": "Ang email sa supplier ay magsisimula sa mga piyesang nasa pahinang ito.",
+  "Check sending result": "Tingnan kung naipadala",
+  "Retry same request": "Subukan ulit ang parehong request",
+  "Reset email draft": "Ulitin ang email draft",
+  "Check the sending result before editing or resending this request.": "Tingnan muna kung naipadala bago baguhin o ipadala ulit.",
+  "Email was not sent. Review the details and try again.": "Hindi naipadala ang email. Tingnan ang detalye at subukan ulit.",
+  "No sending record was found. Retry this same request to check or send it once.": "Walang tala ng pagpapadala. Subukan ulit ang parehong request para tingnan o ipadala ito nang isang beses.",
+  "Delivery is not confirmed. Check Gmail Sent or contact the supplier before creating another request.": "Hindi pa tiyak kung naipadala. Tingnan ang Sent sa Gmail o tanungin ang supplier bago gumawa ng bagong request.",
+  "The supplier email address changed. Close this request, refresh the list and review the recipient again.": "Nagbago ang email ng supplier. Isara ang request, i-refresh ang listahan at tingnan ulit ang tatanggap.",
+  "Restock setup is incomplete. Ask the Super Admin to apply migration 0011_restock_workflows.sql, then refresh the page.": "Kulang pa ang setup ng Restock. Ipa-run sa Super Admin ang 0011_restock_workflows.sql, saka i-refresh ang pahina."
 }

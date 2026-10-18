@@ -11,6 +11,7 @@ const [schema, rls, training, offline, workflows, roles, login] = await Promise.
 const restock=await read('0008_restock_threshold.sql');
 const smallOrders=await read('0009_small_restock_orders.sql');
 const salePrices=await read('0010_sale_price_validation.sql');
+const restockWorkflows=await read('0011_restock_workflows.sql');
 const body = sql => sql.replace(/^begin;\s*$/gm, '').replace(/^commit;\s*$/gm, '').trim();
 const baseline = [...schema.matchAll(/^create table public\.(\w+) \(\n([\s\S]*?)\n\);/gm)];
 const business = [...baseline.map(([_, name]) => name), 'stock_batches', 'customer_debts', 'debt_payments', 'stock_notifications', 'notification_reads'];
@@ -187,6 +188,8 @@ ${body(restock)}
 ${body(smallOrders)}
 
 ${body(salePrices)}
+
+${body(restockWorkflows)}
 
 -- Private buckets stay private when upgrading an existing store.
 update storage.buckets set public=false where id in ('partcast-photos','partcast-models','partcast-backups');

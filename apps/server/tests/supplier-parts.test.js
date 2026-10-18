@@ -12,7 +12,7 @@ async function fixture(run){
  const products=[{id:p1,description:'Brake pad',part_number:'BP-001',unit_cost:100,active:true},{id:p2,description:'Oil filter',part_number:'OF-001',unit_cost:50,active:true},{id:p3,description:'Air filter',part_number:'AF-001',unit_cost:40,active:true},{id:inactive,description:'Removed part',active:false}];
  const links=[{product_id:p1,supplier_id:supplier,is_primary:true,latest_unit_cost:90,lead_time_days:3},{product_id:p2,supplier_id:other,is_primary:true,latest_unit_cost:50,lead_time_days:5},{product_id:p2,supplier_id:supplier,is_primary:false,latest_unit_cost:55,lead_time_days:9},{product_id:inactive,supplier_id:supplier,is_primary:true,latest_unit_cost:10}];
  const recommendations=products.filter(p=>p.active).map(p=>({product_id:p.id,part_number:p.part_number,description:p.description,unit:'pcs',current_stock:p.id===p1?0:8,predicted_quantity:0,recommended_quantity:p.id===p1?2:0,status:p.id===p1?'out_of_stock':'ok',supplier_id:p.id===p1?supplier:other,supplier_name:p.id===p1?'Selected supplier':'Main supplier',supplier_email:p.id===p1?'selected@example.test':'main@example.test',estimated_unit_cost:p.unit_cost}));
- const calls=[],writes=[],messages=[];
+ const calls=[],writes=[],messages=[],rpcCalls=[];
  adminDb.from=table=>{
   const filters=[],membership=[];let range=null,upsert=null;
   const query={
@@ -32,15 +32,19 @@ async function fixture(run){
   return query;
  };
  globalThis.fetch=async(url,options)=>{
+  if(String(url)==='http://127.0.0.1:9/rest/v1/rpc/save_product_supplier'){
+   rpcCalls.push({body:JSON.parse(options.body),authorization:new Headers(options.headers).get('authorization')});
+   return new Response(JSON.stringify({product_id:p1,supplier_id:other,is_primary:true}),{headers:{'content-type':'application/json'}});
+  }
   if(String(url).startsWith('http://127.0.0.1:'))return previous.fetch(url,options);
   if(url==='https://oauth2.googleapis.com/token')return new Response(JSON.stringify({access_token:'fixture-access',scope:'https://www.googleapis.com/auth/gmail.send',expires_in:3600}));
   assert.equal(url,'https://gmail.googleapis.com/gmail/v1/users/me/messages/send');messages.push(Buffer.from(JSON.parse(options.body).raw,'base64url').toString());return new Response('{"id":"fixture-message"}');
  };
- const app=express();app.use(express.json());app.use((req,res,next)=>{req.user={id:'11111111-1111-4111-8111-111111111111',role:req.headers['x-test-role']||'owner'};next();});app.use('/api/admin',admin);app.use('/api',api);app.use(errorHandler);
+ const app=express();app.use(express.json());app.use((req,res,next)=>{req.user={id:'11111111-1111-4111-8111-111111111111',role:req.headers['x-test-role']||'owner',accessToken:'fixture-verified-session'};next();});app.use('/api/admin',admin);app.use('/api',api);app.use(errorHandler);
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
  const base=`http://127.0.0.1:${server.address().port}`;
  const request=(path,body,role='owner')=>fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','x-test-role':role},...(body?{body:JSON.stringify(body)}:{})});
- try{await run({request,links,calls,writes,messages,suppliers,products,recommendations});}
+ try{await run({request,links,calls,writes,messages,suppliers,products,recommendations,rpcCalls});}
  finally{adminDb.from=previous.from;globalThis.fetch=previous.fetch;await new Promise(resolve=>server.close(resolve));}
 }
 
@@ -84,4 +88,14 @@ test('supplier catalogs read beyond 1000 assignments with bounded product querie
  const response=await request(`/api/reorder?onlyNeeded=false&supplierId=${supplier}`);assert.equal(response.status,200);assert.equal((await response.json()).data.length,1003);
  assert(calls.filter(c=>c.table==='product_suppliers').some(c=>c.range[0]===1000));
  assert(calls.filter(c=>c.table==='reorder_recommendations').every(c=>c.membership[0][1].length<=200));
+}));
+
+test('supplier directory reads all pages and the assignment API validates before one atomic verified-user RPC',async()=>fixture(async({request,suppliers,rpcCalls,writes})=>{
+ for(let i=0;i<1001;i++)suppliers.push({id:`supplier-${i}`,name:`Supplier ${i}`,active:true});
+ let response=await request('/api/suppliers');assert.equal(response.status,200);assert.equal((await response.json()).data.length,1003);
+ const body={latest_unit_cost:123.45,lead_time_days:9,is_primary:true};
+ for(const [productId,supplierId] of [['invalid',other],[p1,'invalid']])assert.equal((await request(`/api/products/${productId}/suppliers/${supplierId}`,body)).status,400);
+ assert.equal(rpcCalls.length,0);
+ response=await request(`/api/products/${p1}/suppliers/${other}`,body);assert.equal(response.status,200);assert.equal(rpcCalls.length,1);assert.equal(rpcCalls[0].authorization,'Bearer fixture-verified-session');
+ assert.deepEqual(rpcCalls[0].body,{p_product_id:p1,p_supplier_id:other,p_latest_unit_cost:123.45,p_lead_time_days:9,p_is_primary:true,p_supplier_part_number:null});assert.equal(writes.length,0);
 }));

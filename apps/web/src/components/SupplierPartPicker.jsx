@@ -10,6 +10,7 @@ export default function SupplierPartPicker({supplierId,supplierName,choices,item
  const [catalog,setCatalog]=useState([]),[count,setCount]=useState(0),[catalogLoading,setCatalogLoading]=useState(false),[catalogError,setCatalogError]=useState(''),[saving,setSaving]=useState('');
  const selected=new Set(itemIds),available=choices.filter(row=>!selected.has(row.product_id)),full=itemIds.length>=100;
  const requestNumber=useRef(0),statusId=useId();
+ useEffect(()=>{if(choiceId&&!choices.some(row=>row.product_id===choiceId&&!itemIds.includes(row.product_id)))setChoiceId('');},[choiceId,choices,itemIds]);
  useEffect(()=>{
   if(!open)return;
   const request=++requestNumber.current;
@@ -17,6 +18,7 @@ export default function SupplierPartPicker({supplierId,supplierName,choices,item
   api.get(`/api/products?page=${page}&pageSize=10&q=${encodeURIComponent(query)}`).then(result=>{
    if(request!==requestNumber.current)return;
    if(!Array.isArray(result.data)||!Number.isFinite(result.count))throw new Error('The store returned incomplete information. Please try again.');
+   if(page>Math.max(1,Math.ceil(result.count/10))){setPage(Math.max(1,Math.ceil(result.count/10)));return;}
    setCatalog(result.data);setCount(result.count);
   }).catch(error=>{if(request===requestNumber.current)setCatalogError(error.message);})
    .finally(()=>{if(request===requestNumber.current)setCatalogLoading(false);});
@@ -35,7 +37,7 @@ export default function SupplierPartPicker({supplierId,supplierName,choices,item
   setSaving(product.id);setCatalogError('');onSaving(true);
   try{
    const result=await api.post(`/api/suppliers/${supplierId}/parts`,{product_id:product.id});
-   if(!result.data?.product_id)throw new Error('The store returned incomplete information. Please try again.');
+   if(result.data?.product_id!==product.id)throw new Error('The store returned incomplete information. Please try again.');
    onAdd(result.data);
   }catch(error){setCatalogError(error.message);}
   finally{setSaving('');onSaving(false);}

@@ -29,7 +29,8 @@ begin
   end if;
   if to_regprocedure('public.issue_email_challenge(uuid,uuid,text)') is null
      or to_regprocedure('public.verify_email_challenge(uuid,uuid,text)') is null
-     or to_regprocedure('public.sync_store_operation(uuid,jsonb)') is null then
+     or to_regprocedure('public.sync_store_operation(uuid,jsonb)') is null
+     or to_regprocedure('public.save_product_supplier(uuid,uuid,numeric,integer,boolean,text)') is null then
     raise exception 'Required login or stock-operation functions are missing.';
   end if;
   if has_function_privilege('authenticated','public.issue_email_challenge(uuid,uuid,text)','EXECUTE')

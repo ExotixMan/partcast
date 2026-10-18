@@ -232,10 +232,17 @@ router.get('/transactions', async (req, res, next) => {
 
 router.get('/suppliers', async (req, res, next) => {
   try {
-    const { data, error } = await adminDb.from('suppliers').select(req.user.role==='cashier'?'id,name':'*').eq('active',true).order('name');
-    if (error) throw error;
+    const data=await fetchAll(()=>adminDb.from('suppliers').select(req.user.role==='cashier'?'id,name':'*').eq('active',true).order('name').order('id'));
     res.json({ data });
   } catch (e) { next(e); }
+});
+
+router.get('/products/:id/suppliers',rolesAdmin,async(req,res,next)=>{
+  try{
+    const productId=z.string().uuid().parse(req.params.id);
+    const data=await fetchAll(()=>adminDb.from('product_suppliers').select('*,supplier:suppliers!inner(id,name,active)').eq('product_id',productId).eq('supplier.active',true).order('supplier_id'));
+    res.json({data});
+  }catch(error){next(error);}
 });
 
 // Explicitly link an inventory part without replacing its main supplier or
@@ -277,12 +284,13 @@ router.post('/suppliers', rolesAdmin, async (req, res, next) => {
 
 router.patch('/suppliers/:id', rolesAdmin, async (req, res, next) => {
   try {
+    const supplierId=z.string().uuid().parse(req.params.id);
     const body = z.object({
       name: z.string().trim().min(2).max(180).optional(), contact_person: z.string().trim().max(180).nullable().optional(),
       email: z.string().email().nullable().optional(), phone: z.string().trim().max(80).nullable().optional(),
       address: z.string().trim().max(500).nullable().optional(), active: z.boolean().optional()
     }).parse(req.body);
-    const { data, error } = await adminDb.from('suppliers').update(body).eq('id',req.params.id).select('*').single();
+    const { data, error } = await adminDb.from('suppliers').update(body).eq('id',supplierId).select('*').single();
     if (error) throw error;
     await audit(req, 'update', 'supplier', req.params.id, { fields: Object.keys(body) });
     res.json({ supplier: data });
@@ -291,16 +299,17 @@ router.patch('/suppliers/:id', rolesAdmin, async (req, res, next) => {
 
 router.post('/products/:productId/suppliers/:supplierId', rolesAdmin, async (req, res, next) => {
   try {
+    const productId=z.string().uuid().parse(req.params.productId),supplierId=z.string().uuid().parse(req.params.supplierId);
     const body = z.object({
       latest_unit_cost: amount.default(0),
       lead_time_days: z.coerce.number().int().min(0).max(365).default(7),
       supplier_part_number: z.string().trim().max(120).nullable().optional(),
       is_primary: z.boolean().default(false)
     }).parse(req.body);
-    if (body.is_primary) await adminDb.from('product_suppliers').update({is_primary:false}).eq('product_id',req.params.productId);
-    const { data, error } = await adminDb.from('product_suppliers').upsert({
-      product_id:req.params.productId,supplier_id:req.params.supplierId,...body
-    }, {onConflict:'product_id,supplier_id'}).select('*').single();
+    const { data, error } = await userDb(req.user.accessToken).rpc('save_product_supplier',{
+      p_product_id:productId,p_supplier_id:supplierId,p_latest_unit_cost:body.latest_unit_cost,
+      p_lead_time_days:body.lead_time_days,p_is_primary:body.is_primary,p_supplier_part_number:body.supplier_part_number??null
+    });
     if (error) throw error;
     await audit(req,'link_supplier','product',req.params.productId,{supplier_id:req.params.supplierId});
     res.json({ data });

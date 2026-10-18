@@ -1,9 +1,8 @@
 import {integrationStatuses,saveIntegration,getIntegration,integrationReady} from '../utils/integrations.js';
-import {neededRestock,normalizeRestock} from '../utils/restock.js';
 import {gmailAccessToken} from '../utils/gmail.js';
 import {forecastingStatus} from '../utils/ml.js';
 import {supplierEmailSchema} from '../utils/storeValidation.js';
-import {supplierParts} from '../utils/supplierParts.js';
+import {supplierRequests,prepareSupplierRequest} from '../services/supplierRequests.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { adminDb } from '../supabase.js';
@@ -114,25 +113,25 @@ router.post('/supplier-email/:supplierId', async(req,res,next)=>{
   try{
     const draft=Object.keys(req.body||{}).length?supplierEmailSchema.parse(req.body):null;
     const supplierId=z.string().uuid().parse(req.params.supplierId);
-    let recommendations;
-    if(draft)recommendations=await supplierParts(supplierId,draft.items.map(i=>i.product_id));
-    else{
-      const {data,error}=await neededRestock(adminDb.from('reorder_recommendations').select('*').eq('supplier_id',supplierId));
-      if(error)throw error;
-      recommendations=(data||[]).map(normalizeRestock);
+    if(draft?.client_request_id){
+      const result=await supplierRequests.deliver({requestId:draft.client_request_id,actorId:req.user.id,supplierId,draft});
+      if(!result.replayed)try{await audit(req,'send_email','supplier',supplierId,{items:result.items});}catch{console.error('Supplier email sent; its separate audit entry could not be saved.');}
+      return res.json(result);
     }
-    if(!recommendations?.length)return res.status(422).json({error:'No replenishment items for this supplier.'});
-    const supplier={id:req.params.supplierId,name:recommendations[0].supplier_name,email:recommendations[0].supplier_email};
-    if(!supplier.email)return res.status(422).json({error:'This supplier has no email address.'});
-    const available=new Map(recommendations.map(i=>[i.product_id,i]));
-    if(draft&&draft.items.some(i=>!available.has(i.product_id)))return res.status(422).json({error:'Choose active parts assigned to this supplier.'});
-    const items=draft?draft.items.map(i=>({...available.get(i.product_id),...i,recommended_quantity:i.quantity})):recommendations;
-    const provider=await sendSupplierEmail({supplier,items,subject:draft?.subject,message:draft?.message,extra_columns:draft?.extra_columns});
+    const prepared=await prepareSupplierRequest(supplierId,draft),{supplier,items}=prepared;
+    const provider=await sendSupplierEmail(prepared);
     const hash=recommendationHash(items);
     await adminDb.from('supplier_email_logs').insert({supplier_id:supplier.id,recipient_email:supplier.email,subject:draft?.subject||'NPG Autoparts replenishment request',request_payload:draft,recommendation_hash:hash,item_count:items.length,status:'sent',provider_message_id:provider.messageId||null,sent_by:req.user.id});
     await audit(req,'send_email','supplier',supplier.id,{items:items.length});
     res.json({message:'Supplier email sent.',items:items.length});
   }catch(e){next(e);}
+});
+
+router.get('/supplier-email/:supplierId/requests/:requestId',async(req,res,next)=>{
+ try{
+  const supplierId=z.string().uuid().parse(req.params.supplierId),requestId=z.string().uuid().parse(req.params.requestId);
+  res.json(await supplierRequests.status({requestId,actorId:req.user.id,supplierId}));
+ }catch(error){next(error);}
 });
 
 router.get('/email-logs', async(req,res,next)=>{

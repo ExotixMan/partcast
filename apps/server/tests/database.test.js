@@ -32,6 +32,7 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
  await db.exec(await readFile(new URL('../../../supabase/migrations/0008_restock_threshold.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0009_small_restock_orders.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0010_sale_price_validation.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../../../supabase/migrations/0011_restock_workflows.sql',import.meta.url),'utf8'));
  await db.exec(`insert into auth.users(id) values('${staff}'),('${inactive}');update public.profiles set active=true where id='${staff}';insert into products(id,description,current_stock,minimum_stock)values('${product}','Brake pad',5,2);`);
  await db.exec(`insert into login_verifications(session_id,user_id,expires_at) values('${staff}','${staff}',now()+interval '12 hours'),('${inactive}','${inactive}',now()+interval '12 hours');`);
  const claims=async id=>{await db.exec(`reset role;select set_config('request.jwt.claim.sub','${id}',false);select set_config('request.jwt.claim.role','authenticated',false);select set_config('request.jwt.claims','{"session_id":"${id}","amr":[{"method":"password"}]}',false);set role authenticated;`);};
@@ -233,6 +234,28 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
   assert.deepEqual((await db.query(query)).rows,before);
   assert.deepEqual((await db.query('select * from demand_forecasts where run_id=$1 order by product_id,forecast_date',[run])).rows,preserved);
   assert.equal((await db.query("select reloptions from pg_class where oid='public.reorder_recommendations'::regclass")).rows[0].reloptions.includes('security_invoker=true'),true);
+ });
+ await t.test('main supplier changes validate first, roll back completely and require a verified manager',async()=>{
+  const first='99999999-1111-4111-8111-111111111111',second='99999999-2222-4222-8222-222222222222',disabled='99999999-3333-4333-8333-333333333333';
+  await db.exec(`reset role;update profiles set role='owner',active=true where id='${staff}';insert into suppliers(id,name,active)values('${first}','First',true),('${second}','Second',true),('${disabled}','Inactive',false);`);
+  await claims(staff);
+  const save=(supplier,cost=123.45)=>db.query('select save_product_supplier($1,$2,$3,9,true,null) result',[product,supplier,cost]);
+  await save(first);
+  for(const supplier of [disabled,'99999999-4444-4444-8444-444444444444'])await assert.rejects(save(supplier),/active supplier/);
+  await assert.rejects(save(second,-1),/valid amount/);
+  assert.equal((await db.query('select supplier_id from product_suppliers where product_id=$1 and is_primary',[product])).rows[0].supplier_id,first);
+  // A failure after the old primary is cleared must restore the whole change.
+  await db.exec(`reset role;create function reject_supplier_test() returns trigger language plpgsql as $$begin if new.supplier_id='${second}' then raise exception 'Fixture save failed';end if;return new;end$$;create trigger fixture_supplier_failure before insert on product_suppliers for each row execute function reject_supplier_test();`);
+  await claims(staff);await assert.rejects(save(second),/Fixture save failed/);
+  assert.equal((await db.query('select supplier_id from product_suppliers where product_id=$1 and is_primary',[product])).rows[0].supplier_id,first);
+  await db.exec('reset role;drop trigger fixture_supplier_failure on product_suppliers;drop function reject_supplier_test();');await claims(staff);
+  await save(second);await save(second);
+  const saved=(await db.query('select supplier_id,is_primary,latest_unit_cost,lead_time_days from product_suppliers where product_id=$1 order by supplier_id',[product])).rows;
+  assert.equal(saved.filter(row=>row.is_primary).length,1);assert.equal(saved.find(row=>row.supplier_id===first).is_primary,false);assert.equal(saved.find(row=>row.supplier_id===second).lead_time_days,9);
+  await db.exec(`reset role;update profiles set role='cashier' where id='${staff}';`);await claims(staff);await assert.rejects(save(first),/Not authorized/);
+  await db.exec(`reset role;update profiles set role='owner' where id='${staff}';delete from login_verifications where user_id='${staff}';`);await claims(staff);await assert.rejects(save(first),/Not authorized/);
+  await db.exec('reset role;');
+  await db.exec(await readFile(new URL('../../../supabase/migrations/0011_restock_workflows.sql',import.meta.url),'utf8'));
  });
  await db.close();
 });

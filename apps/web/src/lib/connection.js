@@ -6,6 +6,7 @@ export function apiRequestTimeout(path) {
   // A cold Python discovery can take 45s, followed by a 30s data check.
   if (['/api/forecast/readiness', '/api/forecast/status'].includes(endpoint)) return 90000;
   if (endpoint.startsWith('/api/imports/')) return 120000;
+  if (endpoint.startsWith('/api/admin/supplier-email/')) return 60000;
   return 20000;
 }
 

@@ -1,6 +1,18 @@
 # Restock alerts, Gmail and editable supplier tables
 
-Deploy the API and website from `codex/partcast-offline-forecasting-20261009`. Existing stores through 0008 can apply [0009_small_restock_orders.sql](../supabase/migrations/0009_small_restock_orders.sql) in Supabase SQL Editor. Stores through 0007 should apply [0008_restock_threshold.sql](../supabase/migrations/0008_restock_threshold.sql) first. Fresh stores can use the updated [complete SQL files](../supabase/paste-ready/README.md), whose Part 2 includes both upgrades. A database rebuild or data reimport is unnecessary.
+Deploy the API and website from `codex/partcast-offline-forecasting-20261009`. Existing stores through 0010 need [0011_restock_workflows.sql](../supabase/migrations/0011_restock_workflows.sql) in Supabase SQL Editor. Apply any older missing migrations first, in order. Fresh stores can use the updated [complete SQL files](../supabase/paste-ready/README.md), whose Part 2 includes these upgrades. A database rebuild or data reimport is unnecessary.
+
+## Restock workflow repair — 18 October 2026
+
+The list keeps its last loaded records after refresh failures and preserves full saved supplier contacts offline. Search and stock/supplier filters cover all loaded records. Large lists display 25 parts per page; each supplier email starts with that supplier's parts on the current page, with a maximum of 100 distinct parts in an edited request.
+
+Managers can **Change supplier** on assigned parts as well as **Choose supplier** on unassigned parts. Existing cost and delivery days are loaded before editing. Migration 0011 makes changing the main supplier one transaction: invalid input or a failed new link restores the previous state completely. Other supplier links remain available.
+
+Closing an email keeps its subject, message, quantities and custom columns while the Restock page stays open. Drafts are separate for each supplier and displayed set of parts. **Reset email draft** starts again from the displayed suggestions. Navigating away or reloading clears these in-memory drafts. Pressing Enter in an editing field never sends an email; use **Send email to supplier** explicitly. Restock success/error messages appear within the page and cannot cover a dialog's Save button.
+
+New email requests record a unique request ID before contacting Gmail. A definite pre-delivery failure can be retried. A lost response or uncertain Gmail submission offers **Check sending result** and locks the draft. If a saved result is sent, checking/retrying returns that result without sending another copy. If no receipt exists, **Retry same request** keeps the same ID and exact contents. A request still marked sending/uncertain needs checking in Gmail Sent or with the supplier; PartCast never automatically resends it. A Gmail acceptance is not proof that the recipient read or received the message. The server also checks the reviewed recipient address, active parts, supplier assignments and staff permissions before a new submission. Older clients without request IDs lack this retry protection, so deploy and refresh the website together with the API.
+
+These changes preserve stock, demand history, forecasts, customer balances and accounts. They do not record a delivery or finalize a purchase. See [Verification](VERIFICATION.md) for local checks and their limits.
 
 ## Small purchases match the owner's buying practice
 

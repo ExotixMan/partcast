@@ -24,6 +24,7 @@ export function errorHandler(err, req, res, next) {
   if (err?.code === '22023') return res.status(422).json({error:err.message || 'Review the saved change.'});
   if(err?.code==='LIMIT_FILE_SIZE')return res.status(413).json({error:'The file is too large. Product photos must be under 5 MB; spreadsheets under 25 MB.'});
   if (err?.code === '42501') return res.status(403).json({error:'This account is not allowed to make this change.'});
+  if(['PGRST202','PGRST204','42703'].includes(err?.code)&&/save_product_supplier|client_request_id|request_hash/.test(err.message||''))return res.status(503).json({error:'Restock setup is incomplete. Ask the Super Admin to apply migration 0011_restock_workflows.sql, then refresh the page.'});
 
   const status =
     Number(err?.status) || 500;
@@ -47,6 +48,6 @@ export function errorHandler(err, req, res, next) {
 
   res.status(status).json({
     error: message,
-    ...(err?.safe&&/^GMAIL_[A-Z_]+$/.test(err?.code||'')?{code:err.code}:{})
+    ...(err?.safe&&/^(GMAIL_|SUPPLIER_EMAIL_)[A-Z_]+$/.test(err?.code||'')?{code:err.code}:{})
 });
 }

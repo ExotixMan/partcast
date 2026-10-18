@@ -68,6 +68,8 @@ async function localRead(path) {
   }
   if(path.startsWith('/api/barcode/')){const snap=await readCache(userId,'/api/offline-snapshot');if(snap)return {product:projectedProducts(snap.value.products,await queueItems(userId)).find(p=>(p.barcode||'').toLowerCase()===decodeURIComponent(path.split('/').at(-1)).toLowerCase())||null,offline:true};}
   if (path === '/api/suppliers') {
+    const contacts=await readCache(userId,path);
+    if(contacts)return {...contacts.value,offline:true,savedAt:contacts.savedAt};
     const snapshot = await readCache(userId, '/api/offline-snapshot');
     if (snapshot) return { data: snapshot.value.suppliers, offline: true, savedAt: snapshot.savedAt };
   }

@@ -59,8 +59,10 @@ export async function sendGmailMessage({to,subject,text,html}){
   const boundary=`partcast_${crypto.randomBytes(24).toString('hex')}`;
   mime=[...headers,`Content-Type: multipart/alternative; boundary="${boundary}"`,'',`--${boundary}`,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: 8bit','',text||'',`--${boundary}`,'Content-Type: text/html; charset=UTF-8','Content-Transfer-Encoding: 8bit','',html,`--${boundary}--`,''].join('\r\n');
  }else mime=[...headers,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: 8bit','',text||''].join('\r\n');
- const response=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({raw:Buffer.from(mime).toString('base64url')}),signal:AbortSignal.timeout(15000)});
- if(!response.ok)throw Object.assign(new Error('The email could not be sent. Ask the Super Admin to check Gmail access and the sender account.'),{status:503,safe:true});
+ let response;
+ try{response=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({raw:Buffer.from(mime).toString('base64url')}),signal:AbortSignal.timeout(15000)});}
+ catch{throw Object.assign(new Error('Gmail delivery could not be confirmed. Check Gmail Sent before sending another request.'),{status:503,safe:true,code:'GMAIL_SEND_UNCONFIRMED',deliveryUncertain:true});}
+ if(!response.ok)throw Object.assign(new Error('The email could not be sent. Ask the Super Admin to check Gmail access and the sender account.'),{status:503,safe:true,deliveryUncertain:response.status>=500});
  const result=await response.json().catch(()=>({}));return {messageId:result.id||null};
 }
 export async function sendLoginCode(email,code){

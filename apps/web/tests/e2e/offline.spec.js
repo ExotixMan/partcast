@@ -257,7 +257,7 @@ test('planning explains data limits, lists current estimates, and requires revie
  await expect(page.getByRole('table').getByRole('row')).toHaveCount(3);await expect(page.getByRole('table')).not.toContainText('99');
  await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();
  await expect(page.getByRole('dialog')).toContainText('supplier@example.test');expect(sent).toBe(0);
- await page.getByRole('button',{name:'Keep reviewing'}).click();expect(sent).toBe(0);
+ await page.getByRole('button',{name:'Close',exact:true}).click();expect(sent).toBe(0);
  await page.getByRole('button',{name:'Review supplier email'}).click();
  await page.getByRole('button',{name:'Send email to supplier'}).click();await expect.poll(()=>sent).toBe(1);
  await expect(page.getByRole('dialog')).toHaveCount(0);

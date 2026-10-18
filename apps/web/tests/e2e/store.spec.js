@@ -161,7 +161,7 @@ for(const width of [390,1440])test(`small purchase suggestions keep forecast tot
  const row=(width<1024?page.getByRole('article'):page.getByRole('row')).filter({hasText:'Toyota brake pad'});
  await expect(row).toContainText('11');await expect(row).toContainText('2 units');await expect(row).toContainText('₱200.00');await expect(row).not.toContainText('₱1,100.00');
  await page.getByText('Restock help',{exact:true}).click();await expect(page.getByText(/Suggestions start at 1–2 units per part/)).toBeVisible();
- await page.getByRole('button',{name:'Review supplier email'}).click();await expect(page.getByLabel('Quantity *')).toHaveValue('2');await page.getByRole('button',{name:'Keep reviewing'}).click();
+ await page.getByRole('button',{name:'Review supplier email'}).click();await expect(page.getByLabel('Quantity *')).toHaveValue('2');await page.getByRole('button',{name:'Close',exact:true}).click();
  await page.getByLabel('Website language').selectOption('fil');await expect(row).toContainText('2');await expect(page.getByText(/Nagsisimula sa 1–2 bawat piyesa/)).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
@@ -179,7 +179,7 @@ test('restock list updates after stock changes and a removed custom column leave
  await fixture(context);let data=[{product_id:p1,part_number:'BP-001',description:'Toyota brake pad',supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test',current_stock:1,minimum_stock:1,recommended_quantity:1,status:'low_stock'}];
  await context.route('http://localhost:10000/api/reorder**',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({json:{data},headers:{'access-control-allow-origin':'*'}}));await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();
  await page.getByLabel('Column name',{exact:true}).fill('Notes');await page.getByRole('button',{name:'Add column',exact:true}).click();await page.getByLabel('Notes',{exact:true}).fill('Fragile');await page.getByRole('button',{name:'Remove column Notes'}).click();await expect(page.getByLabel('Notes',{exact:true})).toHaveCount(0);await expect(page.getByRole('dialog').getByRole('table')).not.toContainText('Fragile');
- await page.getByRole('button',{name:'Keep reviewing'}).click();data=[];await page.evaluate(()=>window.dispatchEvent(new Event('partcast:queue')));await expect(page.getByRole('heading',{name:'No parts are currently suggested for restocking'})).toBeVisible();
+ await page.getByRole('button',{name:'Close',exact:true}).click();data=[];await page.evaluate(()=>window.dispatchEvent(new Event('partcast:queue')));await expect(page.getByRole('heading',{name:'No parts are currently suggested for restocking'})).toBeVisible();
 });
 test('Tagalog and dark mode persist; assistant clarifies coolant versus radiator',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/debts');await page.getByLabel('Website language').selectOption('fil');await expect(page.getByRole('heading',{name:'Utang ng customer'})).toBeVisible();await page.getByRole('button',{name:'Laki ng text at kulay'}).click();await page.getByRole('button',{name:'Gamitin ang dark mode'}).click();await page.getByRole('button',{name:'Tapos na',exact:true}).click();expect(await page.locator('html').getAttribute('data-theme')).toBe('dark');
@@ -716,23 +716,36 @@ async function restockFixture(context){
  {...base,product_id:p2,part_number:'OIL-001',description:'Engine oil',current_stock:0,status:'out_of_stock',supplier_id:other,supplier_name:'South Parts',supplier_email:'south@example.test'},
  {...base,product_id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',part_number:'90915-YZZD2',description:'Toyota oil filter',current_stock:0,status:'out_of_stock',supplier_id:null},
  {...base,product_id:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',part_number:'TYC550',description:'Clutch cover',current_stock:4,status:'forecast_reorder',supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test'}];
- const supplierWrites=[],links=[];let supplierFailure=false,linkFailure=false,loadFailure=false;
+ const supplierWrites=[],links=[];let supplierFailure=false,linkFailure=false,loadFailure=false,disconnected=false;
  const headers={'access-control-allow-origin':'*'};
  await context.route('http://localhost:10000/api/reorder**',route=>{
+  if(disconnected)return route.abort('internetdisconnected');
   if(route.request().method()==='OPTIONS')return route.fallback();
   const id=new URL(route.request().url()).searchParams.get('supplierId');
   return route.fulfill({status:loadFailure?503:200,json:loadFailure?{error:'Please try again shortly.'}:{data:rows.filter(r=>!id||r.supplier_id===id)},headers});
  });
  await context.route('http://localhost:10000/api/suppliers',route=>{
+  if(disconnected)return route.abort('internetdisconnected');
   const method=route.request().method();if(method==='OPTIONS')return route.fallback();
   if(method==='GET')return route.fulfill({json:{data:suppliers},headers});
   supplierWrites.push(route.request().postDataJSON());return route.fulfill({status:supplierFailure?503:201,json:supplierFailure?{error:'Supplier details could not be saved. Try again.'}:{supplier:supplierWrites.at(-1)},headers});
  });
+ await context.route('http://localhost:10000/api/suppliers/*',route=>{
+  if(route.request().method()==='OPTIONS'||route.request().method()!=='PATCH')return route.fallback();
+  const contact=suppliers.find(s=>s.id===route.request().url().split('/').at(-1));Object.assign(contact,route.request().postDataJSON());return route.fulfill({json:{supplier:contact},headers});
+ });
+ await context.route('http://localhost:10000/api/products/*/suppliers',route=>{
+  if(disconnected)return route.abort('internetdisconnected');
+  if(route.request().method()==='OPTIONS')return route.fallback();const row=rows.find(r=>r.product_id===route.request().url().split('/')[5]);
+  return route.fulfill({json:{data:row?.supplier_id?[{supplier_id:row.supplier_id,latest_unit_cost:row.estimated_unit_cost,lead_time_days:9}]:[]},headers});
+ });
  await context.route('http://localhost:10000/api/products/*/suppliers/*',route=>{
+  if(disconnected)return route.abort('internetdisconnected');
   if(route.request().method()==='OPTIONS')return route.fallback();links.push(route.request().postDataJSON());
+  if(!linkFailure){const path=new URL(route.request().url()).pathname.split('/'),row=rows.find(r=>r.product_id===path[3]),contact=suppliers.find(s=>s.id===path[5]);if(row&&contact)Object.assign(row,{supplier_id:contact.id,supplier_name:contact.name,supplier_email:contact.email,estimated_unit_cost:links.at(-1).latest_unit_cost});}
   return route.fulfill({status:linkFailure?503:200,json:linkFailure?{error:'Supplier link could not be saved. Try again.'}:{data:{}},headers});
  });
- return {...api,rows,supplierWrites,links,setSupplierFailure:v=>supplierFailure=v,setLinkFailure:v=>linkFailure=v,setLoadFailure:v=>loadFailure=v};
+ return {...api,disconnect:value=>{disconnected=value;api.disconnect(value);},rows,suppliers,supplierWrites,links,setSupplierFailure:v=>supplierFailure=v,setLinkFailure:v=>linkFailure=v,setLoadFailure:v=>loadFailure=v};
 }
 
 test('restock search and filters preserve quantities, distinguish no matches and work with saved offline records',async({page,context})=>{
@@ -765,7 +778,7 @@ test('supplier forms identify invalid fields, focus them and preserve entries af
 
 test('supplier email validates quantities and retains the editable draft when sending fails',async({page,context})=>{
  const api=await restockFixture(context);let available=false,attempts=0;
- await context.route('http://localhost:10000/api/admin/supplier-email/*',route=>{if(route.request().method()==='OPTIONS')return route.fallback();attempts++;return available?route.fallback():route.fulfill({status:503,json:{error:'Email service is temporarily unavailable. Try again.'},headers:{'access-control-allow-origin':'*'}});});
+ await context.route('http://localhost:10000/api/admin/supplier-email/*',route=>{if(route.request().method()==='OPTIONS')return route.fallback();attempts++;return available?route.fallback():route.fulfill({status:503,json:{error:'Email service is temporarily unavailable. Try again.',code:'GMAIL_OAUTH_UNAVAILABLE'},headers:{'access-control-allow-origin':'*'}});});
  await page.goto('/reorder');const group=page.locator('section.panel').filter({has:page.getByRole('heading',{name:'Parts supplier',exact:true})});await group.getByRole('button',{name:'Review supplier email'}).click();const dialog=page.getByRole('dialog');
  await dialog.getByLabel('Your message *').fill('Please deliver our order on Monday.');await dialog.getByLabel('Quantity *',{exact:true}).first().fill('0');await dialog.getByRole('button',{name:'Send email to supplier'}).click();await expect(dialog.getByRole('alert')).toContainText('Quantity');await expect(dialog.getByLabel('Quantity *',{exact:true}).first()).toBeFocused();expect(attempts).toBe(0);
  await dialog.getByLabel('Quantity *',{exact:true}).first().fill('2');await dialog.getByRole('button',{name:'Send email to supplier'}).click();await expect(dialog.getByRole('alert')).toContainText('temporarily unavailable');await expect(dialog.getByLabel('Your message *')).toHaveValue('Please deliver our order on Monday.');expect(api.emails).toHaveLength(0);
@@ -788,7 +801,7 @@ test('compact restock stays readable with larger Tagalog text on phone tablet an
  for(const width of [320,768,1440]){await page.setViewportSize({width,height:1000});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}px`).toBe(true);}
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/partcast-restock-compact-phone.png',fullPage:false});
  await page.getByText('Tulong sa pag-order',{exact:true}).click();await expect(page.getByText(/Nagsisimula sa 1–2 bawat piyesa/)).toBeVisible();
- api.setLoadFailure(true);await page.getByRole('button',{name:'I-refresh ang listahan',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Hindi makuha');api.setLoadFailure(false);await page.getByRole('button',{name:'Subukan ulit',exact:true}).click();await expect(page.getByText('4 sa 4 piyesa')).toBeVisible();
+ api.setLoadFailure(true);await page.getByRole('button',{name:'I-refresh ang listahan',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Hindi ma-refresh');api.setLoadFailure(false);await page.getByRole('button',{name:'Subukan ulit',exact:true}).click();await expect(page.getByText('4 sa 4 piyesa')).toBeVisible();
 });
 
 test('empty supplier picker explains the list and explicitly links an inventory part without losing the email draft',async({page,context})=>{
@@ -840,4 +853,57 @@ test('inventory additions recover from save failures and work with paginated sea
  ready=true;await dialog.getByRole('button',{name:'Subukan ulit',exact:true}).click();await dialog.getByRole('button',{name:'I-save ang supplier at idagdag ang Toyota part 10',exact:true}).click();await expect(dialog.getByLabel('Dami *',{exact:true})).toHaveCount(2);expect(saves).toHaveLength(1);expect(api.emails).toHaveLength(0);
  await dialog.getByLabel('Maghanap sa stock',{exact:true}).fill('PART-20');await dialog.getByLabel('Maghanap sa stock',{exact:true}).press('Enter');await expect(dialog.getByText('Toyota part 20',{exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:'Susunod',exact:true})).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('Restock keeps the last loaded list after refresh failure and full supplier contacts offline',async({page,context})=>{
+ const api=await restockFixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/reorder');await expect(page.getByRole('article')).toHaveCount(4);
+ api.setLoadFailure(true);await page.getByRole('button',{name:'Refresh list',exact:true}).click();await expect(page.getByRole('alert')).toContainText('last loaded records are still shown');await expect(page.getByRole('article')).toHaveCount(4);
+ api.setLoadFailure(false);await page.getByRole('button',{name:'Try again',exact:true}).click();await expect(page.getByRole('alert')).toHaveCount(0);
+ await page.getByRole('button',{name:'Suppliers',exact:true}).click();await expect(page.getByText('south@example.test',{exact:true})).toBeVisible();await page.evaluate(async()=>navigator.serviceWorker.ready);api.disconnect(true);await context.setOffline(true);await page.reload();await page.getByRole('button',{name:'Suppliers',exact:true}).click();await expect(page.getByText('south@example.test',{exact:true})).toBeVisible();await expect(page.getByText('Showing saved stock. Connect to update suppliers or send an email.')).toBeVisible();
+});
+
+test('Restock keeps closed drafts separate by supplier and Enter never sends an email',async({page,context})=>{
+ const api=await restockFixture(context);await page.goto('/reorder');const supplierGroup=name=>page.locator('section.panel').filter({has:page.getByRole('heading',{name,exact:true})});
+ await supplierGroup('Parts supplier').getByRole('button',{name:'Review supplier email'}).click();let dialog=page.getByRole('dialog');
+ await dialog.getByLabel('Your message *').fill('Keep this draft for Friday.');await dialog.getByLabel('Quantity *',{exact:true}).first().fill('1.5');await dialog.getByLabel('Column name',{exact:true}).fill('Notes');await dialog.getByLabel('Column name',{exact:true}).press('Enter');expect(api.emails).toHaveLength(0);
+ await dialog.getByRole('button',{name:'Add column',exact:true}).click();await dialog.getByLabel('Notes',{exact:true}).first().fill('Do not replace');await dialog.getByRole('button',{name:'Close',exact:true}).click();
+ await supplierGroup('South Parts').getByRole('button',{name:'Review supplier email'}).click();await expect(dialog.getByLabel('Your message *')).not.toHaveValue('Keep this draft for Friday.');await dialog.getByRole('button',{name:'Close',exact:true}).click();
+ await supplierGroup('Parts supplier').getByRole('button',{name:'Review supplier email'}).click();await expect(dialog.getByLabel('Your message *')).toHaveValue('Keep this draft for Friday.');await expect(dialog.getByLabel('Quantity *',{exact:true}).first()).toHaveValue('1.5');await expect(dialog.getByLabel('Notes',{exact:true}).first()).toHaveValue('Do not replace');
+ await dialog.getByRole('button',{name:'Reset email draft'}).click();await expect(dialog.getByLabel('Notes',{exact:true})).toHaveCount(0);await expect(dialog.getByLabel('Quantity *',{exact:true}).first()).toHaveValue('2');expect(api.emails).toHaveLength(0);
+});
+
+test('Restock changes an assigned supplier using its saved cost and delivery days and supports adding a missing email',async({page,context})=>{
+ const api=await restockFixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/reorder');const part=page.getByRole('article').filter({hasText:'Toyota brake pad'});
+ await part.getByRole('button',{name:'Change supplier'}).click();const dialog=page.getByRole('dialog');await expect(dialog.getByLabel('Who supplies this part? (required)')).toHaveValue(supplier);await expect(dialog.getByLabel('Usual delivery time (days)')).toHaveValue('9');await expect(dialog.getByLabel('Cost per unit (₱)',{exact:true})).toHaveValue('100');
+ await dialog.getByLabel('Who supplies this part? (required)').selectOption('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');await dialog.getByLabel('Cost per unit (₱)',{exact:true}).fill('75.50');await dialog.getByLabel('Usual delivery time (days)').fill('12');await dialog.getByRole('button',{name:'Save supplier for part'}).click();await expect(dialog).toHaveCount(0);await expect(page.locator('section.panel').filter({has:page.getByRole('heading',{name:'South Parts',exact:true})}).getByRole('article')).toHaveCount(2);expect(api.links.at(-1)).toEqual({is_primary:true,latest_unit_cost:75.5,lead_time_days:12});
+ api.suppliers[1].email=null;await page.getByRole('button',{name:'Refresh list',exact:true}).click();await page.getByRole('button',{name:'Add email address',exact:true}).click();await dialog.getByLabel('Email address (optional)').fill('orders@example.test');await dialog.getByRole('button',{name:'Save supplier',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await page.locator('section.panel').filter({has:page.getByRole('heading',{name:'South Parts',exact:true})}).getByRole('button',{name:'Review supplier email'}).click();await expect(dialog.getByText('orders@example.test',{exact:true})).toBeVisible();
+});
+
+test('Restock paginates large groups and each reviewed email starts with the displayed parts',async({page,context})=>{
+ const api=await restockFixture(context);const base=api.rows[0];api.rows.splice(0,api.rows.length,...Array.from({length:61},(_,i)=>({...base,product_id:`cccccccc-cccc-4ccc-8ccc-${String(i).padStart(12,'0')}`,part_number:`PART-${i}`,description:`Toyota part ${i}`})));
+ await page.setViewportSize({width:390,height:844});await page.goto('/reorder');await expect(page.getByRole('article')).toHaveCount(25);await page.getByRole('button',{name:'Next',exact:true}).click();await expect(page.getByRole('article').first()).toContainText('PART-25');await page.getByRole('button',{name:'Review supplier email'}).click();await expect(page.getByRole('dialog').getByLabel('Quantity *',{exact:true})).toHaveCount(25);await expect(page.getByRole('dialog').getByRole('table')).toContainText('PART-25');await expect(page.getByRole('dialog').getByRole('table')).not.toContainText('PART-0');await page.getByRole('button',{name:'Close',exact:true}).click();
+ await page.getByRole('button',{name:'Next',exact:true}).click();await expect(page.getByRole('article')).toHaveCount(11);await page.getByRole('button',{name:'Review supplier email'}).click();await expect(page.getByRole('dialog').getByLabel('Quantity *',{exact:true})).toHaveCount(11);await page.getByRole('button',{name:'Close',exact:true}).click();await page.getByLabel('Search parts to restock').fill('Toyota part 1');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(page.getByRole('article').first()).toContainText('PART-1');expect(api.emails).toHaveLength(0);
+ await page.getByRole('button',{name:'Filters',exact:true}).click();await page.getByLabel('Supplier',{exact:true}).selectOption(supplier);api.suppliers.splice(0,1);api.rows.forEach(row=>Object.assign(row,{supplier_id:null,supplier_name:null,supplier_email:null}));await page.getByRole('button',{name:'Refresh list',exact:true}).click();await expect(page.getByLabel('Supplier',{exact:true})).toHaveValue('all');await expect(page.getByRole('article')).toHaveCount(15);
+});
+
+test('unconfirmed supplier delivery locks the draft and status lookup does not send a duplicate email',async({page,context})=>{
+ const api=await fixture(context);const attempts=[];
+ await context.route('http://localhost:10000/api/admin/supplier-email/**',route=>{
+  const request=route.request();if(request.method()==='OPTIONS')return route.fallback();
+  if(request.method()==='POST'){attempts.push(request.postDataJSON());return route.abort('failed');}
+  return route.fulfill({json:{status:'sent',items:1},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Send email to supplier'}).click();await expect(dialog.getByRole('button',{name:'Check sending result'})).toBeVisible();await expect(dialog.getByLabel('Your message *')).toBeDisabled();await expect(dialog.getByRole('button',{name:'Reset email draft'})).toBeDisabled();
+ await dialog.getByRole('button',{name:'Close',exact:true}).click();await page.getByRole('button',{name:'Review supplier email'}).click();await expect(dialog.getByRole('button',{name:'Check sending result'})).toBeVisible();await dialog.getByRole('button',{name:'Check sending result'}).click();await expect(dialog).toHaveCount(0);expect(attempts).toHaveLength(1);expect(attempts[0].client_request_id).toMatch(/^[0-9a-f-]{36}$/);expect(attempts[0].expected_recipient).toBe('supplier@example.test');expect(api.emails).toHaveLength(0);
+});
+
+test('missing delivery receipt retries exactly the same request without allowing draft changes',async({page,context})=>{
+ await fixture(context);const attempts=[];
+ await context.route('http://localhost:10000/api/admin/supplier-email/**',route=>{
+  const request=route.request();if(request.method()==='OPTIONS')return route.fallback();
+  if(request.method()==='POST'){attempts.push(request.postDataJSON());return attempts.length===1?route.abort('failed'):route.fulfill({json:{items:1,message:'Supplier email sent.'},headers:{'access-control-allow-origin':'*'}});}
+  return route.fulfill({json:{status:'not_found'},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();const dialog=page.getByRole('dialog');await dialog.getByLabel('Your message *').fill('Use this exact request.');await dialog.getByRole('button',{name:'Send email to supplier'}).click();await dialog.getByRole('button',{name:'Check sending result'}).click();await expect(dialog.getByLabel('Your message *')).toBeDisabled();await dialog.getByRole('button',{name:'Retry same request'}).click();await expect(dialog).toHaveCount(0);expect(attempts).toHaveLength(2);expect(attempts[1]).toEqual(attempts[0]);
 });

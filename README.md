@@ -27,7 +27,7 @@ Full-stack capstone system using React + Tailwind CSS, Node.js/Express, Supabase
 
 ## Required database upgrade for an existing Supabase project
 
-Apply only unapplied migrations. Existing installations through 0009 need only [0010_sale_price_validation.sql](supabase/migrations/0010_sale_price_validation.sql) for the mobile selling and pricing update. Older installations must also apply their missing migrations in order. Run `0006_access_roles.sql` and `0007_verified_login_and_access.sql` in separate executions. Fresh projects need all ten in order, or the complete two-part SQL installer:
+Apply only unapplied migrations. Existing installations through 0010 need [0011_restock_workflows.sql](supabase/migrations/0011_restock_workflows.sql) for atomic supplier changes and duplicate-safe email request retries. Stores through 0009 also need [0010_sale_price_validation.sql](supabase/migrations/0010_sale_price_validation.sql). Older installations must apply their missing migrations in order. Run `0006_access_roles.sql` and `0007_verified_login_and_access.sql` in separate executions. Fresh projects need all eleven in order, or the complete two-part SQL installer:
 
 1. `0001_schema.sql`
 2. `0002_rls.sql`
@@ -39,6 +39,7 @@ Apply only unapplied migrations. Existing installations through 0009 need only [
 8. `0008_restock_threshold.sql`
 9. `0009_small_restock_orders.sql`
 10. `0010_sale_price_validation.sql`
+11. `0011_restock_workflows.sql`
 
 See [Activate and use the new features](docs/STORE_WORKFLOWS.md) for everyday sales/utang workflows and validation limits. See [Required login, roles, Google API setup and Python repair](docs/LOGIN_ROLES_FORECASTING.md) before deploying; configure Gmail first and apply 0006 separately before 0007.
 
@@ -108,7 +109,7 @@ Never put `GEMINI_API_KEY` in the React/Vite environment.
 
 ## Offline-first update
 
-See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply unapplied migrations through `0010_sale_price_validation.sql` before starting this version.
+See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply unapplied migrations through `0011_restock_workflows.sql` before starting this version.
 
 See [Light interface and everyday workflows](docs/USABILITY_REDESIGN.md) for the responsive redesign, guided stock forms, accessible navigation, and usability checks.
 

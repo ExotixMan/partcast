@@ -22,6 +22,7 @@ export const batchSchema=z.object({...common,kind:z.literal('batch').default('ba
 export const debtSchema=z.object({...common,kind:z.literal('debt').default('debt'),customer_name:z.string().trim().min(2).max(240),phone:text(80),principal:positiveAmount,due_date:dated,reference_no:text(180)});
 export const paymentSchema=z.object({...common,kind:z.literal('payment').default('payment'),debt_id:z.string().uuid(),amount:positiveAmount});
 export const supplierEmailSchema=z.object({
+ client_request_id:z.string().uuid().optional(),expected_recipient:z.string().trim().email().max(254).optional(),
  subject:z.string().trim().min(2).max(180).refine(s=>!/[\r\n]/.test(s),'Use a single line for the subject.'),message:z.string().trim().min(2).max(2000),
  extra_columns:z.array(z.object({id:z.string().uuid(),label:z.string().trim().min(1).max(50).refine(s=>!/[\r\n]/.test(s),'Use a single line for a column name.')})).max(5).default([]),
  items:z.array(z.object({product_id:z.string().uuid(),part_number:z.string().trim().max(120),description:z.string().trim().min(2).max(500),unit:z.string().trim().max(40).optional(),quantity:positiveAmount,extra_values:z.record(z.string().uuid(),z.string().trim().max(300)).default({})})).min(1).max(100).refine(a=>new Set(a.map(x=>x.product_id)).size===a.length,'Each part must appear once.')
