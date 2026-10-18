@@ -181,9 +181,9 @@ export default function AppShell() {
       <nav aria-label={t("Quick navigation")} style={{gridTemplateColumns:`repeat(${quickLinks.length+2},minmax(0,1fr))`}} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(15,23,42,0.03)] lg:hidden">
         {quickLinks.map(item => <NavLink key={item.to} to={item.to} end={item.end} className={({
           isActive
-        }) => `m-1 flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold ${isActive ? 'bg-red-50 text-red-700' : 'text-slate-600'}`}><item.icon size={21} />{item.to === '/inventory' ? t('Parts') : item.to === '/counter' ? t('Sell / receive') : t(item.label)}</NavLink>)}
-        <button aria-label={t("Open Store Assistant")} className="m-1 flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={help}><CircleHelp size={21} />{t("Help")}</button>
-        <button aria-label={t("More pages")} aria-expanded={open} className="m-1 flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => setOpen(true)}><Menu size={21} />{t("More")}</button>
+        }) => `mobile-nav-item ${isActive ? 'bg-red-50 text-red-700' : 'text-slate-600'}`} aria-label={t(item.label)}><item.icon size={22} aria-hidden="true" /><span>{item.to === '/inventory' ? t('Stock') : item.to === '/counter' ? t('Sell') : t(item.label)}</span></NavLink>)}
+        <button aria-label={t("Open Store Assistant")} className="mobile-nav-item text-slate-600 hover:bg-slate-50" onClick={help}><CircleHelp size={22} aria-hidden="true" /><span>{t("Help")}</span></button>
+        <button aria-label={t("More pages")} aria-expanded={open} aria-haspopup="dialog" className="mobile-nav-item text-slate-600 hover:bg-slate-50" onClick={() => setOpen(true)}><Menu size={22} aria-hidden="true" /><span>{t("Menu")}</span></button>
       </nav>
     </div>
     <AssistantChat />

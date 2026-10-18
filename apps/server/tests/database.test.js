@@ -31,10 +31,11 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
  await db.exec(await readFile(new URL('../../../supabase/migrations/0007_verified_login_and_access.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0008_restock_threshold.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0009_small_restock_orders.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../../../supabase/migrations/0010_sale_price_validation.sql',import.meta.url),'utf8'));
  await db.exec(`insert into auth.users(id) values('${staff}'),('${inactive}');update public.profiles set active=true where id='${staff}';insert into products(id,description,current_stock,minimum_stock)values('${product}','Brake pad',5,2);`);
  await db.exec(`insert into login_verifications(session_id,user_id,expires_at) values('${staff}','${staff}',now()+interval '12 hours'),('${inactive}','${inactive}',now()+interval '12 hours');`);
  const claims=async id=>{await db.exec(`reset role;select set_config('request.jwt.claim.sub','${id}',false);select set_config('request.jwt.claim.role','authenticated',false);select set_config('request.jwt.claims','{"session_id":"${id}","amr":[{"method":"password"}]}',false);set role authenticated;`);};
- const payload={product_id:product,tx_type:'sale',quantity:3,occurred_at:'2026-01-01T12:00:00.000Z'};
+ const payload={product_id:product,tx_type:'sale',quantity:3,unit_price:100,occurred_at:'2026-01-01T12:00:00.000Z'};
  const sync=(id,body)=>db.query('select public.sync_inventory_movement($1,$2::jsonb) as id',[id,JSON.stringify(body)]);
  await t.test('email verification is required for table access and direct RPCs; codes are session bound',async()=>{
   await db.exec(`delete from login_verifications where user_id='${staff}';`);
@@ -84,6 +85,13 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
   await assert.rejects(sync('55555555-5555-4555-8555-555555555555',{...payload,quantity:3}),/Insufficient stock/);
   assert.equal(Number((await db.query('select current_stock from products')).rows[0].current_stock),2);
  });
+ await t.test('unpriced direct sales roll back stock and never create demand or debt',async()=>{
+  const before=(await db.query('select current_stock from products where id=$1',[product])).rows[0];
+  const records=(await db.query('select count(*) n from inventory_transactions')).rows[0].n;
+  for(const price of [null,0])await assert.rejects(db.query("select apply_inventory_transaction($1,'sale',1,null,$2)",[product,price]),/selling price greater than zero/);
+  assert.deepEqual((await db.query('select current_stock from products where id=$1',[product])).rows[0],before);
+  assert.equal((await db.query('select count(*) n from inventory_transactions')).rows[0].n,records);
+ });
  await t.test('direct stock writes and fabricated transactions are denied',async()=>{
   await assert.rejects(db.query('update products set current_stock=100'),/permission denied/);
   await assert.rejects(db.query(`insert into inventory_transactions(product_id,tx_type,quantity)values('${product}','sale',1)`),/permission denied/);
@@ -117,6 +125,13 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
   const op='88888888-8888-4888-8888-888888888888';
   const call=(id,payload)=>db.query('select sync_store_operation($1,$2::jsonb) as result',[id,JSON.stringify(payload)]);
   const before=(await db.query('select count(*) n from inventory_transactions')).rows[0].n;
+  const initialStocks=(await db.query('select id,current_stock from products order by id')).rows;
+  for(const unit_price of [0,null]){
+   await assert.rejects(call(op,{...batch,paid_amount:0,lines:[{...batch.lines[0],unit_price},batch.lines[1]]}),/selling price greater than zero|valid amount/);
+  }
+  await assert.rejects(call(op,{...batch,paid_amount:251}),/Payment cannot exceed/);
+  assert.deepEqual((await db.query('select id,current_stock from products order by id')).rows,initialStocks);
+  assert.equal((await db.query('select count(*) n from customer_debts')).rows[0].n,0);
   await assert.rejects(call(op,{...batch,lines:[batch.lines[0],{...batch.lines[1],quantity:4}]}),/Insufficient stock/);
   assert.equal((await db.query('select count(*) n from inventory_transactions')).rows[0].n,before);
   assert.equal((await db.query('select count(*) n from stock_batches')).rows[0].n,0);

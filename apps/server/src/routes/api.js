@@ -201,6 +201,8 @@ router.post('/inventory/movement', rolesWrite, async (req, res, next) => {
       total_amount: amount.nullable().optional(),
       notes: z.string().trim().max(1000).nullable().optional(),
       occurred_at: z.string().datetime().optional()
+    }).superRefine((v,c)=>{
+      if(v.tx_type==='sale'&&!(v.unit_price>0))c.addIssue({code:'custom',path:['unit_price'],message:'Enter a selling price greater than zero for every part.'});
     }).parse(req.body);
     const {client_operation_id,...payload}=body;
     const { data, error } = await userDb(req.user.accessToken).rpc('sync_inventory_movement', {

@@ -69,6 +69,22 @@ test('Tagalog terminology finds saved parts and distinguishes related cooling co
 test('basket amounts use decimal cent arithmetic instead of binary product rounding',async()=>{
  const {lineCents}=await import('../src/lib/store.js');assert.equal(lineCents(19.9,1.05),2090);assert.equal(lineCents(0.1,0.15),2);assert.ok(Number.isNaN(lineCents(1e308,1)));assert.ok(Number.isNaN(lineCents(-1,10)));
 });
+test('basket prices and edited credit payments never produce a negative or invented balance',async()=>{
+ const {basketAmounts}=await import('../src/lib/store.js');
+ const lines=[{quantity:'1',unit_price:'19.90'},{quantity:'0.1',unit_price:'0.15'}];
+ assert.deepEqual(basketAmounts(lines,{isCredit:true,paidAmount:'19.91'}),{total:19.92,balance:0.01,validPayment:true,overpaid:false});
+ const edited=[{quantity:'1',unit_price:'10'}];
+ assert.deepEqual(basketAmounts(edited,{isCredit:true,paidAmount:'19.91'}),{total:10,balance:null,validPayment:true,overpaid:true});
+ assert.equal(basketAmounts(edited,{isCredit:true,paidAmount:'10'}).balance,0);
+ for(const value of ['',0,null,-1,'0.001']){
+  const missing=[{quantity:1,unit_price:value}];
+  assert.equal(basketAmounts(missing,{isCredit:true,paidAmount:0}).total,null);
+  assert.equal(basketAmounts(missing,{isCredit:true,paidAmount:0}).balance,null);
+ }
+ assert.equal(basketAmounts([{quantity:1,unit_price:0}],{txType:'stock_in'}).total,0);
+ assert.equal(basketAmounts(edited,{isCredit:true,paidAmount:''}).balance,null);
+ assert.equal(basketAmounts([{quantity:999999999999,unit_price:999999999999}]).total,null);
+});
 test('Tagalog availability questions preserve part numbers and fluid names exclude radiator components',async()=>{
  const {normalizeQuestion,productTerms}=await import('../src/lib/partTerms.js');assert.match(normalizeQuestion('May BP-001 ba tayo?'),/bp-001/);assert.equal(normalizeQuestion('Ilang BP-001?'),'quantity bp-001?');assert.equal(normalizeQuestion('Nasaan BP-001?'),'where bp-001?');assert.ok(!productTerms('Magkano radiator fluid?').includes('radiyador'));
  await saveCache('availability-staff','/api/offline-snapshot',{products:[{id:'p',part_number:'BP-001',description:'Brake pad',current_stock:3,minimum_stock:1,unit:'pcs'}]});

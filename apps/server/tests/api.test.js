@@ -94,6 +94,8 @@ test('HTTP basket and customer routes validate before RPC and pass the staff tok
  try{
   const batch={client_operation_id:op,tx_type:'sale',lines:[{product_id:product,quantity:1,unit_price:100}],is_credit:true,customer_name:'Sample Customer',paid_amount:50};
   for(const quantity of [true,0,0.001])assert.equal((await post('/api/inventory/batch',{...batch,lines:[{...batch.lines[0],quantity}]})).status,400);
+  for(const unit_price of [0,null,undefined])assert.equal((await post('/api/inventory/batch',{...batch,lines:[{...batch.lines[0],unit_price}]})).status,400);
+  assert.equal(requests.length,0,'Invalid prices must not reach the database RPC');
   assert.equal((await post('/api/inventory/batch',{...batch,paid_amount:101})).status,400);
   assert.equal((await post('/api/debts/payment',{client_operation_id:op,debt_id:product,amount:0})).status,400);
   assert.equal(requests.length,0);

@@ -10,6 +10,12 @@ test('baskets reject invalid quantities, duplicate parts, missing credit names a
  assert.equal(batchSchema.safeParse({...b,lines:[{product_id:id,quantity:1e308,unit_price:1}]}).success,false);
  for(const patch of [{customer_name:''},{paid_amount:101},{tx_type:'stock_in'},{lines:[...b.lines,...b.lines]}])assert.equal(batchSchema.safeParse({...b,...patch}).success,false);
 });
+test('sales need a positive price; a delivery can retain zero purchase cost',()=>{
+ const b={client_operation_id:op,tx_type:'sale',lines:[{product_id:id,quantity:1,unit_price:100}]};
+ for(const unit_price of [0,null,undefined,'',-1,0.001])assert.equal(batchSchema.safeParse({...b,lines:[{...b.lines[0],unit_price}]}).success,false);
+ assert.equal(batchSchema.safeParse({...b,lines:[{...b.lines[0],unit_price:0.01}]}).success,true);
+ assert.equal(batchSchema.safeParse({...b,tx_type:'stock_in',lines:[{...b.lines[0],unit_price:0}]}).success,true);
+});
 test('calendar export dates are inclusive in Philippines time and validated',()=>{
  assert.deepEqual(reportDates({from:'2026-10-01',to:'2026-10-10'}),{from:'2026-10-01',to:'2026-10-10',start:'2026-09-30T16:00:00.000Z',end:'2026-10-10T16:00:00.000Z'});
  assert.throws(()=>reportDates({from:'2026-02-30'}));assert.throws(()=>reportDates({from:'2026-10-10',to:'2026-10-01'}));

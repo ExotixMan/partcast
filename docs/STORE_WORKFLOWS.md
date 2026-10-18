@@ -2,6 +2,18 @@
 
 The source changes are on `codex/partcast-offline-forecasting-20261009`. A GitHub push saves the files; Render must deploy this branch before the website changes. The hosted database and email settings also need the steps below.
 
+## Mobile selling and price validation update — 18 October 2026
+
+For a store already running migrations through 0009, run only [0010_sale_price_validation.sql](../supabase/migrations/0010_sale_price_validation.sql) in Supabase SQL Editor, then deploy both Render services from the branch above. This small migration validates new sale prices; it does not delete or rewrite inventory, old sales, accounts or customer balances. Fresh installations already include it in the complete two-part SQL and setup ZIP.
+
+The phone bar uses **Home / Sell / Stock / Help / Menu** (Cashiers have no Home link). Full page names remain in the menu. Selling shows two item cards per row on phones and three or four when the available width permits. Names and pictures remain readable without cropping; the basket shortcut sits above phone navigation.
+
+**Price needed** means the owner has not supplied a valid selling price. Add the part, enter a price greater than zero and check the basket before confirming. An authorized Inventory editor can choose **Save price to inventory** to use it in future sales; this needs internet. Changing a basket price alone applies only to that sale. Cashiers can enter the price supplied by the owner but cannot change the saved catalog price. PartCast never invents a price from the purchase cost.
+
+Missing/zero sale prices block confirmation, including offline sales. Deliveries can still have zero purchase cost. The API and database also reject new unpriced sales, including direct stock RPCs. A previously queued unpriced sale requires review and re-entry with the correct price; it is not silently changed during sync.
+
+Utang uses amounts rounded per line in integer centavos. Changing a price, quantity or basket item rechecks the amount paid. If payment exceeds the new total, the remaining balance shows **—** with an explanation and confirmation is disabled. Correct the payment or prices; payments are never silently reduced. Valid stock deductions, credit balances and retries still save together atomically.
+
 ## 1. Upgrade Supabase
 
 Back up the database, then open your project's **SQL Editor**. Run only migrations that have not already been applied. An existing installation with migrations 0001–0004 needs the complete file [0005_store_workflows.sql](../supabase/migrations/0005_store_workflows.sql). A fresh project needs 0001, 0002, 0003, 0004, and 0005 in order.

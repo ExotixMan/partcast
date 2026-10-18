@@ -6,3 +6,14 @@ export const barcodeValid=s=>/^[A-Za-z0-9 ._/-]{1,80}$/.test(s.trim());
 
 // Integer cents match PostgreSQL round(quantity * price, 2).
 export const lineCents=(quantity,price)=>{if(!validAmount(quantity)||!validAmount(price))return NaN;return Number((BigInt(Math.round(Number(quantity)*100))*BigInt(Math.round(Number(price)*100))+50n)/100n);};
+
+// A missing price is unknown, never a free sale. Keep payment subtraction in cents.
+export function basketAmounts(lines,{txType='sale',isCredit=false,paidAmount=0}={}) {
+ const validLines=lines.every(l=>validAmount(l.quantity,true)&&validAmount(l.unit_price,txType==='sale'));
+ const cents=validLines?lines.reduce((sum,l)=>sum+lineCents(l.quantity,l.unit_price),0):NaN;
+ const total=Number.isSafeInteger(cents)&&cents>=0&&cents<1e14?cents/100:null;
+ const validPayment=validAmount(paidAmount);
+ const paidCents=validPayment?Math.round(Number(paidAmount)*100):null;
+ const overpaid=isCredit&&total!==null&&validPayment&&paidCents>cents;
+ return {total,validPayment,overpaid,balance:!isCredit?0:total!==null&&validPayment&&!overpaid?(cents-paidCents)/100:null};
+}

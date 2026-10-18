@@ -18,7 +18,7 @@ async function fixture(context,{role='owner'}={}){
  else if(url.pathname==='/api/offline-snapshot')body={products,suppliers:[{id:supplier,name:'Parts supplier'}]};
  else if(url.pathname==='/api/products'&&req.method()==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category');const data=products.filter(p=>`${p.description} ${p.barcode} ${p.search_aliases.join(' ')}`.toLowerCase().includes(q)&&(!category||category==='all'||p.category===category));body={data,count:data.length};}
  else if(url.pathname==='/api/products'&&req.method()==='POST'){const payload=req.postDataJSON();productWrites.push(payload);body={product:{...payload,id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'}};}
- else if(url.pathname.startsWith('/api/products/')&&req.method()==='PATCH'){productWrites.push(req.postDataJSON());body={product:req.postDataJSON()};}
+ else if(url.pathname.startsWith('/api/products/')&&req.method()==='PATCH'){const changes=req.postDataJSON();productWrites.push(changes);const product=products.find(p=>p.id===url.pathname.split('/').at(-1));Object.assign(product,changes);body={product};}
  else if(url.pathname==='/api/inventory/batch'){
  const b=req.postDataJSON();batches.push(b);
  if(!receipts.has(b.client_operation_id)){for(const l of b.lines)products.find(p=>p.id===l.product_id).current_stock+=(b.tx_type==='sale'?-1:1)*l.quantity;
@@ -52,6 +52,90 @@ test('multi-part credit sale records customer balance and partial payment',async
  await page.goto('/debts');await expect(page.getByRole('heading',{name:'Juan'})).toBeVisible();await page.getByRole('button',{name:'Record payment'}).click();await page.getByLabel('Amount received').fill('901');await page.getByRole('button',{name:'Save payment'}).click();expect(api.payments).toHaveLength(0);
  await page.getByLabel('Amount received').fill('400');await page.getByRole('button',{name:'Save payment'}).click();await expect.poll(()=>api.payments.length).toBe(1);expect(api.debts[0].balance).toBe(500);
  await page.getByRole('button',{name:'View payments'}).click();await expect(page.getByRole('dialog')).toContainText('400');
+});
+test('owner can enter a missing price and explicitly save it for future sales',async({page,context})=>{
+ const api=await fixture(context);api.products[0].selling_price=0;
+ await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();
+ const catalog=page.getByRole('region',{name:'Choose parts'});
+ await expect(catalog.getByRole('article').filter({hasText:'Toyota brake pad'})).toContainText('Price needed');
+ await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();
+ const price=page.getByLabel('Price per unit',{exact:true}),confirm=page.getByRole('button',{name:'3. Confirm sale'});
+ await expect(price).toHaveValue('');await expect(confirm).toBeDisabled();
+ await expect(page.getByText('Add a selling price for every part to continue.')).toBeVisible();
+ await price.fill('0');await expect(confirm).toBeDisabled();await price.fill('250.50');
+ await page.getByRole('button',{name:'Save price to inventory',exact:true}).click();
+ await expect(page.getByText('Price saved to inventory for future sales.')).toBeVisible();
+ expect(api.productWrites).toEqual([{selling_price:250.5}]);expect(api.products[0].selling_price).toBe(250.5);
+ await page.reload();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await expect(price).toHaveValue('250.5');
+ await price.fill('200');await confirm.click();await expect.poll(()=>api.batches.length).toBe(1);
+ expect(api.batches[0].lines[0].unit_price).toBe(200);expect(api.products[0].selling_price).toBe(250.5);expect(api.productWrites).toHaveLength(1);
+});
+test('changing prices or removing items rechecks payment and prevents negative utang',async({page,context})=>{
+ const api=await fixture(context);await page.goto('/counter');
+ await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'Add Engine oil to basket'}).click();
+ await page.getByLabel('Customer will pay later').check();await page.getByLabel('Customer name *').fill('Juan');await page.getByLabel('Amount paid now').fill('200');
+ const balance=page.getByText('Remaining utang:'),confirm=page.getByRole('button',{name:'3. Confirm sale'});
+ await expect(balance).toContainText('400.00');await page.getByLabel('Price per unit',{exact:true}).first().fill('100');await expect(balance).toContainText('0.00');
+ await page.getByLabel('Price per unit',{exact:true}).first().fill('50');await expect(page.getByRole('alert')).toContainText('higher than the updated total');await expect(balance).toContainText('—');await expect(confirm).toBeDisabled();expect(api.batches).toHaveLength(0);
+ await page.getByLabel('Amount paid now').fill('100');await expect(balance).toContainText('50.00');
+ await page.getByRole('button',{name:'Remove Toyota brake pad from basket'}).click();await expect(balance).toContainText('0.00');
+ await page.getByLabel('Price per unit',{exact:true}).fill('75');await expect(confirm).toBeDisabled();await expect(balance).toContainText('—');
+ await page.getByLabel('Amount paid now').fill('25');await expect(balance).toContainText('50.00');await confirm.click();
+ await expect.poll(()=>api.debts.length).toBe(1);expect(api.debts[0].balance).toBe(50);expect(api.products[1].selling_price).toBe(100);
+});
+test('cashier enters an owner-approved price without editing inventory prices',async({page,context})=>{
+ const api=await fixture(context,{role:'cashier'});api.products[0].selling_price=null;
+ await page.goto('/counter');await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();
+ await expect(page.getByText('Ask the owner for the selling price, then enter it here.')).toBeVisible();await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();
+ await page.getByLabel('Price per unit',{exact:true}).fill('250');await expect(page.getByRole('button',{name:'Save price to inventory'})).toHaveCount(0);
+ await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect.poll(()=>api.batches.length).toBe(1);expect(api.productWrites).toHaveLength(0);
+});
+test('offline missing prices block a sale until entered; decimal credit sale reconnects once',async({page,context})=>{
+ const api=await fixture(context);api.products[0].selling_price=0;
+ await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.evaluate(async()=>{await navigator.serviceWorker.ready;});
+ api.disconnect(true);await context.setOffline(true);await expect(page.getByText('Working offline',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();
+ await page.getByLabel('Price per unit',{exact:true}).fill('19.90');await page.getByLabel('Customer will pay later').check();await page.getByLabel('Customer name *').fill('Juan');await page.getByLabel('Amount paid now').fill('9.91');await expect(page.getByText('Remaining utang:')).toContainText('9.99');
+ await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByText(/1 unsent transaction/)).toBeVisible();expect(api.batches).toHaveLength(0);
+ api.disconnect(false);await context.setOffline(false);await expect.poll(()=>api.batches.length,{timeout:15000}).toBe(1);expect(api.batches[0].lines[0].unit_price).toBe(19.9);expect(api.batches[0].paid_amount).toBe(9.91);expect(api.debts[0].balance).toBeCloseTo(9.99,2);expect(api.products[0].selling_price).toBe(0);
+});
+test('delivery with zero purchase cost is still allowed',async({page,context})=>{
+ const api=await fixture(context);api.products[0].unit_cost=0;
+ await page.goto('/counter');await page.getByRole('button',{name:'Receive delivery',exact:true}).click();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await expect(page.getByLabel('Cost per unit')).toHaveValue('0');
+ await page.getByRole('button',{name:'3. Confirm delivery'}).click();await expect.poll(()=>api.batches.length).toBe(1);expect(api.batches[0].tx_type).toBe('stock_in');expect(api.products[0].current_stock).toBe(6);
+});
+test('compact selling cards and short navigation fit phones in English and Tagalog',async({page,context})=>{
+ const api=await fixture(context);
+ for(let i=0;i<10;i++)api.products.push({...api.products[0],id:`44444444-4444-4444-8444-${String(i).padStart(12,'0')}`,description:i===0?'Alternator pulley with clutch for Toyota':'Toyota fuel filter',part_number:`27415-0L030-${i}`});
+ api.products[0].photo_paths=[`${p1}/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webp`];
+ await page.setViewportSize({width:320,height:840});await page.goto('/counter');
+ const grid=page.locator('.counter-parts-grid');await expect(grid.getByRole('article')).toHaveCount(12);
+ const columns=()=>grid.evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
+ const fits=()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth);
+ const nav=page.locator('nav:has(.mobile-nav-item)');
+ await expect(nav.locator('span')).toHaveText(['Home','Sell','Stock','Help','Menu']);expect(await columns()).toBe(2);expect(await fits()).toBe(true);
+ await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();
+ const shortcut=page.locator('.counter-basket-shortcut');await expect(shortcut).toBeVisible();
+ expect((await shortcut.boundingBox()).y+(await shortcut.boundingBox()).height).toBeLessThanOrEqual((await nav.boundingBox()).y+1);
+ await shortcut.getByRole('link',{name:'View basket'}).click();await expect(page.getByLabel('Price per unit',{exact:true})).toBeInViewport();
+ await page.getByRole('button',{name:'Clear basket'}).click();
+ await page.getByLabel('Website language').selectOption('fil');await expect(nav.locator('span')).toHaveText(['Home','Benta','Stock','Tulong','Menu']);
+ await page.getByRole('button',{name:'Laki ng text at kulay'}).click();await page.getByRole('button',{name:'Mas malaking text',exact:true}).click();await page.getByRole('button',{name:'Tapos na',exact:true}).click();
+ expect(await fits()).toBe(true);expect(await columns()).toBe(2);
+ for(const label of await nav.locator('span').all())expect(await label.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'/tmp/partcast-counter-phone-tagalog.png',fullPage:false});
+ await page.getByRole('button',{name:'Iba pang pahina'}).click();await expect(page.getByRole('dialog',{name:'Lahat ng pahina'})).toBeVisible();await page.getByRole('button',{name:'Isara ang nabigasyon'}).click();
+ await page.getByRole('button',{name:'Idagdag ang Toyota brake pad sa basket'}).click();
+ await shortcut.getByRole('link',{name:'Tingnan',exact:true}).click();await page.getByLabel('Presyo bawat unit',{exact:true}).fill('250');await page.getByRole('checkbox').check();
+ await page.getByLabel('Halagang binayaran ngayon').fill('300');await expect(page.locator('#store-payment-error')).toBeVisible();expect(await fits()).toBe(true);
+ await page.locator('#store-payment-error').scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/partcast-counter-phone-payment.png',fullPage:false});
+ await page.getByRole('button',{name:'Alisin lahat sa basket',exact:true}).click();
+ await page.getByLabel('Wika ng website').selectOption('en');
+ await page.getByRole('button',{name:'Text and display'}).click();await page.getByRole('button',{name:'Standard text',exact:true}).click();await page.getByRole('button',{name:'Done',exact:true}).click();
+ for(const [width,expected] of [[390,2],[768,4],[1280,3],[1440,4]]){
+  await page.setViewportSize({width,height:1000});expect(await columns(),`${width}px columns`).toBe(expected);expect(await fits(),`${width}px overflow`).toBe(true);
+ }
+ await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'/tmp/partcast-counter-desktop.png',fullPage:false});
 });
 test('offline basket includes all parts and sends once after reconnect',async({page,context})=>{
  await page.setViewportSize({width:390,height:844});const api=await fixture(context);await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.evaluate(async()=>{await navigator.serviceWorker.ready;});
@@ -477,7 +561,7 @@ test('receive a multi-part delivery and add an existing past-due customer balanc
 test('temporary API failure retains one basket and retries its original operation',async({page,context})=>{
  const api=await fixture(context);const attempts=[];let available=false;
  await context.route('http://localhost:10000/api/inventory/batch',async route=>{if(route.request().method()==='OPTIONS'){await route.fallback();return;}attempts.push(route.request().postDataJSON());if(available){await route.fallback();return;}await route.fulfill({status:503,json:{error:'Store server is starting.'},headers:{'access-control-allow-origin':'*'}});});
- await page.setViewportSize({width:390,height:844});await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('link',{name:'Review basket'}).click();await page.getByLabel('Quantity',{exact:true}).fill('5');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByText(/1 unsent transaction/)).toBeVisible();await expect(page.getByText('Tap a part to add it here.')).toBeVisible();expect(api.batches).toHaveLength(0);available=true;await page.getByRole('button',{name:'Send changes'}).click();await expect.poll(()=>api.batches.length,{timeout:15000}).toBe(1);expect(new Set(attempts.map(b=>b.client_operation_id)).size).toBe(1);expect(api.products[0].current_stock).toBe(0);
+ await page.setViewportSize({width:390,height:844});await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('link',{name:'View basket'}).click();await page.getByLabel('Quantity',{exact:true}).fill('5');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByText(/1 unsent transaction/)).toBeVisible();await expect(page.getByText('Tap a part to add it here.')).toBeVisible();expect(api.batches).toHaveLength(0);available=true;await page.getByRole('button',{name:'Send changes'}).click();await expect.poll(()=>api.batches.length,{timeout:15000}).toBe(1);expect(new Set(attempts.map(b=>b.client_operation_id)).size).toBe(1);expect(api.products[0].current_stock).toBe(0);
 });
 
 test('Cashier sees only selling and read-only inventory, including whole photo previews',async({page,context})=>{

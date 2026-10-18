@@ -11,6 +11,7 @@ export const batchSchema=z.object({...common,kind:z.literal('batch').default('ba
  customer_name:text(240),phone:text(80),reference_no:text(180),supplier_id:z.string().uuid().nullable().optional(),
  is_credit:z.boolean().default(false),paid_amount:amount.default(0),due_date:dated
 }).superRefine((v,c)=>{
+ if(v.tx_type==='sale')v.lines.forEach((l,i)=>{if(l.unit_price<=0)c.addIssue({code:'custom',path:['lines',i,'unit_price'],message:'Enter a selling price greater than zero for every part.'});});
  if(v.lines.some(l=>![l.quantity,l.unit_price].every(n=>Number.isFinite(n)&&n>=0&&n<1e12&&Number(n.toFixed(2))===n)))return;
  const total=v.lines.reduce((s,l)=>s+Number((BigInt(Math.round(l.quantity*100))*BigInt(Math.round(l.unit_price*100))+50n)/100n),0)/100;
  if(total>=1e12)c.addIssue({code:'custom',path:['lines'],message:'The total is too large.'});

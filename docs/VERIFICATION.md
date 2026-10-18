@@ -2,6 +2,16 @@
 
 This report describes local checks for required Gmail login codes, store roles, simpler inventory/sales workflows, the forecasting runtime repair and the subsequent Restock/Gmail supplier-table update. Test records use synthetic products, suppliers, and customers; no customer sales workbook was newly published.
 
+## Mobile selling, pricing and utang — 18 October 2026
+
+Full server suite: **103 passed**. Web unit/translation suite: **23 passed**. Production Vite/PWA build passed. All **65 browser scenarios** passed across the full run and focused recheck: the full run passed 62, three outdated navigation/login/basket selectors were corrected, and the final 12-case run passed those cases plus pricing, credit, offline and photo checks. The final build also includes aligned quantity/price fields and photo labels that wrap inside narrow cards.
+
+Browser checks cover two-column phone cards at 320/390 pixels, three columns at 1280 pixels, four columns at 768/1440 pixels, and short phone navigation in English/Tagalog. Larger-text Tagalog checks include a saved part photo and the credit-payment form, with no horizontal overflow. The basket shortcut is checked above phone navigation, and full-page navigation retains keyboard focus handling and account permissions.
+
+Financial checks verify missing/null/zero prices block new sales, an Owner can explicitly save a positive catalog price, a per-sale price change preserves the catalog, and a Cashier cannot save catalog prices. Reducing prices or removing items rechecks the payment and displays an unavailable balance with an actionable warning instead of negative utang. Valid partial payments retain centavo precision. Offline credit sales reconnect exactly once; zero-cost deliveries remain possible. Real PostgreSQL checks exercise migration 0010, unpriced direct-RPC rollbacks, basket atomicity, overpayment rejection, payment locking and safe retries. Complete and fresh-install SQL/ZIP checks also pass.
+
+These are local checks with fictional accounts and API fixtures, not a live Render or Supabase deployment. Existing store data was not changed. Apply the small migration and deploy both services as described in [Store workflows](STORE_WORKFLOWS.md).
+
 ## Model integrity follow-up — 14 October 2026
 
 Full server suite **47 passed**, Python suite **26 passed**, frontend unit suite **17 passed**, production Vite/PWA build passed. The three affected Node ML tests were rerun after the final output-guard change. These counts replace the corresponding earlier suite counts for this revision; browser flows were not rerun for translated error strings.
