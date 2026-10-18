@@ -1,0 +1,36 @@
+PARTCAST — TABLE DATA ONLY
+
+These files contain generated sample quantities for 9 existing inventory parts.
+The part numbers, descriptions and brands are retained. Quantities are not actual sales.
+Dates and quantities are unchanged from the previously supplied sample.
+
+FILES / SUPABASE DESTINATION
+products.csv -> public.products (9 identities; no stock counts or prices supplied)
+demand_observations.csv -> public.demand_observations (778 positive-demand records)
+system_settings.csv -> public.system_settings (1 sample-environment marker)
+
+USE ONE METHOD, NOT BOTH
+1. Recommended if your inventory already exists: paste INSERT_DATA_ONLY.sql into
+   the SQL Editor of your separate DEMO project. It reuses the existing product
+   UUIDs by part number and inserts only missing parts and sample rows. It does
+   not reset stock, replace real history, create tables, alter schemas, change
+   permissions or create accounts. Rerunning skips the same sample rows.
+2. If these tables have no matching parts or sample rows: use Table Editor ->
+   Import data from CSV, in the order products.csv, demand_observations.csv,
+   system_settings.csv. These two catalog/demand CSV files have matching UUIDs.
+   If matching inventory parts already exist, use the SQL method instead; the
+   catalog UUIDs may differ. Do not run a CSV import a second time.
+
+PREREQUISITES
+The existing demand_observations source constraint must already allow
+simulated_demo. These are data-only files and do not enable/change that constraint.
+The separate API must already be configured with PARTCAST_DEMO_MODE=true, and
+both the website and API must point to that separate Supabase project.
+If the sample marker already exists, use the SQL method to update it rather than
+trying to insert the same system_settings key with CSV.
+
+Then open Demand planning -> Update demand estimate (Next 30 days).
+The model creates forecast_runs and demand_forecasts; no forecast/error scores
+are inserted by these files. Normal actual-store mode ignores simulated_demo.
+The dates are fixed sample dates ending in October 2026; normal freshness checks
+still apply. No sample rows are inserted in inventory_transactions or legacy_sales.

@@ -1,0 +1,2 @@
+key,value
+partcast_demo_environment,"{""mode"":""simulated_demo"",""seed_version"":""partcast-demo-v1"",""history_days"":730,""positive_observations"":778,""identified_parts"":9,""as_of_date"":""2026-10-17"",""notice"":""Generated sample quantities. Existing inventory part identities. Not actual customer sales.""}"
