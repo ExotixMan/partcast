@@ -8,6 +8,7 @@ import SyncStatus from './SyncStatus.jsx';
 import NotificationCenter from './NotificationCenter.jsx';
 import Preferences from './Preferences.jsx';
 import AssistantChat from './AssistantChat.jsx';
+import ErrorBoundary from './ErrorBoundary.jsx';
 const daily = [{
   to: '/',
   label: 'Home',
@@ -177,7 +178,7 @@ export default function AppShell() {
         <div className="ml-auto flex shrink-0 items-center gap-2"><button aria-label={t("Open Store Assistant")} className="btn-secondary hidden lg:inline-flex" onClick={help}><CircleHelp size={18} />{t("Need help?")}</button><Preferences /><NotificationCenter /></div>
       </header>
       <SyncStatus />
-      <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1440px] p-4 sm:p-6 lg:p-8"><Outlet /></main>
+      <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1440px] p-4 sm:p-6 lg:p-8"><ErrorBoundary key={location.pathname}><Outlet /></ErrorBoundary></main>
       <nav aria-label={t("Quick navigation")} style={{gridTemplateColumns:`repeat(${quickLinks.length+2},minmax(0,1fr))`}} className="fixed inset-x-0 bottom-0 z-30 grid border-t border-slate-200 bg-white px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(15,23,42,0.03)] lg:hidden">
         {quickLinks.map(item => <NavLink key={item.to} to={item.to} end={item.end} className={({
           isActive

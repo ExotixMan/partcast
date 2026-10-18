@@ -1,4 +1,15 @@
 // Also applies the purchase limit to recommendations cached before this release.
+const searchable=value=>String(value??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+export function matchesSearch(values,query) {
+ const text=searchable(values.join(' '));
+ return searchable(query).trim().split(/\s+/).every(word=>text.includes(word));
+}
+export function filterRestock(rows,{query='',status='all',supplier='all'}={}) {
+ return rows.filter(row=>matchesSearch([row.part_number,row.description,row.supplier_name],query)
+  &&(status==='all'||row.status===status)
+  &&(supplier==='all'||(supplier==='unassigned'?!row.supplier_id:row.supplier_id===supplier)));
+}
+
 export function suggestedQuantity(row) {
  const requested=Number(row.recommended_quantity);
  const low=['low_stock','out_of_stock'].includes(row.status);

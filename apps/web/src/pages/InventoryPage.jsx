@@ -1,3 +1,5 @@
+import HelpDetails from '../components/HelpDetails.jsx';
+import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowRight, ArrowUpFromLine, CheckCircle2, Info, Package, Pencil, Plus, Search, ShoppingCart, X } from 'lucide-react';
@@ -377,7 +379,7 @@ export default function InventoryPage() {
   const partActions = row => canEdit ? <div className="flex flex-wrap gap-2"><button className="btn-secondary" disabled={offline} onClick={() => openEdit(row)}><Pencil size={16} />{t("Edit details")}</button><button className="btn-secondary" onClick={() => openMove(row,'stock_out')}><Package size={16} />{t("Adjust stock")}</button></div> : <p className="text-sm text-slate-500">{t("View only. Ask the owner to change part details.")}</p>;
   return <>
     <PageHeader title={t("Inventory")} subtitle={canEdit ? t("Manage part details and correct stock counts here.") : t("Find part names, prices, photos, and available stock.")} actions={<><Link className="btn-secondary" to="/counter"><ShoppingCart size={18} />{t("Sell or receive")}</Link>{canEdit && <button className="btn-primary" disabled={offline} onClick={openAdd}><Plus size={18} />{t("Add a new part")}</button>}</>} />
-    <div className="mb-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600"><Info size={20} className="mt-1 shrink-0" /><p>{t("Recording a sale or receiving a delivery? Use Sell or receive. Inventory is for part details and stock corrections.")}</p></div>
+    <HelpDetails title="Inventory help" className="mb-3"><p>{t("Recording a sale or receiving a delivery? Use Sell or receive. Inventory is for part details and stock corrections.")}</p></HelpDetails>
 
     {offline && <div role="status" className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><Info size={19} className="mt-1 shrink-0" aria-hidden="true" /><p><strong>{t("You can still record stock changes.")}</strong>{t(" They are saved on this device and sent when your connection returns. Adding or editing part details needs a connection.")}</p></div>}
 
@@ -443,7 +445,7 @@ export default function InventoryPage() {
     <Modal open={productModal} onClose={() => {
       if (!saving) setProductModal(false);
     }} title={editingId ? t('Edit part details') : t('Add a new part')} description={editingId ? t('Update part details. Use Adjust stock only to correct a stock count.') : t('Start with the part name and quantity. You can add more details later.')} size="lg" footer={<><button className="btn-secondary" disabled={saving} onClick={() => setProductModal(false)}>{t("Cancel")}</button><button type="submit" form="inventory-product-form" className="btn-primary" disabled={saving}>{saving ? t('Saving…') : editingId ? t('Save changes') : t('Save part')}</button></>}>
-      <form id="inventory-product-form" onSubmit={saveProduct} noValidate className="space-y-5">
+      <Form id="inventory-product-form" onSubmit={saveProduct} noValidate className="space-y-5">
         {formError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">{t(formError)}</p>}
         <Field name="description" label={t("Part name *")} errors={productErrors} hint={t("Use a name staff will recognize, such as Toyota brake pad.")}><input {...fieldProps('description', productErrors, true)} className="input" required minLength={2} maxLength={500} value={product.description} onChange={event => updateProduct('description', event.target.value)} /></Field>
         <div className="grid gap-5 sm:grid-cols-2"><label><span className="label">{t("Category")}</span><select aria-label={t("Category")} className="input" value={product.category} onChange={e => updateProduct('category', e.target.value)}>{categories.filter(([id]) => id !== 'all').map(([id, label]) => <option value={id} key={id}>{t(label)}</option>)}</select></label><Field name="barcode" label={t("Barcode")} errors={productErrors} hint={t("Use the code on the box, or scan it.")}><div className="flex gap-2"><input id="barcode" className="input" maxLength={80} value={product.barcode} onChange={e => updateProduct('barcode', e.target.value)} /><button type="button" className="btn-secondary" onClick={() => setScan(true)}><ScanLine size={18} /><span className="sr-only">{t("Scan")}</span></button></div></Field>
@@ -465,18 +467,18 @@ export default function InventoryPage() {
           load();
         }} /> : <p className="text-sm text-slate-500">{t("Save this part first, then choose Edit details to add its photos.")}</p>}
         <p className="text-xs text-slate-500">{t("* Required information")}</p>
-      </form>
+      </Form>
     </Modal>
 
     <Modal open={moveModal} onClose={() => {if(!saving)setMoveModal(false);}} title={t("Adjust stock count")} description={t("Use this for damaged, missing, or counted stock. Record sales and deliveries in Sell or receive.")} footer={<><button className="btn-secondary" disabled={saving} onClick={()=>setMoveModal(false)}>{t("Cancel")}</button><button type="submit" form="inventory-adjust-form" className="btn-primary" disabled={saving}>{saving?t('Saving…'):t('Confirm correction')}</button></>}>
-      <form id="inventory-adjust-form" onSubmit={saveMovement} noValidate className="space-y-5">
+      <Form id="inventory-adjust-form" onSubmit={saveMovement} noValidate className="space-y-5">
         {formError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800">{t(formError)}</p>}
         <h3 className="font-bold">{selected?.description}</h3>
         <label className="block"><span className="label">{t("What needs correcting?")}</span><select className="input" value={move.tx_type} onChange={e=>updateMove('tx_type',e.target.value)}><option value="stock_out">{t("Remove stock")}</option><option value="stock_in">{t("Add stock")}</option></select></label>
         <Field name="quantity" label={t("Quantity *")} errors={moveErrors}><input {...fieldProps('quantity',moveErrors)} className="input" type="number" inputMode="decimal" min="0.01" step="0.01" required value={move.quantity} onChange={e=>updateMove('quantity',e.target.value)} /></Field>
         <Field name="notes" label={t("Reason for correction *")} errors={moveErrors} hint={t("For example, damaged part or shelf count corrected.")}><textarea {...fieldProps('notes',moveErrors,true)} className="input" minLength={2} maxLength={1000} required value={move.notes} onChange={e=>updateMove('notes',e.target.value)} /></Field>
         <div className={`rounded-xl p-4 ${insufficientStock?'bg-red-50 text-red-800':'bg-slate-50 text-slate-700'}`}><p>{t("Available now: {v0}",{v0:formatQuantity(selected?.current_stock)})}</p><p className="mt-1 font-bold">{t("After correction: {v0}",{v0:stockAfter===null?'—':formatQuantity(stockAfter)})}</p></div>
-      </form>
+      </Form>
     </Modal>
     <BarcodeScanner open={scan} onClose={() => setScan(false)} onScan={scanned} />
     <Toast toast={toast} onClose={() => setToast(null)} />

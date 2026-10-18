@@ -1,3 +1,4 @@
+import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import {suggestedQuantity} from '../lib/restock.js';
 import { Link, useNavigate } from 'react-router-dom';
@@ -78,12 +79,12 @@ export default function DashboardPage() {
     <section className="panel mb-6 p-5 sm:p-6" aria-labelledby="start-heading">
       <div className="grid gap-5 xl:grid-cols-[1fr_auto] xl:items-center">
         <div className="order-1"><p className="mb-1 hidden text-xs font-semibold uppercase tracking-wider text-red-700 sm:block">{t("Your everyday tasks")}</p><h2 id="start-heading" className="text-xl font-bold text-slate-950">{t("What would you like to do?")}</h2><p className="mt-1 hidden text-sm text-slate-600 sm:block">{t("Start with a part. We\u2019ll guide you through the rest.")}</p></div>
-        <form className="order-3 w-full xl:order-2 xl:w-[28rem]" onSubmit={e => {
+        <Form className="order-3 w-full xl:order-2 xl:w-[28rem]" onSubmit={e => {
           e.preventDefault();
           navigate(`/inventory${search.trim() ? `?q=${encodeURIComponent(search.trim())}` : ''}`);
         }}>
           <label htmlFor="home-part-search" className="label">{t("Find a part")}</label><div className="flex gap-2"><div className="relative min-w-0 flex-1"><Search size={19} className="pointer-events-none absolute left-3 top-4 text-slate-500" /><input id="home-part-search" className="input pl-10" placeholder={t("Part number, name or brand")} value={search} onChange={e => setSearch(e.target.value)} /></div><button className="btn-primary" type="submit">{t("Find")}<ArrowRight size={17} /></button></div>
-        </form>
+        </Form>
         <div aria-label={t("Common actions")} className="order-2 grid gap-3 md:grid-cols-2 xl:order-3 xl:col-span-2">{actions.map(({
             to,
             title,

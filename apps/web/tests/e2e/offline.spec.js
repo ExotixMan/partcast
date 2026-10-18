@@ -217,9 +217,9 @@ test('light sign-in supports password visibility on a phone',async({page,context
 for(const size of [{name:'small-phone',width:320,height:740},{name:'tablet',width:820,height:1180},{name:'desktop',width:1440,height:1000}]){
  test(`${size.name}: every staff screen fits and displays meaningful empty states`,async({page,context})=>{
   await setup(context);await page.setViewportSize(size);const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  for(const [path,title] of [['/','Hello, Store'],['/inventory','Inventory'],['/transactions','Stock history'],['/reorder','Restock & suppliers'],['/forecast','Plan ahead'],['/reports','Reports'],['/account','My account']]){
+  for(const [path,title] of [['/','Hello, Store'],['/inventory','Inventory'],['/transactions','Stock history'],['/reorder','Restock'],['/forecast','Plan ahead'],['/reports','Reports'],['/account','My account']]){
    await page.goto(path);await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible();
-   await expect(page.locator('main').getByRole('status')).toHaveCount(0);
+   await expect(page.locator('main').getByRole('status').filter({hasText:/Loading|Opening|Checking|Getting/})).toHaveCount(0);
    if(path==='/inventory')await expect(page.locator('main').getByText('Toyota brake pad',{exact:true}).filter({visible:true})).toBeVisible();
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${path} overflows`).toBe(true);
    if(path==='/'||path==='/inventory')await page.screenshot({path:`/tmp/partcast-redesign-${size.name}-${path==='/'?'home':'inventory'}.png`,fullPage:true});
@@ -285,7 +285,7 @@ test('staff planning hides management actions and help retains focus during a de
  await setup(context);await planningData(context);await page.setViewportSize({width:390,height:844});
  await page.goto('/forecast');await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Update demand estimate'})).toHaveCount(0);
- await page.goto('/reorder');await expect(page.getByRole('heading',{name:'Restock & suppliers',exact:true})).toBeVisible();
+ await page.goto('/reorder');await expect(page.getByRole('heading',{name:'Restock',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Review supplier email'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Add supplier'})).toHaveCount(0);
  let release;
  await context.route('http://localhost:10000/api/assistant/chat',async route=>{

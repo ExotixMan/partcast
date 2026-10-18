@@ -1,6 +1,7 @@
+import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { ArrowRight, CheckCircle2, Mail, Package, Plus, RefreshCw, Send, Truck, UserRound } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Mail, Package, Plus, RefreshCw, Search, Send, SlidersHorizontal, Truck, UserRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -12,6 +13,8 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import { validAmount } from '../lib/store.js';
 import {suggestedQuantity as suggested,suggestedCost} from '../lib/restock.js';
 import Toast from '../components/Toast.jsx';
+import HelpDetails from '../components/HelpDetails.jsx';
+import {filterRestock,matchesSearch} from '../lib/restock.js';
 const peso = value => new Intl.NumberFormat('en-PH', {
   style: 'currency',
   currency: 'PHP'
@@ -33,6 +36,9 @@ export default function ReorderPage() {
   } = useAuth();
   const admin = ['super_admin', 'owner', 'admin'].includes(profile?.role);
   const [tab, setTab] = useState('reorder');
+  const [searchDraft,setSearchDraft]=useState(''),[query,setQuery]=useState(''),[stockFilter,setStockFilter]=useState('all'),[supplierFilter,setSupplierFilter]=useState('all');
+  const [supplierSearchDraft,setSupplierSearchDraft]=useState(''),[supplierQuery,setSupplierQuery]=useState('');
+  const [filtersOpen,setFiltersOpen]=useState(()=>window.matchMedia('(min-width: 768px)').matches);
   const [rows, setRows] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +48,7 @@ export default function ReorderPage() {
   const [supplierModal, setSupplierModal] = useState(false);
   const [supplier, setSupplier] = useState(blankSupplier);
   const [editingSupplierId, setEditingSupplierId] = useState('');
+  const [supplierError,setSupplierError]=useState(''),[assignError,setAssignError]=useState('');
   const [assign, setAssign] = useState(null);
   const [assignSupplier, setAssignSupplier] = useState('');
   const [unitCost, setUnitCost] = useState(0);
@@ -56,6 +63,7 @@ export default function ReorderPage() {
     }),
     [emailError, setEmailError] = useState('');
   async function reviewEmail(group) {
+    if(group.items.length>100){setToast({type:'error',message:'Choose 100 parts or fewer using search and filters before reviewing an email.'});document.getElementById('restock-search')?.focus();return;}
     const request=++emailNumber.current;
     setEmailGroup(group);
     setEmailError('');
@@ -71,7 +79,7 @@ export default function ReorderPage() {
         quantity: String(suggested(r)),unit:r.unit||'units',extra_values:{}
       }))
     });
-    try{const result=await api.get(`/api/reorder?onlyNeeded=false&supplierId=${group.supplierId}`);if(request===emailNumber.current)setEmailChoices(result.data||[]);}catch(e){if(request===emailNumber.current)setEmailError(e.message);}
+    try{const result=await api.get(`/api/reorder?onlyNeeded=false&supplierId=${group.supplierId}`);if(!Array.isArray(result.data))throw new Error('The store returned incomplete information. Please try again.');if(request===emailNumber.current)setEmailChoices(result.data);}catch(e){if(request===emailNumber.current)setEmailError(e.message);}
   }
   function addColumn(){
     const label=columnName.trim();
@@ -102,8 +110,9 @@ export default function ReorderPage() {
     try {
       const [r, s] = await Promise.all([api.get('/api/reorder?onlyNeeded=true'), api.get('/api/suppliers')]);
       if(request!==loadNumber.current)return;
-      setRows(r.data || []);
-      setSuppliers(s.data || []);
+      if(!Array.isArray(r.data)||!Array.isArray(s.data))throw new Error('The store returned incomplete information. Please try again.');
+      setRows(r.data);
+      setSuppliers(s.data);
     } catch (error) {
       if(request===loadNumber.current)setLoadError(error.message);
     } finally {
@@ -115,31 +124,38 @@ export default function ReorderPage() {
     window.addEventListener('partcast:queue',refresh);window.addEventListener('online',refresh);window.addEventListener('focus',refresh);
     return()=>{loadNumber.current++;emailNumber.current++;clearInterval(timer);window.removeEventListener('partcast:queue',refresh);window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
   }, []);
+  const visibleRows=useMemo(()=>filterRestock(rows,{query,status:stockFilter,supplier:supplierFilter}),[rows,query,stockFilter,supplierFilter]);
+  const visibleSuppliers=useMemo(()=>suppliers.filter(s=>matchesSearch([s.name,s.email,s.phone,s.contact_person],supplierQuery)),[suppliers,supplierQuery]);
+  const filtered=query!==''||stockFilter!=='all'||supplierFilter!=='all';
+  function clearFilters(){setSearchDraft('');setQuery('');setStockFilter('all');setSupplierFilter('all');}
   const groups = useMemo(() => {
     const result = new Map();
-    for (const row of rows) {
+    for (const row of visibleRows) {
       const key = row.supplier_id || 'unassigned';
       if (!result.has(key)) result.set(key, {
         supplierId: row.supplier_id,
-        name: row.supplier_name || 'Choose a supplier for these parts',
+        name: row.supplier_name || 'No supplier',
         email: row.supplier_email,
         items: []
       });
       result.get(key).items.push(row);
     }
     return [...result.values()];
-  }, [rows]);
+  }, [visibleRows]);
   const outOfStock = rows.filter(row => String(row.status).includes('out')).length;
   const unassigned = rows.filter(row => !row.supplier_id).length;
   function openSupplier(item = null) {
     if (busy) return;
     setEditingSupplierId(item?.id || '');
+    setSupplierError('');
     setSupplier(item ? Object.fromEntries(Object.keys(blankSupplier).map(key => [key, item[key] || ''])) : blankSupplier);
     setSupplierModal(true);
   }
   async function createSupplier(event) {
     event.preventDefault();
-    if (busy || supplier.name.trim().length < 2) return;
+    if (busy) return;
+    if(supplier.name.trim().length<2){setSupplierError('Enter a supplier name with at least 2 characters.');return;}
+    setSupplierError('');
     setBusy('supplier');
     try {
       const details = {
@@ -158,15 +174,13 @@ export default function ReorderPage() {
       });
       await load();
     } catch (error) {
-      setToast({
-        type: 'error',
-        message: error.message
-      });
+      setSupplierError(error.message);
     } finally {
       setBusy('');
     }
   }
   function openAssign(row) {
+    setAssignError('');
     setAssign(row);
     setAssignSupplier('');
     setUnitCost(row.estimated_unit_cost || 0);
@@ -174,7 +188,10 @@ export default function ReorderPage() {
   }
   async function saveAssign(event) {
     event.preventDefault();
-    if (busy || !assignSupplier) return;
+    if (busy) return;
+    if(!assignSupplier){setAssignError('Choose a supplier before saving.');return;}
+    if(!validAmount(unitCost)||!/^\d+$/.test(String(leadTime))||Number(leadTime)>365){setAssignError('Enter a valid cost and a whole delivery time from 0 to 365 days.');return;}
+    setAssignError('');
     setBusy('assign');
     try {
       await api.post(`/api/products/${assign.product_id}/suppliers/${assignSupplier}`, {
@@ -188,10 +205,7 @@ export default function ReorderPage() {
       });
       await load();
     } catch (error) {
-      setToast({
-        type: 'error',
-        message: error.message
-      });
+      setAssignError(error.message);
     } finally {
       setBusy('');
     }
@@ -220,30 +234,49 @@ export default function ReorderPage() {
         message: t('Email sent to {v0} with {v1} parts to restock. Confirm availability and prices with your supplier.',{v0:group.name,v1:result.items})
       });
     } catch (error) {
-      setToast({
-        type: 'error',
-        message: error.message
-      });
+      setEmailError(error.message);
     } finally {
       setBusy('');
     }
   }
   return <>
-    <PageHeader title={t("Restock & suppliers")} subtitle={t("See what is running low, check the suggested amounts, and contact your supplier.")} actions={<><button className="btn-secondary" onClick={()=>load()} disabled={loading}><RefreshCw size={17} />{loading ? t('Checking stock…') : t('Refresh list')}</button>{admin && <button className="btn-primary" onClick={() => openSupplier()}><Plus size={17} />{t("Add supplier")}</button>}</>} />
-    <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6"><p className="font-semibold">{t("How stock alerts work")}</p><p className="mt-1 text-slate-600">{t("Parts at or below their low-stock level appear here, including parts with no stock. Set the low-stock level and reserve quantity in Inventory, then choose a supplier here.")}</p><Link className="mt-2 inline-block font-semibold text-red-700" to="/inventory">{t("Check stock limits in Inventory")}</Link></div>
+    <PageHeader title={t("Restock")} inlineActions={tab==='reorder'} actions={<><button className="btn-secondary px-3" aria-label={loading?t('Checking stock…'):t('Refresh list')} onClick={()=>load()} disabled={loading}><RefreshCw size={17} /><span className="hidden sm:inline">{loading ? t('Checking stock…') : t('Refresh list')}</span></button>{admin && tab==='suppliers' && <button className="btn-primary" onClick={() => openSupplier()}><Plus size={17} />{t("Add supplier")}</button>}</>} />
 
-    <div className="mb-5 flex w-full gap-1 rounded-xl border border-slate-200 bg-white p-1 sm:w-fit" role="group" aria-label={t("Restock pages")}><button className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold ${tab === 'reorder' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`} onClick={() => setTab('reorder')} aria-pressed={tab === 'reorder'}><Package size={17} />{t("Parts to restock")}</button><button className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold ${tab === 'suppliers' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`} onClick={() => setTab('suppliers')} aria-pressed={tab === 'suppliers'}><Truck size={17} />{t("Suppliers")}</button></div>
+
+    <div className="mb-5 flex w-full gap-1 rounded-xl border border-slate-200 bg-white p-1 sm:w-fit" role="group" aria-label={t("Restock pages")}><button className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold ${tab === 'reorder' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`} onClick={() => setTab('reorder')} aria-pressed={tab === 'reorder'} aria-label={t("Parts to restock")}><Package size={17} className="shrink-0" />{t("Parts")}</button><button className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold ${tab === 'suppliers' ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-50'}`} onClick={() => setTab('suppliers')} aria-pressed={tab === 'suppliers'}><Truck size={17} className="shrink-0" />{t("Suppliers")}</button></div>
+
+    <section className="panel mb-4 p-3 sm:p-4" aria-label={t('Restock search and filters')}>
+      <Form onSubmit={event=>{event.preventDefault();if(tab==='reorder')setQuery(searchDraft.trim());else setSupplierQuery(supplierSearchDraft.trim());}}>
+        <label className="label" htmlFor="restock-search">{tab==='reorder'?t('Find a part'):t('Search suppliers')}</label>
+        <div className="flex gap-2"><input id="restock-search" aria-label={tab==='reorder'?t('Search parts to restock'):t('Search suppliers')} type="search" className="input min-w-0 flex-1" maxLength={200} placeholder={tab==='reorder'?t('Part number or name'):t('Name, email or phone')} value={tab==='reorder'?searchDraft:supplierSearchDraft} onChange={event=>tab==='reorder'?setSearchDraft(event.target.value):setSupplierSearchDraft(event.target.value)}/><button className="btn-secondary shrink-0 px-3"><Search size={18} aria-hidden="true"/>{t('Search')}</button></div>
+        {tab==='reorder'&&<div id="restock-filters" hidden={!filtersOpen} className={filtersOpen?'mt-3 grid grid-cols-2 items-end gap-3':'hidden'}>
+          <label className="min-w-0"><span className="label">{t('Stock')}</span><select className="input min-w-0" aria-label={t("Stock status")} value={stockFilter} onChange={event=>setStockFilter(event.target.value)}><option value="all">{t('All')}</option><option value="out_of_stock">{t('Out of stock')} ({outOfStock})</option><option value="low_stock">{t('Low stock')}</option><option value="forecast_reorder">{t('Suggested by forecast')}</option></select></label>
+          <label className="min-w-0"><span className="label">{t('Supplier')}</span><select className="input min-w-0" aria-label={t("Supplier")} value={supplierFilter} onChange={event=>setSupplierFilter(event.target.value)}><option value="all">{t('All')}</option><option value="unassigned">{t('No supplier')} ({unassigned})</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+        </div>}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          {tab==='reorder'&&<button type="button" className="btn-secondary gap-1 px-3 py-2" aria-expanded={filtersOpen} aria-controls="restock-filters" onClick={()=>setFiltersOpen(value=>!value)}><SlidersHorizontal size={17} aria-hidden="true"/>{t('Filters')}{(stockFilter!=='all'||supplierFilter!=='all')&&<span className="ml-1 font-bold">({Number(stockFilter!=='all')+Number(supplierFilter!=='all')})</span>}</button>}
+          {!loading&&!loadError&&<p className="text-sm text-slate-600" role="status">{tab==='reorder'?t('{v0} of {v1} parts',{v0:visibleRows.length,v1:rows.length}):t('{v0} of {v1} suppliers',{v0:visibleSuppliers.length,v1:suppliers.length})}</p>}
+          {(tab==='reorder'?filtered||searchDraft: supplierQuery||supplierSearchDraft)&&<button type="button" className="min-h-11 text-sm font-semibold text-red-700 underline underline-offset-2" onClick={()=>{if(tab==='reorder')clearFilters();else{setSupplierQuery('');setSupplierSearchDraft('');}}}>{t('Clear filters')}</button>}
+        </div>
+      </Form>
+    </section>
 
     {loading ? <Loading label={t("Checking parts and suppliers…")} /> : loadError ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5"><h2 className="font-bold text-amber-950">{t("We could not load your restock list.")}</h2><p className="mt-2 text-sm text-amber-900">{t(loadError)}</p><button className="btn-secondary mt-4" onClick={()=>load()}>{t("Try again")}</button></div> : tab === 'reorder' ? <>
-      <div className="mb-5 grid gap-3 sm:grid-cols-3"><div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Parts to review")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{rows.length}</p><p className="mt-1 text-sm text-slate-500">{t("Suggested for your next order")}</p></div><div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Out of stock")}</p><p className={`mt-2 text-3xl font-bold ${outOfStock ? 'text-red-700' : 'text-slate-950'}`}>{outOfStock}</p><p className="mt-1 text-sm text-slate-500">{t("Check these parts first")}</p></div><div className="panel p-4 sm:p-5"><p className="text-sm font-medium text-slate-600">{t("Need a supplier")}</p><p className="mt-2 text-3xl font-bold text-slate-950">{unassigned}</p><p className="mt-1 text-sm text-slate-500">{t("Choose who supplies each part")}</p></div></div>
-      {groups.length > 0 ? <div className="space-y-5"><section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5"><h2 className="font-bold text-slate-950">{t("Before you order")}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t("1. Check the quantity on your shelves. \xA0 2. Review the suggested amount. \xA0 3. Contact your supplier to confirm price and availability.")}</p><p className="mt-2 text-sm leading-6 text-slate-500">{t("Suggested purchases are 1–2 units per part, following the owner’s buying practice. Review sales, shelf stock and delivery time before ordering again.")}</p></section>{groups.map(group => <section key={group.supplierId || 'unassigned'} className="panel overflow-hidden"><div className="panel-header"><div className="flex min-w-0 items-start gap-3"><div className="shrink-0 rounded-xl bg-red-50 p-3 text-red-700"><Truck size={21} /></div><div className="min-w-0"><h2 className="font-bold text-slate-950">{group.name}</h2><p className="mt-1 break-words text-sm text-slate-600">{group.supplierId ? group.email || t('An email address is needed to email this supplier.') : admin ? t('Choose a supplier below before sending an email.') : t('Ask your store manager to choose a supplier.')}</p><p className="mt-1 text-sm text-slate-500">{group.items.length}{t(" part")}{group.items.length === 1 ? '' : t('s')}{t(" to review")}</p></div></div>{admin && group.supplierId && (group.email ? <button className="btn-primary shrink-0" disabled={Boolean(busy)} onClick={() => reviewEmail(group)}><Mail size={17} />{t("Review supplier email")}</button> : <button className="btn-secondary shrink-0" disabled={!suppliers.some(item => item.id === group.supplierId)} onClick={() => openSupplier(suppliers.find(item => item.id === group.supplierId))}><Plus size={17} />{t("Add email address")}</button>)}</div>
-        <div className="divide-y divide-slate-100 lg:hidden">{group.items.map(row => <article key={row.product_id} className="p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-red-700">{row.part_number || t('No part number')}</p><StatusBadge status={row.status} /></div><h3 className="mt-2 font-bold leading-6 text-slate-950">{t(row.description)}</h3><dl className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-slate-50 p-3"><dt className="text-sm text-slate-600">{t("In stock now")}</dt><dd className="mt-1 text-lg font-semibold">{units(row.current_stock)}{t(" units")}</dd></div><div className="rounded-xl bg-red-50 p-3"><dt className="text-sm text-red-700">{t("Suggested this purchase")}</dt><dd className="mt-1 text-lg font-bold text-red-800">{suggested(row)}{t(" units")}</dd></div><div><dt className="text-sm text-slate-500">{t("Estimated sales for the period")}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{units(row.predicted_quantity)}{t(" units")}</dd></div><div><dt className="text-sm text-slate-500">{t("Estimated order cost")}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{peso(suggestedCost(row))}</dd></div></dl>{admin && !row.supplier_id && <button className="btn-secondary mt-4 w-full" onClick={() => openAssign(row)}><Plus size={16} />{t("Choose supplier")}</button>}</article>)}</div>
-        <div className="hidden overflow-x-auto lg:block"><table className="w-full text-left text-sm"><caption className="sr-only">{t("Parts suggested for restocking from ")}{group.name}</caption><thead className="bg-slate-50 text-slate-600"><tr><th scope="col" className="px-5 py-4 font-semibold">{t("Part")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("In stock")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("Estimated sales")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("Suggested this purchase")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("Estimated cost")}</th><th scope="col" className="px-5 py-4 font-semibold">{t("Stock status")}</th></tr></thead><tbody className="divide-y divide-slate-100">{group.items.map(row => <tr key={row.product_id}><td className="max-w-xs px-5 py-4"><p className="font-semibold text-slate-950">{row.part_number || t('No part number')}</p><p className="mt-1 text-sm leading-6 text-slate-600">{t(row.description)}</p>{admin && !row.supplier_id && <button className="btn-secondary mt-2" onClick={() => openAssign(row)}><Plus size={15} />{t("Choose supplier")}</button>}</td><td className="px-4 py-4 text-right">{units(row.current_stock)}</td><td className="px-4 py-4 text-right">{units(row.predicted_quantity)}</td><td className="px-4 py-4 text-right text-base font-bold text-red-700">{suggested(row)}{t(" units")}</td><td className="whitespace-nowrap px-4 py-4 text-right">{peso(suggestedCost(row))}</td><td className="px-5 py-4"><StatusBadge status={row.status} /></td></tr>)}</tbody></table></div><p className="border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500 sm:px-5">{t("Sales estimates cover the full remaining forecast period. Your next purchase is limited to 1–2 units per part, so several small orders may be needed. Estimated cost is for this purchase only.")}</p></section>)}</div> : <section className="panel px-5 py-10 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><CheckCircle2 size={27} /></div><h2 className="mt-4 text-lg font-bold text-slate-950">{t("No parts are currently suggested for restocking")}</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-600">{t("Based on saved stock limits and available estimates. Keep recording sales and stock deliveries so this list stays useful.")}</p><Link className="btn-secondary mt-5" to="/inventory">{t("Check your inventory ")}<ArrowRight size={16} /></Link></section>}
-    </> : <section className="panel overflow-hidden"><div className="panel-header"><div><h2 className="text-lg font-bold text-slate-950">{t("Your suppliers")}</h2><p className="mt-1 text-sm text-slate-600">{t("Contact details for the businesses that supply your parts.")}</p></div></div>{suppliers.length ? <div className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-3">{suppliers.map(item => <article key={item.id} className="border-b border-slate-100 p-5 sm:border-r"><div className="flex items-start gap-3"><div className="rounded-xl bg-slate-50 p-3 text-slate-600"><Truck size={20} /></div><h3 className="min-w-0 self-center break-words font-bold text-slate-950">{item.name}</h3></div><dl className="mt-4 space-y-3 text-sm"><div><dt className="flex items-center gap-2 text-slate-500"><UserRound size={15} />{t("Contact person")}</dt><dd className="mt-1 font-medium text-slate-800">{item.contact_person || t('Not added')}</dd></div><div><dt className="flex items-center gap-2 text-slate-500"><Mail size={15} />{t("Email address")}</dt><dd className="mt-1 break-words font-medium text-slate-800">{item.email || t('Not added')}</dd></div><div><dt className="text-slate-500">{t("Phone number")}</dt><dd className="mt-1 font-medium text-slate-800">{item.phone || t('Not added')}</dd></div>{item.address && <div><dt className="text-slate-500">{t("Address")}</dt><dd className="mt-1 break-words text-slate-800">{item.address}</dd></div>}</dl>{admin && <button className="btn-secondary mt-5 w-full" onClick={() => openSupplier(item)}>{t("Edit contact details")}</button>}</article>)}</div> : <><EmptyState title={t("Add your first supplier")} text={admin ? t('Save a supplier’s name and contact details, then choose them for the parts they provide.') : t('Ask your store manager to add your supplier’s contact details.')} />{admin && <div className="px-5 pb-6 text-center"><button className="btn-primary" onClick={() => openSupplier()}><Plus size={17} />{t("Add supplier")}</button></div>}</>}</section>}
+      {groups.length > 0 ? <div className="space-y-4">{groups.map(group => <section key={group.supplierId || 'unassigned'} className="panel overflow-hidden"><div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
+          <div className="min-w-0"><h2 className="break-words font-bold text-slate-950">{t(group.name)}</h2><p className="mt-1 text-sm text-slate-600">{group.items.length===1?t('1 part'):t('{v0} parts',{v0:group.items.length})}</p>{group.supplierId&&!group.email&&<p className="mt-1 text-sm text-amber-800">{t('Email needed')}</p>}{group.email&&<p className="mt-1 hidden break-all text-sm text-slate-600 sm:block">{group.email}</p>}</div>
+          {admin&&group.supplierId&&(group.email?<button className="btn-primary shrink-0 px-3" aria-label={t('Review supplier email')} disabled={Boolean(busy)} onClick={()=>reviewEmail(group)}><Mail size={17} aria-hidden="true"/><span className="sm:hidden">{t('Review')}</span><span className="hidden sm:inline">{t('Review supplier email')}</span></button>:<button className="btn-secondary shrink-0 px-3" aria-label={t('Add email address')} disabled={!suppliers.some(item=>item.id===group.supplierId)} onClick={()=>openSupplier(suppliers.find(item=>item.id===group.supplierId))}><span className="sm:hidden">{t('Add email')}</span><span className="hidden sm:inline">{t('Add email address')}</span></button>)}
+        </div>
+        <div className="divide-y divide-slate-100 lg:hidden">{group.items.map(row => <article key={row.product_id} className="p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-red-700">{row.part_number || t('No part number')}</p><StatusBadge status={row.status} /></div><h3 className="mt-2 font-bold leading-6 text-slate-950">{t(row.description)}</h3><dl className="mt-4 grid grid-cols-2 gap-3"><div className="py-1"><dt className="text-sm text-slate-600">{t("In stock now")}</dt><dd className="mt-1 text-lg font-semibold">{units(row.current_stock)}{t(" units")}</dd></div><div className="py-1"><dt className="text-sm text-red-700">{t("Suggested this purchase")}</dt><dd className="mt-1 text-lg font-bold text-red-800">{suggested(row)}{t(" units")}</dd></div><div><dt className="text-sm text-slate-500">{t("Estimated sales for the period")}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{units(row.predicted_quantity)}{t(" units")}</dd></div><div><dt className="text-sm text-slate-500">{t("Estimated order cost")}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{peso(suggestedCost(row))}</dd></div></dl>{admin && !row.supplier_id && <button className="btn-secondary mt-4 w-full" onClick={() => openAssign(row)}><Plus size={16} />{t("Choose supplier")}</button>}</article>)}</div>
+        <div className="hidden overflow-x-auto lg:block"><table className="w-full text-left text-sm"><caption className="sr-only">{t("Parts suggested for restocking from ")}{group.name}</caption><thead className="bg-slate-50 text-slate-600"><tr><th scope="col" className="px-5 py-4 font-semibold">{t("Part")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("In stock")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("Estimated sales")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("Suggested this purchase")}</th><th scope="col" className="px-4 py-4 text-right font-semibold">{t("Estimated cost")}</th><th scope="col" className="px-5 py-4 font-semibold">{t("Stock status")}</th></tr></thead><tbody className="divide-y divide-slate-100">{group.items.map(row => <tr key={row.product_id}><td className="max-w-xs px-5 py-4"><p className="font-semibold text-slate-950">{row.part_number || t('No part number')}</p><p className="mt-1 text-sm leading-6 text-slate-600">{t(row.description)}</p>{admin && !row.supplier_id && <button className="btn-secondary mt-2" onClick={() => openAssign(row)}><Plus size={15} />{t("Choose supplier")}</button>}</td><td className="px-4 py-4 text-right">{units(row.current_stock)}</td><td className="px-4 py-4 text-right">{units(row.predicted_quantity)}</td><td className="px-4 py-4 text-right text-base font-bold text-red-700">{suggested(row)}{t(" units")}</td><td className="whitespace-nowrap px-4 py-4 text-right">{peso(suggestedCost(row))}</td><td className="px-5 py-4"><StatusBadge status={row.status} /></td></tr>)}</tbody></table></div></section>)}</div> : filtered&&rows.length>0 ? <section className="panel p-5 text-center"><EmptyState title={t("No matching parts")} text={t("Try another search or clear the filters.")}/><button className="btn-secondary" onClick={clearFilters}>{t("Clear filters")}</button></section> : <section className="panel px-5 py-8 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><CheckCircle2 size={27} /></div><h2 className="mt-4 text-lg font-bold text-slate-950">{t("No parts are currently suggested for restocking")}</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-600">{t("Based on saved stock limits and available estimates. Keep recording sales and stock deliveries so this list stays useful.")}</p><Link className="btn-secondary mt-5" to="/inventory">{t("Check your inventory ")}<ArrowRight size={16} /></Link></section>}
+    </> : <section className="panel overflow-hidden"><div className="panel-header"><div><h2 className="text-lg font-bold text-slate-950">{t("Your suppliers")}</h2><p className="mt-1 text-sm text-slate-600">{t("Contact details for the businesses that supply your parts.")}</p></div></div>{visibleSuppliers.length ? <div className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-3">{visibleSuppliers.map(item => <article key={item.id} className="border-b border-slate-100 p-5 sm:border-r"><div className="flex items-start gap-3"><div className="rounded-xl bg-slate-50 p-3 text-slate-600"><Truck size={20} /></div><h3 className="min-w-0 self-center break-words font-bold text-slate-950">{item.name}</h3></div><dl className="mt-4 space-y-3 text-sm"><div><dt className="flex items-center gap-2 text-slate-500"><UserRound size={15} />{t("Contact person")}</dt><dd className="mt-1 font-medium text-slate-800">{item.contact_person || t('Not added')}</dd></div><div><dt className="flex items-center gap-2 text-slate-500"><Mail size={15} />{t("Email address")}</dt><dd className="mt-1 break-words font-medium text-slate-800">{item.email || t('Not added')}</dd></div><div><dt className="text-slate-500">{t("Phone number")}</dt><dd className="mt-1 font-medium text-slate-800">{item.phone || t('Not added')}</dd></div>{item.address && <div><dt className="text-slate-500">{t("Address")}</dt><dd className="mt-1 break-words text-slate-800">{item.address}</dd></div>}</dl>{admin && <button className="btn-secondary mt-5 w-full" onClick={() => openSupplier(item)}>{t("Edit contact details")}</button>}</article>)}</div> : <><EmptyState title={supplierQuery?t("No matching suppliers"):t("Add your first supplier")} text={supplierQuery?t("Try another search or clear the filters."):admin ? t('Save a supplier’s name and contact details, then choose them for the parts they provide.') : t('Ask your store manager to add your supplier’s contact details.')} /></>}</section>}
+
+    <HelpDetails title={tab==='reorder'?'Restock help':'Supplier help'} className="mt-4">
+      {tab==='reorder'?<><p>{t('Parts at or below their stock limit appear here. Set stock limits in Inventory.')}</p><p>{t('Suggestions start at 1–2 units per part. Check shelf stock, then review the email before sending.')}</p><p>{t('Sales estimates cover the forecast period; costs apply to this purchase only.')}</p><Link className="inline-block min-h-11 py-2 font-semibold text-red-700 underline" to="/inventory">{t('Check stock limits in Inventory')}</Link></>:<p>{t('Save a supplier email address to send order requests. Only the owner or an authorized manager can edit these details.')}</p>}
+    </HelpDetails>
 
     <Modal open={supplierModal} onClose={() => {
       if (!busy) setSupplierModal(false);
-    }} title={editingSupplierId ? t('Edit supplier contact details') : t('Add a supplier')} description={t("Start with their name. Add an email address if you want PartCast to send restock requests.")} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setSupplierModal(false)}>{t("Cancel")}</button><button className="btn-primary" form="supplier-form" type="submit" disabled={busy === 'supplier' || supplier.name.trim().length < 2}>{busy === 'supplier' ? t('Saving supplier…') : t('Save supplier')}</button></>}><form id="supplier-form" onSubmit={createSupplier} className="grid gap-4 sm:grid-cols-2"><label className="sm:col-span-2"><span className="label">{t("Supplier name (required)")}</span><input className="input" required minLength={2} maxLength={180} autoComplete="organization" placeholder={t("Business or supplier name")} value={supplier.name} onChange={event => setSupplier({
+    }} title={editingSupplierId ? t('Edit supplier contact details') : t('Add a supplier')} description={t("Start with their name. Add an email address if you want PartCast to send restock requests.")} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setSupplierModal(false)}>{t("Cancel")}</button><button className="btn-primary" form="supplier-form" type="submit" disabled={Boolean(busy)}>{busy === 'supplier' ? t('Saving supplier…') : t('Save supplier')}</button></>}><Form id="supplier-form" onSubmit={createSupplier} className="grid gap-4 sm:grid-cols-2">{supplierError&&<p role="alert" className="text-sm text-red-700 sm:col-span-2">{t(supplierError)}</p>}<label className="sm:col-span-2"><span className="label">{t("Supplier name (required)")}</span><input className="input" required minLength={2} maxLength={180} autoComplete="organization" placeholder={t("Business or supplier name")} value={supplier.name} onChange={event => setSupplier({
             ...supplier,
             name: event.target.value
           })} /></label><label><span className="label">{t("Contact person (optional)")}</span><input className="input" maxLength={180} autoComplete="name" placeholder={t("Who should we contact?")} value={supplier.contact_person} onChange={event => setSupplier({
@@ -258,16 +291,16 @@ export default function ReorderPage() {
           })} /></label><label className="sm:col-span-2"><span className="label">{t("Address (optional)")}</span><textarea className="input min-h-20" maxLength={500} autoComplete="street-address" value={supplier.address} onChange={event => setSupplier({
             ...supplier,
             address: event.target.value
-          })} /></label></form></Modal>
+          })} /></label></Form></Modal>
 
     <Modal open={Boolean(assign)} onClose={() => {
       if (!busy) setAssign(null);
-    }} title={t("Choose a supplier for this part")} description={assign ? `${assign.part_number || 'No part number'} · ${assign.description}` : ''} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setAssign(null)}>{t("Cancel")}</button><button className="btn-primary" form="assign-supplier-form" type="submit" disabled={busy === 'assign' || !assignSupplier}>{busy === 'assign' ? t('Saving…') : t('Save supplier for part')}</button></>}><form id="assign-supplier-form" onSubmit={saveAssign} className="space-y-4"><label><span className="label">{t("Who supplies this part? (required)")}</span><select className="input" required value={assignSupplier} onChange={event => setAssignSupplier(event.target.value)}><option value="">{t("Choose a supplier")}</option>{suppliers.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>{!suppliers.length && <p className="rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-900">{t("No suppliers have been added yet. Close this window and use \u201CAdd supplier\u201D first.")}</p>}<div className="grid gap-4 sm:grid-cols-2"><label><span className="label">{t("Cost per unit (\u20B1)")}</span><input className="input" type="number" min="0" step="0.01" required value={unitCost} onChange={event => setUnitCost(event.target.value)} /><span className="mt-2 block text-sm text-slate-500">{t("The latest price paid for one unit.")}</span></label><label><span className="label">{t("Usual delivery time (days)")}</span><input className="input" type="number" min="0" max="365" step="1" required value={leadTime} onChange={event => setLeadTime(event.target.value)} /><span className="mt-2 block text-sm text-slate-500">{t("How many days delivery normally takes.")}</span></label></div><p className="text-sm leading-6 text-slate-500">{t("This becomes the main supplier used for this part\u2019s restock requests.")}</p></form></Modal>
+    }} title={t("Choose a supplier for this part")} description={assign ? `${assign.part_number || 'No part number'} · ${assign.description}` : ''} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setAssign(null)}>{t("Cancel")}</button><button className="btn-primary" form="assign-supplier-form" type="submit" disabled={Boolean(busy)}>{busy === 'assign' ? t('Saving…') : t('Save supplier for part')}</button></>}><Form id="assign-supplier-form" onSubmit={saveAssign} className="space-y-4">{assignError&&<p role="alert" className="text-sm text-red-700">{t(assignError)}</p>}<label><span className="label">{t("Who supplies this part? (required)")}</span><select className="input" required value={assignSupplier} onChange={event => setAssignSupplier(event.target.value)}><option value="">{t("Choose a supplier")}</option>{suppliers.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>{!suppliers.length && <p className="rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-900">{t("No suppliers have been added yet. Close this window and use \u201CAdd supplier\u201D first.")}</p>}<div className="grid gap-4 sm:grid-cols-2"><label><span id="assign-cost-label" className="label">{t("Cost per unit (\u20B1)")}</span><input className="input" aria-labelledby="assign-cost-label" aria-describedby="assign-cost-help" type="number" min="0" step="0.01" required value={unitCost} onChange={event => setUnitCost(event.target.value)} /><span id="assign-cost-help" className="mt-2 block text-sm text-slate-500">{t("The latest price paid for one unit.")}</span></label><label><span id="assign-time-label" className="label">{t("Usual delivery time (days)")}</span><input className="input" aria-labelledby="assign-time-label" aria-describedby="assign-time-help" type="number" min="0" max="365" step="1" required value={leadTime} onChange={event => setLeadTime(event.target.value)} /><span id="assign-time-help" className="mt-2 block text-sm text-slate-500">{t("How many days delivery normally takes.")}</span></label></div><p className="text-sm leading-6 text-slate-500">{t("This becomes the main supplier used for this part\u2019s restock requests.")}</p></Form></Modal>
 
     <Modal open={Boolean(emailGroup)} onClose={() => {
       if (!busy) setEmailGroup(null);
     }} size="lg" title={t("Review your supplier email")} description={t("Edit the message and parts below. These exact details will be sent to your saved supplier.")} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setEmailGroup(null)}>{t("Keep reviewing")}</button><button className="btn-primary" disabled={Boolean(busy) || !draft.items.length} onClick={() => send(emailGroup)}><Send size={17} />{busy ? t('Sending email…') : t('Send email to supplier')}</button></>}>
-    {emailGroup && <form id="supplier-email-form" className="space-y-5" onSubmit={e => {
+    {emailGroup && <Form id="supplier-email-form" className="space-y-5" onSubmit={e => {
         e.preventDefault();
         send(emailGroup);
       }}>
@@ -287,7 +320,7 @@ export default function ReorderPage() {
                 items: d.items.filter(x => x.product_id !== i.product_id)
               }))}>{t("Remove")}</button></div></div>)}
     </fieldset><section><h3 className="mb-3 font-semibold">{t("Email table preview")}</h3><div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr>{['Part number','Description','In stock','Unit','Quantity'].map(label=><th key={label} className="whitespace-nowrap px-3 py-3">{t(label)}</th>)}{draft.extra_columns.map(c=><th key={c.id} className="whitespace-nowrap px-3 py-3">{c.label}</th>)}</tr></thead><tbody>{draft.items.map(i=><tr key={i.product_id} className="border-t border-slate-200"><td className="px-3 py-3">{i.part_number}</td><td className="min-w-48 px-3 py-3">{i.description}</td><td className="px-3 py-3">{units(emailChoices.find(r=>r.product_id===i.product_id)?.current_stock)}</td><td className="px-3 py-3">{i.unit||'units'}</td><td className="px-3 py-3">{i.quantity}</td>{draft.extra_columns.map(c=><td key={c.id} className="min-w-32 px-3 py-3">{i.extra_values?.[c.id]||''}</td>)}</tr>)}</tbody></table></div></section><p className="text-sm text-slate-500">{t("Confirm prices with your supplier. This email does not change stock. Record a delivery when the parts arrive.")}</p>
-    </form>}
+    </Form>}
     </Modal>
     <Toast toast={toast} onClose={() => setToast(null)} />
   </>;

@@ -2,6 +2,14 @@
 
 The source changes are on `codex/partcast-offline-forecasting-20261009`. A GitHub push saves the files; Render must deploy this branch before the website changes. The hosted database and email settings also need the steps below.
 
+## Compact Restock and validation update
+
+Deploy the latest API and website from the branch above. This update adds no SQL migration; keep the earlier required migrations through 0010 installed.
+
+On **Restock → Parts**, enter a part number, name or supplier and choose **Search**. Open **Filters** for stock status or supplier, including parts without a supplier. **Clear filters** restores the full list. On **Suppliers**, search contact details or choose **Add supplier**. Review and edit the selected parts before sending an email. If an email group exceeds 100 parts, narrow the search/filter selection first.
+
+Page explanations are in optional help sections. Form errors name the field to correct, and failed supplier/email saves keep the entered draft open. A page that cannot render offers **Try again** and **Reload app**; the stored offline queue is preserved. See [Design references](DESIGN_REFERENCES.md) and [Verification](VERIFICATION.md).
+
 ## Mobile selling and price validation update — 18 October 2026
 
 For a store already running migrations through 0009, run only [0010_sale_price_validation.sql](../supabase/migrations/0010_sale_price_validation.sql) in Supabase SQL Editor, then deploy both Render services from the branch above. This small migration validates new sale prices; it does not delete or rewrite inventory, old sales, accounts or customer balances. Fresh installations already include it in the complete two-part SQL and setup ZIP.

@@ -1,4 +1,5 @@
 import { ZodError } from 'zod';
+import {validationMessage} from '../utils/validationMessage.js';
 
 export function notFound(req, res) {
   res.status(404).json({ error: 'Endpoint not found.' });
@@ -9,9 +10,9 @@ export function errorHandler(err, req, res, next) {
 
   if (err instanceof ZodError) {
     const first = err.issues?.[0];
-    const field = first?.path?.length ? `${first.path.join('.')}: ` : '';
-    return res.status(400).json({ error: `${field}${first?.message || 'Invalid request data.'}` });
+    return res.status(400).json({ error: validationMessage(first) });
   }
+  if(err?.type==='entity.parse.failed')return res.status(400).json({error:'The request could not be read. Please try again.'});
 
   if (err?.code === 'SIMULATED_DEMAND') return res.status(422).json({error:err.message,code:'SIMULATED_DEMAND'});
 

@@ -1,3 +1,4 @@
+import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
@@ -48,7 +49,7 @@ export default function TransactionsPage({salesOnly=false,embedded=false}) {
     };
   }, [page, type, refresh, filters]);
   return <>
-    {!embedded&&<PageHeader title={salesOnly?t('Sales'):t("Stock history")} subtitle={salesOnly?t('Review parts sold, customers and amounts.'):t("See when parts arrived, were sold, or were removed from stock. Each saved change stays in this history.")} actions={refreshButton} />}
+    {!embedded&&<PageHeader title={salesOnly?t('Sales'):t("Stock history")} subtitle={salesOnly?t('Review parts sold, customers and amounts.'):t("Review sales, deliveries and stock corrections.")} actions={refreshButton} />}
     <section className="panel overflow-hidden" aria-label={salesOnly?t('Counter sales'):t('Stock history')} aria-busy={loading}>
       <div className="panel-header flex flex-wrap items-end justify-between gap-3">
         {!salesOnly&&<label className="block w-full sm:w-60" htmlFor="history-type"><span className="label">{t("Show stock changes")}</span>
@@ -62,12 +63,12 @@ export default function TransactionsPage({salesOnly=false,embedded=false}) {
         {!loading && !error && <p className="text-sm text-slate-600">{salesOnly?t('Sales entries: {v0}',{v0:count.toLocaleString()}):<>{count.toLocaleString()} {count===1?t('saved change'):t('saved changes')}</>}</p>}
         {embedded&&refreshButton}
       </div>
-      {salesOnly&&<form onSubmit={applyDates} className="grid min-w-0 gap-3 border-b border-slate-100 p-5 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_auto_auto] xl:items-end">
+      {salesOnly&&<Form onSubmit={applyDates} className="grid min-w-0 gap-3 border-b border-slate-100 p-5 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_auto_auto] xl:items-end">
         <label className="min-w-0"><span className="label">{t('From date')}</span><input className="input min-w-0" type="date" value={draft.from} max={draft.to||undefined} onChange={event=>setDraft({...draft,from:event.target.value})}/></label>
         <label className="min-w-0"><span className="label">{t('To date')}</span><input className="input min-w-0" type="date" value={draft.to} min={draft.from||undefined} onChange={event=>setDraft({...draft,to:event.target.value})}/></label>
         <button className="btn-secondary" disabled={loading}>{t('Find sales')}</button><button className="btn-secondary" type="button" disabled={loading} onClick={()=>{setDraft({from:'',to:''});setFilters({from:'',to:''});setPage(1);setFormError('');}}>{t('Clear filters')}</button>
         {formError&&<p className="text-sm text-red-700 sm:col-span-2 xl:col-span-4" role="alert">{t(formError)}</p>}
-      </form>}
+      </Form>}
       {loading ? <Loading label={salesOnly?t('Loading sales…'):t("Loading stock history…")} /> : error ? <div className="space-y-3 p-5" role="alert"><h2 className="font-semibold text-slate-900">{salesOnly?t('Sales could not be loaded'):t("Stock history could not be loaded")}</h2><p className="text-sm text-red-700">{t(error)}</p><button className="btn-secondary" onClick={() => setRefresh(value => value + 1)}>{t("Try again")}</button></div> : rows.length === 0 ? <EmptyState title={salesOnly?t('No sales found'):type === 'all' ? t('No stock changes yet') : t('No matching stock changes')} text={salesOnly?t('Sales saved through Sell or receive appear here. Try another date range or record a sale.'):type === 'all' ? t('Sales, deliveries, and stock corrections appear here after you save them.') : t('Choose “All stock changes” to see the rest of your history.')} /> : <>
         <div className="divide-y divide-slate-100 lg:hidden">
           {rows.map(row => <article key={row.id} className="space-y-3 p-5">

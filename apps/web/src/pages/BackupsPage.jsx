@@ -1,3 +1,4 @@
+import HelpDetails from '../components/HelpDetails.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw, ShieldCheck } from 'lucide-react';
@@ -70,7 +71,7 @@ export default function BackupsPage() {
   })} onClick={() => download(row.id)}><Download size={17} aria-hidden="true" />{downloading === row.id ? t('Preparing download…') : t('Download backup')}</button> : null;
   return <>
     <PageHeader title={t("Backup copies")} subtitle={t("Save an extra copy of your store records, or download a copy you saved earlier.")} actions={<button className="btn-primary" onClick={create} disabled={busy}><RefreshCw size={17} aria-hidden="true" className={busy ? 'animate-spin' : ''} />{busy ? t('Saving backup…') : t('Save a backup now')}</button>} />
-    <div className="mb-5 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4"><ShieldCheck className="mt-0.5 shrink-0 text-emerald-700" size={21} aria-hidden="true" /><p className="text-sm leading-6 text-emerald-900">{t("Backups are private Excel files. An internet connection is needed to save or download them. Each download link expires after five minutes; you can request a new one here.")}</p></div>
+    <HelpDetails title="Backup help" className="mb-3"><p>{t("Backups are private Excel files. An internet connection is needed to save or download them. Each download link expires after five minutes; you can request a new one here.")}</p></HelpDetails>
     <section className="panel overflow-hidden" aria-busy={loading}><div className="panel-header"><h2 className="font-bold">{t("Saved backups")}</h2></div>
       {loading ? <Loading label={t("Loading saved backups…")} /> : error ? <div className="space-y-3 p-5" role="alert"><h3 className="font-semibold">{t("Backups could not be loaded")}</h3><p className="text-sm text-red-700">{t(error)}</p><button className="btn-secondary" onClick={load}>{t("Try again")}</button></div> : !rows.length ? <EmptyState title={t("No backup copies yet")} text={t("Choose “Save a backup now” to make your first copy of the store’s saved records.")} /> : <>
         <div className="divide-y divide-slate-100 lg:hidden">{rows.map(row => <article key={row.id} className="space-y-3 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="min-w-0 flex-1 break-all text-sm font-semibold text-slate-900">{row.file_name || t('Backup was not saved')}</h3><StatusBadge status={row.status} /></div><p className="text-sm text-slate-600">{t("Saved ")}{dateLabel(row.created_at)}</p><p className="text-sm text-slate-500">{sizeLabel(row.size_bytes)}</p>{downloadButton(row)}</article>)}</div>

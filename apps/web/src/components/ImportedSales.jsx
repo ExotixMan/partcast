@@ -1,3 +1,4 @@
+import Form from './Form.jsx';
 import {useEffect,useState} from 'react';
 import {api} from '../lib/api.js';
 import {t,useLocale} from '../context/LocaleContext.jsx';
@@ -31,14 +32,14 @@ export default function ImportedSales({refreshKey=0}) {
   const rows=Array.isArray(result?.data)?result.data:[],count=Number(result?.count||0),filtered=Object.values(filters).some(Boolean);
   return <section id="saved-past-sales" className="panel mt-5 scroll-mt-5 overflow-hidden" aria-labelledby="imported-sales-heading">
     <div className="panel-header"><div><h2 id="imported-sales-heading" className="text-lg font-bold text-slate-950">{t('Saved past sales')}</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{t('Find past invoices by reference, description or date.')}</p></div></div>
-    <form onSubmit={apply} className="grid min-w-0 gap-3 border-b border-slate-100 p-5 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_auto_auto] xl:items-end">
+    <Form onSubmit={apply} className="grid min-w-0 gap-3 border-b border-slate-100 p-5 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_auto_auto] xl:items-end">
       <label className="min-w-0 sm:col-span-2 xl:col-span-1"><span className="label">{t('Search reference or description')}</span><input className="input min-w-0" type="search" maxLength={120} value={draft.q} onChange={event=>setDraft({...draft,q:event.target.value})} /></label>
       <label className="min-w-0"><span className="label">{t('From date')}</span><input className="input min-w-0" type="date" max={draft.to||undefined} value={draft.from} onChange={event=>setDraft({...draft,from:event.target.value})} /></label>
       <label className="min-w-0"><span className="label">{t('To date')}</span><input className="input min-w-0" type="date" min={draft.from||undefined} value={draft.to} onChange={event=>setDraft({...draft,to:event.target.value})} /></label>
       <button className="btn-secondary" type="submit" disabled={loading}>{t('Find invoices')}</button>
       <button className="btn-secondary" type="button" onClick={clear} disabled={loading}>{t('Clear filters')}</button>
       {formError&&<p role="alert" className="text-sm text-red-700 sm:col-span-2 xl:col-span-5">{t(formError)}</p>}
-    </form>
+    </Form>
     {loading?<p role="status" className="p-5 text-sm text-slate-600">{t('Loading saved invoices…')}</p>:error?<div role="alert" className="p-5"><p className="font-semibold">{t('Saved invoices could not be loaded.')}</p><p className="mt-2 text-sm text-red-700">{t(error)}</p><button className="btn-secondary mt-3" onClick={()=>setRefresh(value=>value+1)}>{t('Try again')}</button></div>:<>
       <p role="status" className="border-b border-slate-100 p-5 font-semibold">{t('Invoices found: {v0}',{v0:number(count)})}</p>
       {!rows.length?<div className="p-5 text-sm leading-6 text-slate-600"><p>{filtered?t('No invoices match these filters.'):t('No past invoices are saved yet. Use Import spreadsheets to add your sales file.')}</p><p className="mt-2">{t('An import marked completed can add zero new rows when those invoice references already exist. Check the added/skipped counts and notes on Import spreadsheets.')}</p></div>:<>

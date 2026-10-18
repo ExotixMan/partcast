@@ -1,3 +1,4 @@
+import Form from './Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -122,7 +123,7 @@ export default function AssistantChat() {
           {messages.length <= 2 && <div className="mt-5"><p className="mb-2 text-sm font-semibold text-slate-600">{t("Choose a question to get started")}</p><div className="grid gap-2">{suggestions.map(suggestion => <button key={suggestion} type="button" disabled={busy} onClick={() => send(t(suggestion))} className="min-h-12 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-base font-medium leading-6 text-slate-800 hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50">{t(suggestion)}</button>)}</div></div>}
         </div>
 
-        <form className="border-t border-slate-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]" onSubmit={event => {
+        <Form className="border-t border-slate-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]" onSubmit={event => {
           event.preventDefault();
           send();
         }}>
@@ -137,7 +138,7 @@ export default function AssistantChat() {
             <button type="submit" aria-label={t("Send message")} disabled={!text.trim() || busy} className="btn-primary min-h-14 shrink-0 px-3"><ArrowUp aria-hidden="true" size={20} /><span>{t('Send')}</span></button>
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">{t("Ask about a part, a sale, or how to use PartCast.")}</p>
-        </form>
+        </Form>
       </section>
     </div>, document.body)}
   </>;

@@ -1,3 +1,4 @@
+import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -257,7 +258,7 @@ export default function CounterPage() {
  })}</div>
  {!loading && !rows.length && <p className="py-8 text-center text-slate-500">{t("No parts found. Try another name or category.")}</p>}
  <Pagination page={page} pageSize={25} count={count} onPage={setPage} /></section>
- <form id="store-basket" tabIndex={-1} className="panel scroll-mt-24 p-3 sm:p-4" onSubmit={submit} noValidate><h2 className="mb-2 text-lg font-bold">{t("2. Check your basket")}</h2><p className="mb-4 text-sm text-slate-500">{mode === 'sale' ? t('Quantities below will be taken from stock.') : t('Quantities below will be added to stock.')}</p>
+ <Form id="store-basket" tabIndex={-1} className="panel scroll-mt-24 p-3 sm:p-4" onSubmit={submit} noValidate><h2 className="mb-2 text-lg font-bold">{t("2. Check your basket")}</h2><p className="mb-4 text-sm text-slate-500">{mode === 'sale' ? t('Quantities below will be taken from stock.') : t('Quantities below will be added to stock.')}</p>
  <fieldset disabled={locked} className="space-y-4">
  {!cart.length && <p className="rounded-xl bg-slate-50 p-5 text-center text-slate-500">{t("Tap a part to add it here.")}</p>}
  {cart.map(l => <article key={l.product_id} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start gap-2"><ProductThumbnail product={l.product} className="h-12 w-12" /><h3 className="min-w-0 flex-1 break-words font-semibold">{t(l.product.description)}</h3><button type="button" className="min-h-11 min-w-11 text-red-700" aria-label={t("Remove {v0} from basket", {
@@ -278,7 +279,7 @@ export default function CounterPage() {
  <div className="my-5 flex flex-wrap justify-between gap-2 border-t border-slate-200 pt-4 text-xl font-bold"><span>{t("Total")}</span><span>{formattedTotal}</span></div>
  {cart.length>0&&total===null&&<p className="mb-3 text-sm font-semibold text-amber-800">{incompletePrice?t('Add a selling price for every part to continue.'):t('Check the quantities and prices before saving.')}</p>}
  <button className="btn-primary w-full" disabled={busy || !!priceSaving || !cart.length || total===null || paymentIssue}>{busy ? t('Saving…') : mode === 'sale' ? t('3. Confirm sale') : t('3. Confirm delivery')}</button><p className="mt-3 text-sm text-slate-500">{navigator.onLine ? t('All selected parts save together.') : t('This basket saves on this device and sends automatically when internet returns.')}</p>
- </form></div>
+ </Form></div>
  {cart.length>0&&<><div className="h-24 xl:hidden" aria-hidden="true" /><div className="counter-basket-shortcut fixed inset-x-0 z-20 flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 lg:left-64 xl:hidden"><div className="min-w-0"><p className="text-sm text-slate-600">{t('{v0} parts in basket',{v0:cart.length})}</p><p className="break-words font-bold">{formattedTotal}</p></div><a className="btn-primary shrink-0" href="#store-basket">{t('View basket')}</a></div></>}
  <BarcodeScanner open={scan} onClose={() => setScan(false)} onScan={lookup} /><Toast toast={toast} onClose={() => setToast(null)} />
  </>;

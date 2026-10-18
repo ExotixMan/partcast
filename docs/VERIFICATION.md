@@ -2,6 +2,16 @@
 
 This report describes local checks for required Gmail login codes, store roles, simpler inventory/sales workflows, the forecasting runtime repair and the subsequent Restock/Gmail supplier-table update. Test records use synthetic products, suppliers, and customers; no customer sales workbook was newly published.
 
+## Compact interface, Restock filters and consistent validation — 18 October 2026
+
+Full server suite: **106 passed**. Web unit/translation suite: **26 passed**. Production Vite/PWA build passed. All **70 browser scenarios** passed across the full run and focused rechecks: the full run passed 66, loading assertions were corrected to distinguish the new result-count announcements from spinners, and the existing Counter sales translation was retained. The 11-case recheck passed the four affected scenarios and Restock workflows. Final focused checks also passed after compacting phone headers/help and correcting shared stock-badge translation.
+
+New checks cover combined part/name/supplier search, stock and unassigned-supplier filters, clearing filters, distinct empty/no-match states, independent supplier-contact searches, preserved filters after refresh, and saved offline Restock searches. The API check returns all 1,001 fixture records across two pages, rather than stopping at Supabase’s first 1,000. Invalid supplier IDs stop before database reads. Filtering preserves purchase quantities and forecast totals.
+
+Form checks cover whitespace-only names, email errors, cost/delivery bounds, external settings-submit buttons, focusing/marking invalid fields, retaining entries after supplier/link/email failures and retrying a draft. API tests verify readable field names and rejection of malformed JSON without echoing private request content. An intentionally malformed page response exercises the recovery screen and then successfully reloads the page while navigation remains available. Existing offline sales, credit, required email-code login, role restrictions, forecasting, imports, exports, notifications and photo workflows are included in the broader browser run.
+
+Phone, tablet and desktop checks include 320-pixel layouts and larger Tagalog text. The final phone preview was visually reviewed. Optional help is collapsed initially; import replacement warnings and forecast provenance/accuracy remain available in their existing flows. These are local synthetic fixtures, not a live Render deployment, actual staff usability study or full accessibility certification. Design sources and their application are listed in [Design references](DESIGN_REFERENCES.md).
+
 ## Mobile selling, pricing and utang — 18 October 2026
 
 Full server suite: **103 passed**. Web unit/translation suite: **23 passed**. Production Vite/PWA build passed. All **65 browser scenarios** passed across the full run and focused recheck: the full run passed 62, three outdated navigation/login/basket selectors were corrected, and the final 12-case run passed those cases plus pricing, credit, offline and photo checks. The final build also includes aligned quantity/price fields and photo labels that wrap inside narrow cards.

@@ -1,3 +1,4 @@
+import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, Eye, EyeOff } from 'lucide-react';
@@ -169,13 +170,13 @@ export default function LoginPage() {
         {serverError && <div role="alert" className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><p>{t(serverError)}</p><button type="button" className="btn-secondary mt-3 w-full border-amber-200 bg-white text-amber-900" disabled={checkingServer} onClick={checkServer}>{checkingServer ? t('Checking connection…') : t('Check connection again')}</button></div>}
         {error && <div role="alert" className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-base leading-7 text-red-800">{t(error)}</div>}
 
-        {needsSetup ? <form onSubmit={submitSetup} className="mt-6 space-y-5" aria-busy={loading}>
+        {needsSetup ? <Form onSubmit={submitSetup} className="mt-6 space-y-5" aria-busy={loading}>
           <PasswordField id="setup-secret" label={t('Setup secret')} value={setup.setupSecret} onChange={e => setSetup({...setup,setupSecret:e.target.value})} autoComplete="off" hint={t('This is the private setup code provided by the person who set up PartCast.')} />
           <div><label htmlFor="owner-name" className="label">{t('Owner full name')}</label><input id="owner-name" minLength={2} maxLength={120} autoComplete="name" className="input min-h-14" required value={setup.fullName} onChange={e => setSetup({...setup,fullName:e.target.value})} /></div>
           <div><label htmlFor="owner-email" className="label">{t('Email address')}</label><input id="owner-email" maxLength={254} type="email" autoComplete="email" className="input min-h-14" required value={setup.email} onChange={e => setSetup({...setup,email:e.target.value})} /></div>
           <PasswordField id="owner-password" value={setup.password} onChange={e => setSetup({...setup,password:e.target.value})} autoComplete="new-password" minLength={10} hint={t('Use at least 10 characters. Keep your password private.')} />
           <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-14 w-full">{loading ? t('Creating account…') : t('Create Super Admin account')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
-        </form> : <form onSubmit={submitLogin} className="mt-6 space-y-5" aria-busy={loading}>
+        </Form> : <Form onSubmit={submitLogin} className="mt-6 space-y-5" aria-busy={loading}>
           <div><label htmlFor="login-email" className="label">{t('Email address')}</label><input id="login-email" type="email" autoComplete="email" spellCheck={false} autoCapitalize="none" className={`input min-h-14 ${otpMode?'bg-slate-50':''}`} required value={otpMode ? session.user.email : login.email} onChange={e => setLogin({...login,email:e.target.value})} placeholder={t('Your email address')} maxLength={254} readOnly={otpMode} /></div>
           {otpMode ? <div>
             <label className="label" htmlFor="login-otp">{t('Email sign-in code')}</label>
@@ -189,7 +190,7 @@ export default function LoginPage() {
             <button type="button" className="min-h-11 rounded px-1 text-sm font-semibold text-red-700 underline underline-offset-4 disabled:cursor-not-allowed disabled:text-slate-500 disabled:no-underline" disabled={loading || resendSeconds > 0} onClick={sendOtp}>{resendSeconds ? t('Resend in {v0}s',{v0:resendSeconds}) : otpSent ? t('Resend code') : t('Send email code')}</button>
             <button type="button" className="min-h-11 rounded px-1 text-sm font-semibold text-slate-600 underline underline-offset-4 disabled:cursor-not-allowed disabled:opacity-50" disabled={loading} onClick={signOut}>{t('Use another account')}</button>
           </div>}
-        </form>}
+        </Form>}
 
         <div className="mt-7 border-t border-slate-200 pt-5">
           <p className="text-sm font-semibold text-slate-800">{t('Need help signing in?')}</p>

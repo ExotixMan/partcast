@@ -21,5 +21,5 @@ export default function StatusBadge({
     failed: 'Failed',
     sent: 'Sent'
   };
-  return <span className={`badge ${cls}`}>{labels[s] || String(status || '').replaceAll('_', ' ')}</span>;
+  return <span className={`badge ${cls}`}>{t(labels[s] || String(status || '').replaceAll('_', ' '))}</span>;
 }

@@ -1,3 +1,4 @@
+import Form from './Form.jsx';
 import {useEffect,useMemo,useState} from 'react';
 import {RefreshCw,Search} from 'lucide-react';
 import {api} from '../lib/api.js';
@@ -46,13 +47,13 @@ export default function SalesSummary({refreshKey=0}) {
 
   return <section className="panel mb-5 overflow-hidden" aria-labelledby="sales-summary-heading">
     <div className="panel-header"><div><h2 id="sales-summary-heading" className="text-lg font-bold text-slate-950">{t('Sales by part')}</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{result?.mode==='simulated_demo'?t('Generated sample quantities in the separate demo database.'):t('See quantities sold from counter entries and imported sales history.')}</p><p className="mt-1 text-sm leading-6 text-slate-500">{t('Only saved quantities are counted. Missing days remain unknown.')}</p></div></div>
-    <form onSubmit={apply} className="grid min-w-0 gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-[1fr_1fr_auto_auto] xl:items-end">
+    <Form onSubmit={apply} className="grid min-w-0 gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-[1fr_1fr_auto_auto] xl:items-end">
       <label className="min-w-0"><span className="label">{t('From date')}</span><input className="input min-w-0" type="date" max={draft.to||today} value={draft.from} onChange={event=>setDraft({...draft,from:event.target.value})} /></label>
       <label className="min-w-0"><span className="label">{t('To date')}</span><input className="input min-w-0" type="date" min={draft.from||undefined} max={today} value={draft.to} onChange={event=>setDraft({...draft,to:event.target.value})} /></label>
       <button type="submit" className="btn-secondary" disabled={loading}><RefreshCw size={16} className={loading?'animate-spin':''} />{t('Show sales')}</button>
       <button type="button" className="btn-secondary" onClick={allDates} disabled={loading}>{t('All saved dates')}</button>
       {formError&&<p role="alert" className="text-sm text-red-700 sm:col-span-2 xl:col-span-4">{t(formError)}</p>}
-    </form>
+    </Form>
     {loading?<p role="status" className="p-5 text-sm text-slate-600">{t('Loading sales…')}</p>:error?<div role="alert" className="p-5"><p className="font-semibold text-amber-950">{t('Recorded quantities could not be loaded.')}</p><p className="mt-2 text-sm text-amber-900">{t(error)}</p><button className="btn-secondary mt-3" onClick={()=>setRefresh(value=>value+1)}>{t('Try again')}</button></div>:<>
       {result?.offline&&<p role="status" className="border-b border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{t('Saved copy from {v0}. Connect to refresh it.',{v0:new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Manila'}).format(new Date(result.savedAt))})}</p>}
       {Number(result?.invalid_records||0)+Number(result?.future_records||0)>0&&<p role="alert" className="border-b border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{t('{v0} invalid or future-dated records were left out. Check the source records.',{v0:Number(result.invalid_records||0)+Number(result.future_records||0)})}</p>}

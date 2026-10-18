@@ -2,6 +2,16 @@
 
 The interface is designed around the tasks store staff perform every day: find a part, record a sale, receive a delivery, and check what needs restocking. White surfaces, a light gray background, and solid red accents replace the dark navigation and sign-in screens. No gradients are used.
 
+## Compact pages and clearer errors — 18 October 2026
+
+Restock now puts search and the parts list first. Search covers part numbers, names and supplier names; the Suppliers tab searches contact names, email addresses and phone numbers. **Filters** opens stock-status and supplier choices on phones, shows the number of active filters and keeps **Clear filters** available. Matching counts remain distinct from loading/error messages. Filtered email reviews include only the visible matching parts, and a group above the existing 100-part email limit asks the user to narrow the list first.
+
+The phone tabs use short labels, supplier groups have compact headers, and **Add supplier** belongs to the Suppliers tab. Repeated instruction panels and large decorative statistics have been reduced. Optional help is closed initially across Restock, Inventory, Reports, Backups, staff access, account information and forecasting. Important import replacement warnings, stock/payment errors, forecast source labels and accuracy remain visible when relevant. Text size and touch targets stay readable; flat borders replace panel shadows.
+
+Ordinary forms now show persistent field-specific feedback, focus the first invalid field and retain entered values after failed requests. This covers required/whitespace-only fields, email format, whole-number ranges and decimal constraints. Supplier/contact/link/email failures remain in their dialog so users can correct or retry the draft. Inventory and sales keep their specific stock and financial validation. API validation uses readable field names; malformed JSON errors do not echo request content. Page error boundaries offer recovery without clearing the offline queue. Stock badges also follow the selected language.
+
+The interaction references are documented in [Design references](DESIGN_REFERENCES.md): Google Material Design, Nielsen’s heuristics, progressive disclosure, Fitts’s Law, Hick’s Law and WCAG error/target guidance. A [phone preview](design-previews/phone-restock.png) shows the compact layout with fictional test data and larger Tagalog text. This redesign requires deploying the current API and website; it adds no new SQL migration.
+
 ## Everyday workflow
 
 - **Home:** sale, delivery, and restocking actions appear first. Search opens Inventory with the part name or number already filled in. Running-low and out-of-stock totals open the corresponding inventory filter. Sales charts and less-used insights expand when requested.

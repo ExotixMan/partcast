@@ -29,13 +29,16 @@
   .btn-danger { @apply btn border border-red-200 bg-red-50 text-red-700 hover:bg-red-100; }
   .input { @apply min-h-12 w-full rounded-xl border border-slate-400 bg-white px-3 py-3 text-base text-slate-900 placeholder:text-slate-500 focus:border-red-500 focus:ring-4 focus:ring-red-50; }
   .label { @apply mb-2 block text-base font-semibold text-slate-800; }
-  .panel { @apply min-w-0 rounded-2xl border border-slate-200 bg-white shadow-soft; }
+  .panel { @apply min-w-0 rounded-xl border border-slate-200 bg-white; }
   .panel-header { @apply flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5; }
   .page-title { @apply text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl; }
-  .page-subtitle { @apply mt-2 max-w-2xl text-base leading-7 text-slate-600; }
+  .page-subtitle { @apply mt-1 max-w-2xl text-base leading-6 text-slate-600; }
   .badge { @apply inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-semibold; }
   .skip-link { @apply fixed left-4 top-4 z-[100] -translate-y-24 rounded-xl bg-white px-5 py-3 font-semibold text-red-700 shadow-lg focus:translate-y-0; }
 }
+
+.input[aria-invalid="true"] { border-color:#dc2626; }
+html[data-theme="dark"] .input[aria-invalid="true"] { border-color:#fca5a5; }
 
 @media (max-width: 1023px) {
  #main-content { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }

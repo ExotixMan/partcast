@@ -11,6 +11,7 @@ These screenshots show the light interface using fictional test data.
 - [Tablet sign-in](tablet-login.png)
 - [Desktop sign-in](desktop-login.png)
 - [Phone email-code step](phone-email-code.png)
+- [Phone Restock with larger Tagalog text](phone-restock.png)
 
 Sales and deliveries share Sell or receive. Inventory contains part details and stock corrections, with read-only controls for Cashiers. Part photos fit their frames without cropping and open a gallery independently of adding an item to a basket. Login requires a password followed by the emailed code.
 

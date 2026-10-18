@@ -285,12 +285,14 @@ router.post('/products/:productId/suppliers/:supplierId', rolesAdmin, async (req
 
 router.get('/reorder', async (req, res, next) => {
   try {
-    let q = adminDb.from('reorder_recommendations').select('*');
-    if (req.query.supplierId) q=q.eq('supplier_id',z.string().uuid().parse(req.query.supplierId));
-    if (String(req.query.onlyNeeded ?? 'true') !== 'false') q = neededRestock(q);
-    const { data, error } = await q.order('recommended_quantity',{ascending:false});
-    if (error) throw error;
-    res.json({ data: (data||[]).map(normalizeRestock) });
+    const supplierId=req.query.supplierId?z.string().uuid().parse(req.query.supplierId):null;
+    const data=await fetchAll(()=>{
+      let q=adminDb.from('reorder_recommendations').select('*');
+      if(supplierId)q=q.eq('supplier_id',supplierId);
+      if(String(req.query.onlyNeeded??'true')!=='false')q=neededRestock(q);
+      return q.order('recommended_quantity',{ascending:false}).order('product_id');
+    });
+    res.json({data:data.map(normalizeRestock)});
   } catch (e) { next(e); }
 });
 

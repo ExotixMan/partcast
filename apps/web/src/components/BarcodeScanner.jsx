@@ -1,3 +1,4 @@
+import Form from './Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useRef, useState } from 'react';
 import Modal from './Modal.jsx';
@@ -73,7 +74,7 @@ export default function BarcodeScanner({
         setCamera(!camera);
       }}>{camera ? t('Stop camera') : t('Use camera')}</button>
  {camera && <video ref={video} muted playsInline className="w-full rounded-xl bg-slate-900" aria-label={t("Barcode camera")} />}
- <form onSubmit={submit} className="space-y-3"><label className="label" htmlFor="barcode-entry">{t("Barcode number")}</label><input id="barcode-entry" className="input" autoComplete="off" maxLength={80} value={code} onChange={e => setCode(e.target.value)} required /><button className="btn-primary w-full">{t("Find this barcode")}</button></form>
+ <Form onSubmit={submit} className="space-y-3"><label className="label" htmlFor="barcode-entry">{t("Barcode number")}</label><input id="barcode-entry" className="input" autoComplete="off" maxLength={80} value={code} onChange={e => setCode(e.target.value)} required /><button className="btn-primary w-full">{t("Find this barcode")}</button></Form>
  <p className="text-sm text-slate-500">{t("A saved barcode finds its part and photos. A new barcode needs the part details first.")}</p>
  </div></Modal>;
 }

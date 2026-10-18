@@ -3,6 +3,21 @@ import assert from 'node:assert/strict';
 Object.assign(process.env,{PARTCAST_DEMO_MODE:'false',SUPABASE_URL:'http://127.0.0.1:9',SUPABASE_ANON_KEY:'test-only-public-key-12345',SUPABASE_SERVICE_ROLE_KEY:'test-only-service-key-12345',SETUP_SECRET:'test-only-setup-secret',CRON_SECRET:'test-only-cron-secret-long-enough',IP_HASH_SECRET:'test-only-hash-secret',INTEGRATION_ENCRYPTION_KEY:'test-only-encryption-key-32-characters',GMAIL_CLIENT_ID:'fixture-client',GMAIL_CLIENT_SECRET:'fixture-secret',GMAIL_REFRESH_TOKEN:'fixture-refresh',GMAIL_SENDER_EMAIL:'sender@example.test'});
 const {adminDb}=await import('../src/supabase.js');
 
+test('restock reads every page so searches can find parts beyond the first 1000',async()=>{
+ const {default:express}=await import('express');const {default:api}=await import('../src/routes/api.js');const {errorHandler}=await import('../src/middleware/error.js');
+ const previous=adminDb.from,ranges=[];
+ const rows=Array.from({length:1001},(_,i)=>({product_id:`part-${i}`,description:`Part ${i}`,status:'low_stock',recommended_quantity:1,current_stock:1}));
+ adminDb.from=table=>({select(){assert.equal(table,'reorder_recommendations');return this;},eq(){return this;},or(){return this;},order(){return this;},range(from,to){ranges.push([from,to]);return Promise.resolve({data:rows.slice(from,to+1),error:null});}});
+ const app=express();app.use((req,res,next)=>{req.user={id:'11111111-1111-4111-8111-111111111111',role:'owner'};next();});app.use('/api',api);app.use(errorHandler);
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
+ try{
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const response=await fetch(base+'/api/reorder');assert.equal(response.status,200);
+  const body=await response.json();assert.equal(body.data.length,1001);assert.equal(body.data.at(-1).description,'Part 1000');assert.deepEqual(ranges,[[0,999],[1000,1999]]);
+  ranges.length=0;assert.equal((await fetch(base+'/api/reorder?supplierId=invalid')).status,400);assert.equal(ranges.length,0);
+ }finally{adminDb.from=previous;await new Promise(resolve=>server.close(resolve));}
+});
+
 test('older database results use small purchases in APIs, supplier defaults and both chatbot languages; reviewed quantities remain exact',async()=>{
  const {default:express}=await import('express');
  const {default:api}=await import('../src/routes/api.js');
@@ -14,7 +29,7 @@ test('older database results use small purchases in APIs, supplier defaults and 
  const original={product_id:product,part_number:'BP-001',description:'Brake pad',unit:'pcs',supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test',current_stock:0,predicted_quantity:11,recommended_quantity:11,estimated_unit_cost:100,estimated_order_cost:1100,status:'out_of_stock'};
  const messages=[];
  adminDb.from=table=>({
-  select(){return this;},eq(){return this;},or(){return this;},gt(){return this;},in(){return this;},order(){return this;},limit(){return this;},insert(){return this;},
+  select(){return this;},eq(){return this;},or(){return this;},gt(){return this;},in(){return this;},order(){return this;},limit(){return this;},insert(){return this;},range(){return this;},
   maybeSingle:async()=>({data:table==='latest_completed_forecast_run'?{completed_at:new Date().toISOString(),horizon_days:30}:null,error:null}),
   then(resolve){return Promise.resolve({data:table==='reorder_recommendations'?[{...original}]:[],error:null}).then(resolve);}
  });

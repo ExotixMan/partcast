@@ -159,9 +159,9 @@ for(const width of [390,1440])test(`small purchase suggestions keep forecast tot
  await page.goto('/reorder');
  const row=(width<1024?page.getByRole('article'):page.getByRole('row')).filter({hasText:'Toyota brake pad'});
  await expect(row).toContainText('11');await expect(row).toContainText('2 units');await expect(row).toContainText('₱200.00');await expect(row).not.toContainText('₱1,100.00');
- await expect(page.getByText(/Suggested purchases are 1–2 units per part/)).toBeVisible();
+ await page.getByText('Restock help',{exact:true}).click();await expect(page.getByText(/Suggestions start at 1–2 units per part/)).toBeVisible();
  await page.getByRole('button',{name:'Review supplier email'}).click();await expect(page.getByLabel('Quantity *')).toHaveValue('2');await page.getByRole('button',{name:'Keep reviewing'}).click();
- await page.getByLabel('Website language').selectOption('fil');await expect(row).toContainText('2');await expect(page.getByText(/Karaniwang 1–2 lang bawat piyesa/)).toBeVisible();
+ await page.getByLabel('Website language').selectOption('fil');await expect(row).toContainText('2');await expect(page.getByText(/Nagsisimula sa 1–2 bawat piyesa/)).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 test('supplier table supports custom columns, extra assigned parts, validation and a matching mobile preview',async({page,context})=>{
@@ -705,4 +705,87 @@ test('Gmail code delivery failures stay on the email step, show the cause and re
  expect(requests).toBe(1);broken=false;await page.getByRole('button',{name:'Send email code',exact:true}).click();
  await expect(page.getByRole('alert')).toHaveCount(0);await expect(page.getByText('Check your inbox and spam folder. Enter the code from your most recent email.')).toBeVisible();await expect(page.getByRole('button',{name:/Resend in/})).toBeDisabled();expect(requests).toBe(2);await expect(page.getByRole('main')).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+async function restockFixture(context){
+ const api=await fixture(context),other='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+ const suppliers=[{id:supplier,name:'Parts supplier',email:'supplier@example.test',phone:'09171111111'},{id:other,name:'South Parts',email:'south@example.test',phone:'09172222222'}];
+ const base={unit:'pcs',minimum_stock:1,predicted_quantity:11,recommended_quantity:2,estimated_unit_cost:100};
+ const rows=[{...base,product_id:p1,part_number:'BP-001',description:'Toyota brake pad',current_stock:1,status:'low_stock',supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test'},
+ {...base,product_id:p2,part_number:'OIL-001',description:'Engine oil',current_stock:0,status:'out_of_stock',supplier_id:other,supplier_name:'South Parts',supplier_email:'south@example.test'},
+ {...base,product_id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',part_number:'90915-YZZD2',description:'Toyota oil filter',current_stock:0,status:'out_of_stock',supplier_id:null},
+ {...base,product_id:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',part_number:'TYC550',description:'Clutch cover',current_stock:4,status:'forecast_reorder',supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test'}];
+ const supplierWrites=[],links=[];let supplierFailure=false,linkFailure=false,loadFailure=false;
+ const headers={'access-control-allow-origin':'*'};
+ await context.route('http://localhost:10000/api/reorder**',route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  const id=new URL(route.request().url()).searchParams.get('supplierId');
+  return route.fulfill({status:loadFailure?503:200,json:loadFailure?{error:'Please try again shortly.'}:{data:rows.filter(r=>!id||r.supplier_id===id)},headers});
+ });
+ await context.route('http://localhost:10000/api/suppliers',route=>{
+  const method=route.request().method();if(method==='OPTIONS')return route.fallback();
+  if(method==='GET')return route.fulfill({json:{data:suppliers},headers});
+  supplierWrites.push(route.request().postDataJSON());return route.fulfill({status:supplierFailure?503:201,json:supplierFailure?{error:'Supplier details could not be saved. Try again.'}:{supplier:supplierWrites.at(-1)},headers});
+ });
+ await context.route('http://localhost:10000/api/products/*/suppliers/*',route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();links.push(route.request().postDataJSON());
+  return route.fulfill({status:linkFailure?503:200,json:linkFailure?{error:'Supplier link could not be saved. Try again.'}:{data:{}},headers});
+ });
+ return {...api,rows,supplierWrites,links,setSupplierFailure:v=>supplierFailure=v,setLinkFailure:v=>linkFailure=v,setLoadFailure:v=>loadFailure=v};
+}
+
+test('restock search and filters preserve quantities, distinguish no matches and work with saved offline records',async({page,context})=>{
+ const api=await restockFixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/reorder');await expect(page.getByText(/Inventory saved/)).toBeVisible();await expect(page.getByRole('article')).toHaveCount(4);
+ await expect(page.locator('details.page-help')).not.toHaveAttribute('open');
+ await page.getByLabel('Search parts to restock').fill('BP-001');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(page.getByRole('article')).toHaveCount(1);await expect(page.getByRole('article')).toContainText('Toyota brake pad');await expect(page.getByText('1 of 4 parts')).toBeVisible();
+ await page.getByRole('button',{name:'Refresh list'}).click();await expect(page.getByText('1 of 4 parts')).toBeVisible();await expect(page.getByLabel('Search parts to restock')).toHaveValue('BP-001');
+ await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.getByRole('button',{name:'Filters',exact:true}).click();await page.getByLabel('Stock status',{exact:true}).selectOption('out_of_stock');await expect(page.getByRole('article')).toHaveCount(2);
+ await page.getByLabel('Supplier',{exact:true}).selectOption('unassigned');await expect(page.getByRole('article')).toHaveCount(1);await expect(page.getByRole('article')).toContainText('90915-YZZD2');
+ await page.getByLabel('Search parts to restock').fill('missing part');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(page.getByRole('heading',{name:'No matching parts'})).toBeVisible();await expect(page.getByRole('heading',{name:'No parts are currently suggested for restocking'})).toHaveCount(0);
+ await page.getByRole('button',{name:'Clear filters',exact:true}).first().click();await expect(page.getByRole('article')).toHaveCount(4);
+ await page.getByRole('button',{name:'Suppliers',exact:true}).click();await page.getByLabel('Search suppliers').fill('south@example');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(page.getByRole('article')).toHaveCount(1);await expect(page.getByRole('article')).toContainText('South Parts');
+ await page.getByLabel('Search suppliers').fill('no vendor');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(page.getByRole('heading',{name:'No matching suppliers'})).toBeVisible();await expect(page.getByRole('heading',{name:'Add your first supplier'})).toHaveCount(0);
+ await page.getByRole('button',{name:'Parts to restock',exact:true}).click();await page.evaluate(async()=>{await navigator.serviceWorker.ready;});api.disconnect(true);await context.setOffline(true);await page.reload();await expect(page.getByRole('article')).toHaveCount(4);
+ await page.getByLabel('Search parts to restock').fill('oil');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(page.getByRole('article')).toHaveCount(2);expect(api.rows[0].recommended_quantity).toBe(2);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('supplier forms identify invalid fields, focus them and preserve entries after failed saves',async({page,context})=>{
+ const api=await restockFixture(context);await page.goto('/reorder');await page.getByRole('button',{name:'Suppliers',exact:true}).click();await page.getByRole('button',{name:'Add supplier',exact:true}).click();const dialog=page.getByRole('dialog');
+ await dialog.getByRole('button',{name:'Save supplier',exact:true}).click();await expect(dialog.getByRole('alert')).toContainText('Supplier name');await expect(dialog.getByLabel('Supplier name (required)')).toBeFocused();expect(api.supplierWrites).toHaveLength(0);
+ await dialog.getByLabel('Supplier name (required)').fill('  ');await dialog.getByRole('button',{name:'Save supplier',exact:true}).click();await expect(dialog.getByRole('alert')).toContainText('Enter a value');
+ await dialog.getByLabel('Supplier name (required)').fill('New supplier');await dialog.getByLabel('Email address (optional)').fill('not-an-email');await dialog.getByRole('button',{name:'Save supplier',exact:true}).click();await expect(dialog.getByLabel('Email address (optional)')).toBeFocused();await expect(dialog.getByRole('alert')).toContainText('valid email');expect(api.supplierWrites).toHaveLength(0);
+ await dialog.getByLabel('Email address (optional)').fill('new@example.test');api.setSupplierFailure(true);await dialog.getByRole('button',{name:'Save supplier',exact:true}).click();await expect(dialog.getByRole('alert')).toContainText('could not be saved');await expect(dialog.getByLabel('Supplier name (required)')).toHaveValue('New supplier');await expect(dialog.getByRole('button',{name:'Save supplier',exact:true})).toBeEnabled();
+ await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('button',{name:'Parts to restock',exact:true}).click();await page.getByRole('button',{name:'Choose supplier',exact:true}).click();
+ await dialog.getByLabel('Who supplies this part? (required)').selectOption(supplier);await dialog.getByLabel('Cost per unit (₱)',{exact:true}).fill('-1');await dialog.getByRole('button',{name:'Save supplier for part'}).click();await expect(dialog.getByLabel('Cost per unit (₱)',{exact:true})).toBeFocused();expect(api.links).toHaveLength(0);
+ await dialog.getByLabel('Cost per unit (₱)',{exact:true}).fill('125.50');await dialog.getByLabel('Usual delivery time (days)').fill('366');await dialog.getByRole('button',{name:'Save supplier for part'}).click();await expect(dialog.getByRole('alert')).toContainText('365');expect(api.links).toHaveLength(0);
+ await dialog.getByLabel('Usual delivery time (days)').fill('7');api.setLinkFailure(true);await dialog.getByRole('button',{name:'Save supplier for part'}).click();await expect(dialog.getByRole('alert')).toContainText('link could not be saved');await expect(dialog.getByLabel('Cost per unit (₱)',{exact:true})).toHaveValue('125.50');
+ api.setLinkFailure(false);await dialog.getByRole('button',{name:'Save supplier for part'}).click();await expect(dialog).toHaveCount(0);expect(api.links.at(-1)).toEqual({latest_unit_cost:125.5,lead_time_days:7,is_primary:true});
+});
+
+test('supplier email validates quantities and retains the editable draft when sending fails',async({page,context})=>{
+ const api=await restockFixture(context);let available=false,attempts=0;
+ await context.route('http://localhost:10000/api/admin/supplier-email/*',route=>{if(route.request().method()==='OPTIONS')return route.fallback();attempts++;return available?route.fallback():route.fulfill({status:503,json:{error:'Email service is temporarily unavailable. Try again.'},headers:{'access-control-allow-origin':'*'}});});
+ await page.goto('/reorder');const group=page.locator('section.panel').filter({has:page.getByRole('heading',{name:'Parts supplier',exact:true})});await group.getByRole('button',{name:'Review supplier email'}).click();const dialog=page.getByRole('dialog');
+ await dialog.getByLabel('Your message *').fill('Please deliver our order on Monday.');await dialog.getByLabel('Quantity *',{exact:true}).first().fill('0');await dialog.getByRole('button',{name:'Send email to supplier'}).click();await expect(dialog.getByRole('alert')).toContainText('Quantity');await expect(dialog.getByLabel('Quantity *',{exact:true}).first()).toBeFocused();expect(attempts).toBe(0);
+ await dialog.getByLabel('Quantity *',{exact:true}).first().fill('2');await dialog.getByRole('button',{name:'Send email to supplier'}).click();await expect(dialog.getByRole('alert')).toContainText('temporarily unavailable');await expect(dialog.getByLabel('Your message *')).toHaveValue('Please deliver our order on Monday.');expect(api.emails).toHaveLength(0);
+ available=true;await dialog.getByRole('button',{name:'Send email to supplier'}).click();await expect.poll(()=>api.emails.length).toBe(1);await expect(dialog).toHaveCount(0);expect(api.emails[0].message).toBe('Please deliver our order on Monday.');
+});
+
+test('external settings submit uses field validation and failed pages recover without losing navigation',async({page,context})=>{
+ await fixture(context);let writes=0;
+ await context.route('http://localhost:10000/api/admin/settings/*',route=>{if(route.request().method()==='OPTIONS')return route.fallback();writes++;return route.fulfill({json:{data:{}},headers:{'access-control-allow-origin':'*'}});});
+ await page.goto('/settings');await page.getByLabel('Keep backup copies for (days)').fill('0');await page.getByRole('button',{name:'Save settings',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Enter 1 or more');await expect(page.getByLabel('Keep backup copies for (days)')).toBeFocused();expect(writes).toBe(0);
+ await page.getByLabel('Keep backup copies for (days)').fill('30');await page.getByLabel('Plan stock for the next (days)').fill('91');await page.getByRole('button',{name:'Save settings',exact:true}).click();await expect(page.getByRole('alert')).toContainText('90');expect(writes).toBe(0);
+ await page.getByLabel('Plan stock for the next (days)').fill('30');await page.getByRole('button',{name:'Save settings',exact:true}).click();await expect.poll(()=>writes).toBe(2);
+ let broken=true;await context.route('http://localhost:10000/api/debts',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({json:{data:broken?{}:[]},headers:{'access-control-allow-origin':'*'}}));
+ await page.setViewportSize({width:390,height:844});await page.goto('/debts');await expect(page.getByRole('heading',{name:'This page could not open'})).toBeVisible();await expect(page.getByRole('navigation',{name:'Quick navigation'})).toBeVisible();broken=false;await page.getByRole('button',{name:'Try again',exact:true}).click();await expect(page.getByRole('heading',{name:'Customer utang',exact:true})).toBeVisible();
+});
+
+test('compact restock stays readable with larger Tagalog text on phone tablet and desktop and offers retry',async({page,context})=>{
+ const api=await restockFixture(context);await page.setViewportSize({width:320,height:840});await page.goto('/reorder');await page.getByLabel('Website language').selectOption('fil');await page.getByRole('button',{name:'Laki ng text at kulay'}).click();await page.getByRole('button',{name:'Mas malaking text',exact:true}).click();await page.getByRole('button',{name:'Tapos na',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Oorderin',exact:true})).toBeVisible();await expect(page.getByRole('article').filter({hasText:'Toyota brake pad'}).getByText('Paubos na',{exact:true})).toBeVisible();
+ for(const width of [320,768,1440]){await page.setViewportSize({width,height:1000});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}px`).toBe(true);}
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/partcast-restock-compact-phone.png',fullPage:false});
+ await page.getByText('Tulong sa pag-order',{exact:true}).click();await expect(page.getByText(/Nagsisimula sa 1–2 bawat piyesa/)).toBeVisible();
+ api.setLoadFailure(true);await page.getByRole('button',{name:'I-refresh ang listahan',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Hindi makuha');api.setLoadFailure(false);await page.getByRole('button',{name:'Subukan ulit',exact:true}).click();await expect(page.getByText('4 sa 4 piyesa')).toBeVisible();
 });
