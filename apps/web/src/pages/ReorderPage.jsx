@@ -14,6 +14,7 @@ import { validAmount } from '../lib/store.js';
 import {suggestedQuantity as suggested,suggestedCost} from '../lib/restock.js';
 import Toast from '../components/Toast.jsx';
 import HelpDetails from '../components/HelpDetails.jsx';
+import SupplierPartPicker from '../components/SupplierPartPicker.jsx';
 import {filterRestock,matchesSearch} from '../lib/restock.js';
 const peso = value => new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -54,7 +55,7 @@ export default function ReorderPage() {
   const [unitCost, setUnitCost] = useState(0);
   const [leadTime, setLeadTime] = useState(7);
   const [emailGroup, setEmailGroup] = useState(null);
-  const [emailChoices,setEmailChoices]=useState([]),[choiceId,setChoiceId]=useState(''),[columnName,setColumnName]=useState('');
+  const [emailChoices,setEmailChoices]=useState([]),[choicesLoading,setChoicesLoading]=useState(false),[choicesError,setChoicesError]=useState(''),[columnName,setColumnName]=useState('');
   const loadNumber=useRef(0),emailNumber=useRef(0);
   const [draft, setDraft] = useState({
       subject: '',
@@ -64,10 +65,9 @@ export default function ReorderPage() {
     [emailError, setEmailError] = useState('');
   async function reviewEmail(group) {
     if(group.items.length>100){setToast({type:'error',message:'Choose 100 parts or fewer using search and filters before reviewing an email.'});document.getElementById('restock-search')?.focus();return;}
-    const request=++emailNumber.current;
     setEmailGroup(group);
     setEmailError('');
-    setColumnName('');setChoiceId('');setEmailChoices(group.items);
+    setColumnName('');setEmailChoices(group.items);
     setDraft({
       subject: 'NPG Autoparts - Parts order request',
       message: 'Hello, please confirm availability, prices, and delivery time for the parts below. Thank you.',
@@ -79,7 +79,17 @@ export default function ReorderPage() {
         quantity: String(suggested(r)),unit:r.unit||'units',extra_values:{}
       }))
     });
-    try{const result=await api.get(`/api/reorder?onlyNeeded=false&supplierId=${group.supplierId}`);if(!Array.isArray(result.data))throw new Error('The store returned incomplete information. Please try again.');if(request===emailNumber.current)setEmailChoices(result.data);}catch(e){if(request===emailNumber.current)setEmailError(e.message);}
+    loadEmailChoices(group);
+  }
+  async function loadEmailChoices(group){
+    const request=++emailNumber.current;
+    setChoicesLoading(true);setChoicesError('');
+    try{
+      const result=await api.get(`/api/reorder?onlyNeeded=false&supplierId=${group.supplierId}`);
+      if(!Array.isArray(result.data))throw new Error('The store returned incomplete information. Please try again.');
+      if(request===emailNumber.current)setEmailChoices(current=>[...new Map([...current,...result.data].map(row=>[row.product_id,row])).values()]);
+    }catch(error){if(request===emailNumber.current)setChoicesError(error.message);}
+    finally{if(request===emailNumber.current)setChoicesLoading(false);}
   }
   function addColumn(){
     const label=columnName.trim();
@@ -88,10 +98,10 @@ export default function ReorderPage() {
     setDraft(d=>({...d,extra_columns:[...d.extra_columns,{id:crypto.randomUUID(),label}]}));setColumnName('');setEmailError('');
   }
   function removeColumn(id){setDraft(d=>({...d,extra_columns:d.extra_columns.filter(c=>c.id!==id),items:d.items.map(i=>({...i,extra_values:Object.fromEntries(Object.entries(i.extra_values||{}).filter(([key])=>key!==id))}))}));}
-  function addPart(){
-    const row=emailChoices.find(r=>r.product_id===choiceId);
-    if(!row||draft.items.some(i=>i.product_id===choiceId)||draft.items.length>=100)return;
-    setDraft(d=>({...d,items:[...d.items,{product_id:row.product_id,part_number:row.part_number||'',description:row.description,unit:row.unit||'units',quantity:String(Math.max(1,suggested(row))),extra_values:{}}]}));setChoiceId('');setEmailError('');
+  function addPart(row){
+    setEmailChoices(current=>[...new Map([...current,row].map(item=>[item.product_id,item])).values()]);
+    setDraft(d=>d.items.some(item=>item.product_id===row.product_id)||d.items.length>=100?d:({...d,items:[...d.items,{product_id:row.product_id,part_number:row.part_number||'',description:row.description,unit:row.unit||'units',quantity:String(Math.max(1,suggested(row))),extra_values:{}}]}));
+    setEmailError('');
   }
   function editItem(id, key, value) {
     setDraft(d => ({
@@ -299,7 +309,7 @@ export default function ReorderPage() {
 
     <Modal open={Boolean(emailGroup)} onClose={() => {
       if (!busy) setEmailGroup(null);
-    }} size="lg" title={t("Review your supplier email")} description={t("Edit the message and parts below. These exact details will be sent to your saved supplier.")} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setEmailGroup(null)}>{t("Keep reviewing")}</button><button className="btn-primary" disabled={Boolean(busy) || !draft.items.length} onClick={() => send(emailGroup)}><Send size={17} />{busy ? t('Sending email…') : t('Send email to supplier')}</button></>}>
+    }} size="lg" title={t("Review your supplier email")} description={t("Edit the message and parts below. These exact details will be sent to your saved supplier.")} footer={<><button className="btn-secondary" disabled={Boolean(busy)} onClick={() => setEmailGroup(null)}>{t("Keep reviewing")}</button><button className="btn-primary" disabled={Boolean(busy) || !draft.items.length} onClick={() => send(emailGroup)}><Send size={17} />{busy===emailGroup?.supplierId ? t('Sending email…') : t('Send email to supplier')}</button></>}>
     {emailGroup && <Form id="supplier-email-form" className="space-y-5" onSubmit={e => {
         e.preventDefault();
         send(emailGroup);
@@ -314,7 +324,7 @@ export default function ReorderPage() {
               message: e.target.value
             })} /></label>
     <section className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">{t("Customize the email table")}</h3><p className="mt-1 text-sm text-slate-600">{t("Add up to 5 columns, such as Brand, Delivery date, or Notes. These fields are included in this email only.")}</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><label className="flex-1"><span className="label">{t("Column name")}</span><input className="input" maxLength={50} value={columnName} onChange={e=>setColumnName(e.target.value)} placeholder={t("For example: Delivery date")} /></label><button type="button" className="btn-secondary sm:self-end" disabled={!columnName.trim()||draft.extra_columns.length>=5} onClick={addColumn}><Plus size={16}/>{t("Add column")}</button></div><div className="mt-3 flex flex-wrap gap-2">{draft.extra_columns.map(c=><button key={c.id} type="button" className="btn-secondary" onClick={()=>removeColumn(c.id)} aria-label={t('Remove column {v0}',{v0:c.label})}>{c.label} ×</button>)}</div></section>
-    <div className="flex flex-col gap-2 sm:flex-row"><label className="flex-1"><span className="label">{t("Add another part from this supplier")}</span><select className="input" value={choiceId} onChange={e=>setChoiceId(e.target.value)}><option value="">{t("Choose a part")}</option>{emailChoices.filter(r=>!draft.items.some(i=>i.product_id===r.product_id)).map(r=><option key={r.product_id} value={r.product_id}>{r.part_number||r.description} · {r.description}</option>)}</select></label><button type="button" className="btn-secondary sm:self-end" disabled={!choiceId||draft.items.length>=100} onClick={addPart}><Plus size={16}/>{t("Add part to request")}</button></div>
+    <SupplierPartPicker key={emailGroup.supplierId} supplierId={emailGroup.supplierId} supplierName={emailGroup.name} choices={emailChoices} itemIds={draft.items.map(item=>item.product_id)} loading={choicesLoading} error={choicesError} onRetry={()=>loadEmailChoices(emailGroup)} onAdd={addPart} disabled={Boolean(busy)} onSaving={saving=>setBusy(saving?'email-part':'')}/>
     <h3 className="font-semibold">{t("Parts to request")}</h3>{draft.items.map(i => <div key={i.product_id} className="grid gap-3 rounded-xl border border-slate-200 p-4 sm:grid-cols-[1fr_100px]"><div className="space-y-3"><label className="block"><span className="label">{t("Part number")}</span><input className="input" maxLength={120} value={i.part_number} onChange={e => editItem(i.product_id, 'part_number', e.target.value)} /></label><label className="block"><span className="label">{t("Description *")}</span><input className="input" required minLength={2} maxLength={500} value={i.description} onChange={e => editItem(i.product_id, 'description', e.target.value)} /></label><label className="block"><span className="label">{t("Unit")}</span><input className="input" maxLength={40} value={i.unit||''} onChange={e=>editItem(i.product_id,'unit',e.target.value)} /></label>{draft.extra_columns.map(c=><label key={c.id} className="block"><span className="label">{c.label}</span><input className="input" maxLength={300} value={i.extra_values?.[c.id]||''} onChange={e=>editItem(i.product_id,'extra_values',{...i.extra_values,[c.id]:e.target.value})}/></label>)}</div><div><label className="block"><span className="label">{t("Quantity *")}</span><input className="input" required type="number" min="0.01" max="999999999999.99" step="0.01" value={i.quantity} onChange={e => editItem(i.product_id, 'quantity', e.target.value)} /></label><button type="button" className="btn-secondary mt-3 w-full" onClick={() => setDraft(d => ({
                 ...d,
                 items: d.items.filter(x => x.product_id !== i.product_id)

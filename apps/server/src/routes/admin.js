@@ -3,6 +3,7 @@ import {neededRestock,normalizeRestock} from '../utils/restock.js';
 import {gmailAccessToken} from '../utils/gmail.js';
 import {forecastingStatus} from '../utils/ml.js';
 import {supplierEmailSchema} from '../utils/storeValidation.js';
+import {supplierParts} from '../utils/supplierParts.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { adminDb } from '../supabase.js';
@@ -113,11 +114,13 @@ router.post('/supplier-email/:supplierId', async(req,res,next)=>{
   try{
     const draft=Object.keys(req.body||{}).length?supplierEmailSchema.parse(req.body):null;
     const supplierId=z.string().uuid().parse(req.params.supplierId);
-    let query=adminDb.from('reorder_recommendations').select('*').eq('supplier_id',supplierId);
-    query=draft?query.in('product_id',draft.items.map(i=>i.product_id)):neededRestock(query);
-    const {data:rawRecommendations,error}=await query;
-    if(error)throw error;
-    const recommendations=(rawRecommendations||[]).map(normalizeRestock);
+    let recommendations;
+    if(draft)recommendations=await supplierParts(supplierId,draft.items.map(i=>i.product_id));
+    else{
+      const {data,error}=await neededRestock(adminDb.from('reorder_recommendations').select('*').eq('supplier_id',supplierId));
+      if(error)throw error;
+      recommendations=(data||[]).map(normalizeRestock);
+    }
     if(!recommendations?.length)return res.status(422).json({error:'No replenishment items for this supplier.'});
     const supplier={id:req.params.supplierId,name:recommendations[0].supplier_name,email:recommendations[0].supplier_email};
     if(!supplier.email)return res.status(422).json({error:'This supplier has no email address.'});

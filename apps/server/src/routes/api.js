@@ -18,6 +18,7 @@ import storeRoutes from './store.js';
 import {storeReport} from '../utils/storeReports.js';
 import {amount,positiveAmount,category,barcode,reportDates,dateQuery} from '../utils/storeValidation.js';
 import {neededRestock,normalizeRestock} from '../utils/restock.js';
+import {supplierParts} from '../utils/supplierParts.js';
 import {summarizeRecordedSales} from '../utils/recordedSales.js';
 const storeDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const router = Router();
@@ -237,6 +238,29 @@ router.get('/suppliers', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Explicitly link an inventory part without replacing its main supplier or
+// overwriting an existing supplier's prices and delivery settings.
+router.post('/suppliers/:supplierId/parts', rolesAdmin, async(req,res,next)=>{
+  try{
+    const supplierId=z.string().uuid().parse(req.params.supplierId);
+    const {product_id:productId}=z.object({product_id:z.string().uuid()}).parse(req.body);
+    const [supplier,product]=await Promise.all([
+      adminDb.from('suppliers').select('id').eq('id',supplierId).eq('active',true).maybeSingle(),
+      adminDb.from('products').select('id,unit_cost').eq('id',productId).eq('active',true).maybeSingle()
+    ]);
+    if(supplier.error||product.error)throw supplier.error||product.error;
+    if(!supplier.data||!product.data)return res.status(422).json({error:'Choose an active part and supplier.'});
+    const {error}=await adminDb.from('product_suppliers').upsert({
+      product_id:productId,supplier_id:supplierId,is_primary:false,latest_unit_cost:product.data.unit_cost??0
+    },{onConflict:'product_id,supplier_id',ignoreDuplicates:true});
+    if(error)throw error;
+    const data=await supplierParts(supplierId,[productId]);
+    if(!data.length)return res.status(422).json({error:'This part is no longer available. Refresh the inventory and try again.'});
+    await audit(req,'link_supplier','product',productId,{supplier_id:supplierId});
+    res.json({data:data[0]});
+  }catch(error){next(error);}
+});
+
 router.post('/suppliers', rolesAdmin, async (req, res, next) => {
   try {
     const body = z.object({
@@ -286,6 +310,7 @@ router.post('/products/:productId/suppliers/:supplierId', rolesAdmin, async (req
 router.get('/reorder', async (req, res, next) => {
   try {
     const supplierId=req.query.supplierId?z.string().uuid().parse(req.query.supplierId):null;
+    if(supplierId&&req.query.onlyNeeded==='false')return res.json({data:await supplierParts(supplierId)});
     const data=await fetchAll(()=>{
       let q=adminDb.from('reorder_recommendations').select('*');
       if(supplierId)q=q.eq('supplier_id',supplierId);

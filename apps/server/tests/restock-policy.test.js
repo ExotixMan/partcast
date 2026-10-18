@@ -31,7 +31,7 @@ test('older database results use small purchases in APIs, supplier defaults and 
  adminDb.from=table=>({
   select(){return this;},eq(){return this;},or(){return this;},gt(){return this;},in(){return this;},order(){return this;},limit(){return this;},insert(){return this;},range(){return this;},
   maybeSingle:async()=>({data:table==='latest_completed_forecast_run'?{completed_at:new Date().toISOString(),horizon_days:30}:null,error:null}),
-  then(resolve){return Promise.resolve({data:table==='reorder_recommendations'?[{...original}]:[],error:null}).then(resolve);}
+  then(resolve){return Promise.resolve({data:table==='reorder_recommendations'?[{...original}]:table==='product_suppliers'?[{product_id:product,latest_unit_cost:100,supplier:{id:supplier,name:'Parts supplier',email:'supplier@example.test'}}]:[],error:null}).then(resolve);}
  });
  adminDb.rpc=async name=>({data:name==='get_dashboard_metrics'?{}:[],error:null});
  globalThis.fetch=async(url,options)=>{

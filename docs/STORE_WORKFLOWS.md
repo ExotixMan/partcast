@@ -2,6 +2,14 @@
 
 The source changes are on `codex/partcast-offline-forecasting-20261009`. A GitHub push saves the files; Render must deploy this branch before the website changes. The hosted database and email settings also need the steps below.
 
+## Adding another part to a supplier email — 18 October 2026
+
+Deploy both the API and website for this fix. No new SQL migration is required.
+
+In **Restock → Review supplier email**, **Add another part from this supplier** lists active linked parts, including in-stock parts and parts for which this business is a secondary supplier. Parts already in the email are excluded. When all linked parts are included, a message explains why the list is empty; a failed lookup offers **Try again**.
+
+For a part without a saved link, choose **Find another part in inventory**, search its name or part number, then choose **Save supplier and add** only when that business supplies the part. This explicitly saves the relationship and adds the part to the email draft. Existing main suppliers, supplier costs and delivery settings are preserved. Search supports multiple pages and Tagalog. Adding a part does not send the email or change stock; review the quantities and message before sending.
+
 ## Compact Restock and validation update
 
 Deploy the latest API and website from the branch above. This update adds no SQL migration; keep the earlier required migrations through 0010 installed.

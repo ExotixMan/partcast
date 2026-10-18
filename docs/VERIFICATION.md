@@ -2,6 +2,12 @@
 
 This report describes local checks for required Gmail login codes, store roles, simpler inventory/sales workflows, the forecasting runtime repair and the subsequent Restock/Gmail supplier-table update. Test records use synthetic products, suppliers, and customers; no customer sales workbook was newly published.
 
+## Supplier email part picker — 18 October 2026
+
+Full server suite: **111 passed**. Web unit/translation suite: **26 passed**. Production Vite/PWA build passed. **6 focused browser scenarios passed**, covering existing custom email columns/previews, stock refresh, failed email sends, the empty-picker inventory fallback, supplier-part lookup retry, duplicate prevention, explicit supplier saves and recovery, paginated search, retained drafts and 320-pixel Tagalog layouts. The full browser suite was not rerun for this isolated fix.
+
+Server checks exercise secondary-supplier parts that are already in stock, correct email recipients, exclusion of inactive/unlinked parts, rejection before Gmail delivery, role restrictions and invalid IDs before supplier writes. Duplicate-safe supplier linking preserves existing main suppliers, supplier prices and delivery settings. A catalog with more than 1,000 assignments exercises pagination and bounded PostgREST product queries. All checks use local fixtures; no live store data was changed and no real email was sent. Deploy both services as described in [Store workflows](STORE_WORKFLOWS.md).
+
 ## Compact interface, Restock filters and consistent validation — 18 October 2026
 
 Full server suite: **106 passed**. Web unit/translation suite: **26 passed**. Production Vite/PWA build passed. All **70 browser scenarios** passed across the full run and focused rechecks: the full run passed 66, loading assertions were corrected to distinguish the new result-count announcements from spinners, and the existing Counter sales translation was retained. The 11-case recheck passed the four affected scenarios and Restock workflows. Final focused checks also passed after compacting phone headers/help and correcting shared stock-badge translation.

@@ -1358,5 +1358,18 @@
   "1 part": "1 piyesa",
   "Review": "Suriin",
   "Email needed": "Kailangan ng email",
-  "Add email": "Ilagay ang email"
+  "Add email": "Ilagay ang email",
+  "Add parts to the request": "Magdagdag ng piyesa sa order",
+  "Loading parts…": "Kinukuha ang mga piyesa…",
+  "All linked parts are already in this request.": "Nasa order na ang lahat ng piyesang naka-save sa supplier na ito.",
+  "Each email can contain up to 100 parts.": "Hanggang 100 piyesa lang sa bawat email.",
+  "Close inventory search": "Isara ang paghahanap sa stock",
+  "Find another part in inventory": "Maghanap ng ibang piyesa sa stock",
+  "Choose a part that {v0} supplies. Saving adds this supplier without replacing its main supplier.": "Pumili ng piyesang galing sa {v0}. Idadagdag ang supplier na ito. Hindi papalitan ang kasalukuyang main supplier.",
+  "Already in request": "Nasa order na",
+  "Add {v0} to request": "Idagdag ang {v0} sa order",
+  "Save supplier and add {v0}": "I-save ang supplier at idagdag ang {v0}",
+  "Save supplier and add": "I-save ang supplier at idagdag",
+  "Choose an active part and supplier.": "Pumili ng aktibong piyesa at supplier.",
+  "This part is no longer available. Refresh the inventory and try again.": "Hindi na available ang piyesang ito. I-refresh ang stock at subukan ulit."
 }

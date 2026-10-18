@@ -7,7 +7,7 @@ const token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringi
 async function fixture(context,{role='owner'}={}){
  await context.addInitScript(({userId,project,token})=>localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:token,refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}})),{userId,project,token});
  const products=[{id:p1,part_number:'BP-001',description:'Toyota brake pad',brand:'Toyota',unit:'pcs',location:'Shelf A',current_stock:5,minimum_stock:1,safety_stock:1,selling_price:500,unit_cost:100,category:'parts',barcode:'123456789012',search_aliases:['pastilyas'],photo_paths:[],stock_status:'ok'},{id:p2,part_number:'OIL-001',description:'Engine oil',brand:'Brand',unit:'bottles',location:'Shelf B',current_stock:8,minimum_stock:2,selling_price:100,unit_cost:60,category:'lubricants',barcode:'987654321098',search_aliases:['langis ng makina'],photo_paths:[],stock_status:'ok'}];
- const batches=[],debts=[],payments=[],emails=[],productWrites=[],photoUploads=[];let disconnected=false;const receipts=new Map();
+ const batches=[],debts=[],payments=[],emails=[],productWrites=[],photoUploads=[],supplierLinks=[];let disconnected=false;const receipts=new Map();
  await context.route('http://localhost:10000/**',async route=>{
  const req=route.request(),url=new URL(req.url()),headers={'access-control-allow-origin':'*'};
  if(disconnected){await route.abort('internetdisconnected');return;}
@@ -16,7 +16,7 @@ async function fixture(context,{role='owner'}={}){
  if(url.pathname==='/api/me')body={user:{id:userId,full_name:'Store Staff',role,active:true,session_id:sid,verification_expires_at:'2099-01-01T00:00:00Z'}};
  else if(url.pathname==='/api/forecast/readiness')body={ready:false,status:'no_observations',record_count:0,current_part_count:0,latest_sale_date:null,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}};
  else if(url.pathname==='/api/offline-snapshot')body={products,suppliers:[{id:supplier,name:'Parts supplier'}]};
- else if(url.pathname==='/api/products'&&req.method()==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category');const data=products.filter(p=>`${p.description} ${p.barcode} ${p.search_aliases.join(' ')}`.toLowerCase().includes(q)&&(!category||category==='all'||p.category===category));body={data,count:data.length};}
+ else if(url.pathname==='/api/products'&&req.method()==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category');const data=products.filter(p=>`${p.part_number} ${p.description} ${p.barcode} ${p.search_aliases.join(' ')}`.toLowerCase().includes(q)&&(!category||category==='all'||p.category===category));body={data,count:data.length};}
  else if(url.pathname==='/api/products'&&req.method()==='POST'){const payload=req.postDataJSON();productWrites.push(payload);body={product:{...payload,id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'}};}
  else if(url.pathname.startsWith('/api/products/')&&req.method()==='PATCH'){const changes=req.postDataJSON();productWrites.push(changes);const product=products.find(p=>p.id===url.pathname.split('/').at(-1));Object.assign(product,changes);body={product};}
  else if(url.pathname==='/api/inventory/batch'){
@@ -33,6 +33,7 @@ async function fixture(context,{role='owner'}={}){
  else if(url.pathname==='/api/debts/payment'){const b=req.postDataJSON();payments.push(b);const d=debts.find(d=>d.id===b.debt_id);d.paid_amount+=b.amount;d.balance-=b.amount;d.status=d.balance?'open':'paid';body={balance:d.balance};}
  else if(url.pathname.startsWith('/api/barcode/'))body={product:products.find(p=>p.barcode===decodeURIComponent(url.pathname.split('/').at(-1)))||null};
  else if(url.pathname==='/api/suppliers')body={data:[{id:supplier,name:'Parts supplier',email:'supplier@example.test'}]};
+ else if(url.pathname===`/api/suppliers/${supplier}/parts`&&req.method()==='POST'){const payload=req.postDataJSON();supplierLinks.push(payload);const product=products.find(p=>p.id===payload.product_id);body={data:{...product,product_id:product.id,supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test',recommended_quantity:0,status:'ok'}};}
  else if(url.pathname==='/api/reorder')body={data:[{product_id:p1,part_number:'BP-001',description:'Toyota brake pad',unit:'pcs',supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test',current_stock:1,recommended_quantity:5,status:'low_stock'},...(url.searchParams.get('onlyNeeded')==='false'?[{product_id:p2,part_number:'OIL-001',description:'Engine oil',unit:'bottles',supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test',current_stock:8,recommended_quantity:0,status:'ok'}]:[])]};
  else if(url.pathname.startsWith('/api/admin/supplier-email/')){emails.push(req.postDataJSON());body={message:'Email sent',items:1};}
  else if(url.pathname.startsWith('/api/photos/')&&req.method()==='POST'){photoUploads.push(req.postData());products[0].photo_paths=[`${p1}/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webp`];body={photo_paths:products[0].photo_paths};}
@@ -41,7 +42,7 @@ async function fixture(context,{role='owner'}={}){
  else if(url.pathname==='/api/dashboard')body={metrics:{totalProducts:2,lowStock:0,outOfStock:0,inventoryValue:980},salesTrend:[],fastMoving:[],slowMoving:[],reorder:[]};
  await route.fulfill({json:body,headers});
  });
- return {batches,debts,payments,emails,products,productWrites,photoUploads,disconnect:value=>{disconnected=value;}};
+ return {batches,debts,payments,emails,products,productWrites,photoUploads,supplierLinks,disconnect:value=>{disconnected=value;}};
 }
 test('multi-part credit sale records customer balance and partial payment',async({page,context})=>{
  const api=await fixture(context);await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();
@@ -788,4 +789,55 @@ test('compact restock stays readable with larger Tagalog text on phone tablet an
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/partcast-restock-compact-phone.png',fullPage:false});
  await page.getByText('Tulong sa pag-order',{exact:true}).click();await expect(page.getByText(/Nagsisimula sa 1–2 bawat piyesa/)).toBeVisible();
  api.setLoadFailure(true);await page.getByRole('button',{name:'I-refresh ang listahan',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Hindi makuha');api.setLoadFailure(false);await page.getByRole('button',{name:'Subukan ulit',exact:true}).click();await expect(page.getByText('4 sa 4 piyesa')).toBeVisible();
+});
+
+test('empty supplier picker explains the list and explicitly links an inventory part without losing the email draft',async({page,context})=>{
+ await page.setViewportSize({width:390,height:844});const api=await fixture(context);
+ await context.route('http://localhost:10000/api/reorder**',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({headers:{'access-control-allow-origin':'*'},json:{data:[{product_id:p1,part_number:'BP-001',description:'Toyota brake pad',unit:'pcs',supplier_id:supplier,supplier_name:'Parts supplier',supplier_email:'supplier@example.test',current_stock:1,recommended_quantity:1,status:'low_stock'}]}}));
+ await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();const dialog=page.getByRole('dialog');
+ await expect(dialog.getByText('All linked parts are already in this request.')).toBeVisible();await expect(dialog.getByLabel('Add another part from this supplier')).toBeDisabled();
+ await dialog.getByLabel('Your message *').fill('Please deliver on Friday.');await dialog.getByLabel('Column name',{exact:true}).fill('Notes');await dialog.getByRole('button',{name:'Add column',exact:true}).click();await dialog.getByLabel('Notes',{exact:true}).fill('Front axle');
+ await dialog.getByRole('button',{name:'Find another part in inventory'}).click();await expect(dialog.getByText('Already in request',{exact:true})).toBeVisible();
+ await dialog.getByLabel('Search inventory',{exact:true}).fill('OIL-001');await dialog.getByLabel('Search inventory',{exact:true}).press('Enter');
+ await dialog.getByRole('button',{name:'Save supplier and add Engine oil',exact:true}).click();
+ await expect(dialog.getByLabel('Quantity *',{exact:true})).toHaveCount(2);expect(api.supplierLinks).toEqual([{product_id:p2}]);expect(api.emails).toHaveLength(0);
+ await expect(dialog.getByLabel('Your message *')).toHaveValue('Please deliver on Friday.');await expect(dialog.getByLabel('Notes',{exact:true}).first()).toHaveValue('Front axle');
+ await dialog.getByRole('button',{name:'Close inventory search'}).click();await dialog.getByLabel('Quantity *',{exact:true}).nth(1).fill('2');
+ await expect(dialog.getByRole('table')).toContainText('Engine oil');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await dialog.getByRole('button',{name:'Send email to supplier'}).click();await expect.poll(()=>api.emails.length).toBe(1);expect(api.emails[0].items.map(p=>p.product_id)).toEqual([p1,p2]);expect(api.emails[0].message).toBe('Please deliver on Friday.');
+});
+
+test('supplier part loading failure has a retry and removed linked parts can be readded without duplicates',async({page,context})=>{
+ const api=await fixture(context);let fail=true;
+ await context.route('http://localhost:10000/api/reorder**',route=>{
+  const url=new URL(route.request().url());
+  if(route.request().method()==='OPTIONS'||url.searchParams.get('onlyNeeded')!=='false'||!fail)return route.fallback();
+  return route.fulfill({status:503,json:{error:'Could not load supplier parts.'},headers:{'access-control-allow-origin':'*'}});
+ });
+ await page.goto('/reorder');await page.getByRole('button',{name:'Review supplier email'}).click();const dialog=page.getByRole('dialog');
+ await expect(dialog.getByRole('alert')).toContainText('Could not load supplier parts.');await expect(dialog.getByLabel('Add another part from this supplier')).toBeDisabled();
+ fail=false;await dialog.getByRole('button',{name:'Try again',exact:true}).click();await dialog.getByLabel('Add another part from this supplier').selectOption(p2);await dialog.getByRole('button',{name:'Add part to request',exact:true}).click();
+ await expect(dialog.getByLabel('Quantity *',{exact:true})).toHaveCount(2);await expect(dialog.getByLabel('Add another part from this supplier')).toBeDisabled();
+ await dialog.getByRole('button',{name:'Remove',exact:true}).last().click();await dialog.getByLabel('Add another part from this supplier').selectOption(p2);await dialog.getByRole('button',{name:'Add part to request',exact:true}).click();
+ await expect(dialog.getByLabel('Quantity *',{exact:true})).toHaveCount(2);expect(api.supplierLinks).toHaveLength(0);expect(api.emails).toHaveLength(0);
+});
+
+test('inventory additions recover from save failures and work with paginated search on a narrow Tagalog phone',async({page,context})=>{
+ await page.setViewportSize({width:320,height:800});const api=await fixture(context);let ready=false;
+ const rows=Array.from({length:21},(_,i)=>({id:`cccccccc-cccc-4ccc-8ccc-${String(i).padStart(12,'0')}`,part_number:`PART-${i}`,description:`Toyota part ${i}`,current_stock:1,unit_cost:30}));
+ await context.route('http://localhost:10000/api/products?**',route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();const url=new URL(route.request().url()),q=url.searchParams.get('q'),page=Number(url.searchParams.get('page')||1),data=q?rows.filter(p=>p.part_number.includes(q)):rows;
+  return route.fulfill({headers:{'access-control-allow-origin':'*'},json:{data:data.slice((page-1)*10,page*10),count:data.length}});
+ });
+ const saves=[];
+ await context.route(`http://localhost:10000/api/suppliers/${supplier}/parts`,route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();if(!ready)return route.fulfill({status:503,json:{error:'Could not save supplier. Try again.'},headers:{'access-control-allow-origin':'*'}});
+  const payload=route.request().postDataJSON();saves.push(payload);const product=rows.find(p=>p.id===payload.product_id);return route.fulfill({headers:{'access-control-allow-origin':'*'},json:{data:{...product,product_id:product.id,status:'ok',recommended_quantity:0}}});
+ });
+ await page.goto('/reorder');await page.getByLabel('Website language').selectOption('fil');await page.getByRole('button',{name:'Suriin ang email sa supplier'}).click();const dialog=page.getByRole('dialog');
+ await dialog.getByRole('button',{name:'Maghanap ng ibang piyesa sa stock'}).click();await expect(dialog.getByText('Pahina 1 sa 3',{exact:true})).toBeVisible();await dialog.getByRole('button',{name:'Susunod',exact:true}).click();await expect(dialog.getByText('Pahina 2 sa 3',{exact:true})).toBeVisible();
+ await dialog.getByRole('button',{name:'I-save ang supplier at idagdag ang Toyota part 10',exact:true}).click();await expect(dialog.getByRole('alert')).toContainText('Could not save supplier.');await expect(dialog.getByLabel('Dami *',{exact:true})).toHaveCount(1);
+ ready=true;await dialog.getByRole('button',{name:'Subukan ulit',exact:true}).click();await dialog.getByRole('button',{name:'I-save ang supplier at idagdag ang Toyota part 10',exact:true}).click();await expect(dialog.getByLabel('Dami *',{exact:true})).toHaveCount(2);expect(saves).toHaveLength(1);expect(api.emails).toHaveLength(0);
+ await dialog.getByLabel('Maghanap sa stock',{exact:true}).fill('PART-20');await dialog.getByLabel('Maghanap sa stock',{exact:true}).press('Enter');await expect(dialog.getByText('Toyota part 20',{exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:'Susunod',exact:true})).toHaveCount(0);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
