@@ -1233,5 +1233,17 @@
   "These errors describe generated demand only. They do not establish accuracy for the actual store.": "Para lamang sa ginawang demand ang mga error na ito. Hindi nito pinatutunayan ang katumpakan para sa tunay na tindahan.",
   "Generated sample quantities in the separate demo database.": "Mga ginawang halimbawang dami sa hiwalay na demo database.",
   "Generated sample records: {v0}": "Mga ginawang halimbawang tala: {v0}",
-  "Sample / estimated units in the tests": "Halimbawa / tinatayang yunit sa mga pagsusuri"
+  "Sample / estimated units in the tests": "Halimbawa / tinatayang yunit sa mga pagsusuri",
+  "Email needs the Gmail connection. Ask the Super Admin to configure it.": "Kailangan ang koneksyon sa Gmail para sa email. Hilingin sa Super Admin na i-set up ito.",
+  "Google rejected the Gmail client ID or client secret. Ask the Super Admin to check the matching Google OAuth credentials.": "Tinanggihan ng Google ang Gmail client ID o client secret. Hilingin sa Super Admin na suriin ang magkatugmang Google OAuth credentials.",
+  "The Gmail refresh token expired, was revoked, or belongs to another Google client. Ask the Super Admin to reconnect the sending Google account.": "Paso na, binawi, o para sa ibang Google client ang Gmail refresh token. Hilingin sa Super Admin na ikonektang muli ang Google account na nagpapadala.",
+  "This Google client is not authorized to send sign-in emails. Ask the Super Admin to check the OAuth client configuration.": "Walang pahintulot ang Google client na ito na magpadala ng email para sa pag-sign in. Hilingin sa Super Admin na suriin ang OAuth client.",
+  "Google denied Gmail access. Ask the Super Admin to authorize the sending Google account.": "Tinanggihan ng Google ang access sa Gmail. Hilingin sa Super Admin na pahintulutan ang Google account na nagpapadala.",
+  "The Google account needs the Gmail send permission.": "Kailangan ng Google account ang pahintulot na magpadala gamit ang Gmail.",
+  "Google could not accept the Gmail connection settings. Ask the Super Admin to check the saved OAuth credentials.": "Hindi tinanggap ng Google ang mga setting ng koneksyon sa Gmail. Hilingin sa Super Admin na suriin ang naka-save na OAuth credentials.",
+  "Google email access is temporarily unavailable. Please try again shortly.": "Pansamantalang hindi magamit ang email ng Google. Subukan muli makalipas ang ilang sandali.",
+  "Google returned an unexpected Gmail authorization response. Try again or ask the Super Admin to check the connection.": "Hindi inaasahan ang sagot ng Google sa pahintulot sa Gmail. Subukan muli o hilingin sa Super Admin na suriin ang koneksyon.",
+  "Your password is correct. Request an email code to finish signing in.": "Tama ang iyong password. Humingi ng email code upang matapos ang pag-sign in.",
+  "Request a code first. If sending fails, check the message above.": "Humingi muna ng code. Kung hindi maipadala, tingnan ang mensahe sa itaas.",
+  "Ask your Super Admin to check Gmail settings if an email code cannot be sent.": "Hilingin sa Super Admin na suriin ang mga setting ng Gmail kung hindi maipadala ang email code."
 }

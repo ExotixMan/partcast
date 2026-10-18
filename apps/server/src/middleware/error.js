@@ -45,6 +45,7 @@ export function errorHandler(err, req, res, next) {
         'Unknown server error.';
 
   res.status(status).json({
-    error: message
+    error: message,
+    ...(err?.safe&&/^GMAIL_[A-Z_]+$/.test(err?.code||'')?{code:err.code}:{})
 });
 }

@@ -13,13 +13,15 @@ export const integrationSchemas={
 const fallback=provider=>provider==='gmail'?{enabled:true,client_id:config.GMAIL_CLIENT_ID,client_secret:config.GMAIL_CLIENT_SECRET,refresh_token:config.GMAIL_REFRESH_TOKEN,sender_email:config.GMAIL_SENDER_EMAIL}:{enabled:true,api_key:config.GEMINI_API_KEY,model:config.GEMINI_MODEL};
 let cache=new Map();
 export const clearIntegrationCache=()=>{cache.clear();};
-export async function getIntegration(provider){
- const cached=cache.get(provider);if(cached&&Date.now()-cached.at<15000)return cached.value;
+export async function getIntegrationWithSource(provider){
+ const cached=cache.get(provider);if(cached&&Date.now()-cached.at<15000)return {value:cached.value,source:cached.source};
  const {data,error}=await adminDb.from('integration_settings').select('enabled,encrypted_config,updated_at').eq('provider',provider).maybeSingle();if(error)throw Object.assign(new Error('API settings are unavailable. Apply the latest access and login migrations.'),{status:503,safe:true});
  let value=fallback(provider);
  if(data){try{value={...value,...decryptIntegration(data.encrypted_config),enabled:data.enabled};}catch{throw Object.assign(new Error('Saved API settings could not be opened. The Super Admin must enter them again using the original encryption key.'),{status:503,safe:true});}}
- cache.set(provider,{at:Date.now(),value});return value;
+ const source=data?'saved_partcast_settings':'api_environment';
+ cache.set(provider,{at:Date.now(),value,source});return {value,source};
 }
+export async function getIntegration(provider){return (await getIntegrationWithSource(provider)).value;}
 export function integrationReady(provider,value){return value.enabled&&(provider==='gmail'?['client_id','client_secret','refresh_token','sender_email']:['api_key','model']).every(k=>Boolean(value[k]));}
 export async function integrationStatuses(){return Promise.all(['gmail','gemini'].map(async provider=>{const v=await getIntegration(provider);return {provider,enabled:v.enabled,ready:Boolean(integrationReady(provider,v)),model:provider==='gemini'?v.model:undefined,sender_email:provider==='gmail'?v.sender_email:undefined,fields:Object.fromEntries(Object.keys(fallback(provider)).filter(k=>k!=='enabled').map(k=>[k,Boolean(v[k])]))};}));}
 export async function saveIntegration(provider,patch,userId){

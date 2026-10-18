@@ -185,7 +185,7 @@ export default function LoginPage() {
       <section className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="login-title">
         <p className="text-sm font-semibold text-red-600">{needsSetup ? t('Welcome to your store') : t('Welcome back')}</p>
         <h1 id="login-title" className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{needsSetup ? t('Create the Super Admin account') : otpMode ? t('Check your email') : t('Sign in to PartCast')}</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">{needsSetup ? t('Create the first account once. Have your private setup code ready.') : otpMode ? t('Your password is correct. Enter the code sent to your email to finish signing in.') : t('First enter your password. Then confirm the code sent to your email.')}</p>
+        <p className="mt-3 text-sm leading-6 text-slate-600">{needsSetup ? t('Create the first account once. Have your private setup code ready.') : otpMode ? (otpSent?t('Your password is correct. Enter the code sent to your email to finish signing in.'):t('Your password is correct. Request an email code to finish signing in.')) : t('First enter your password. Then confirm the code sent to your email.')}</p>
 
         {!storeConfigured && <p role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t(storeConnectionIssue)}</p>}
         {serverError && <div role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><p>{t(serverError)}</p><button type="button" className="btn-secondary mt-3 w-full border-amber-200 bg-white text-amber-900" disabled={checkingServer} onClick={checkServer}>{checkingServer ? t('Checking connection…') : t('Check connection again')}</button></div>}
@@ -215,7 +215,7 @@ export default function LoginPage() {
                 email: e.target.value
               })} placeholder={t("Your email address")} maxLength={254} readOnly={otpMode && otpSent} /></div></div>
           <ol className="flex gap-3 text-sm" aria-label={t("Sign-in steps")}><li className="flex-1 rounded-lg bg-slate-50 p-3">{t("1. Password")}{otpMode && <Check className="ml-2 inline text-emerald-600" size={16} />}</li><li className={`flex-1 rounded-lg p-3 ${otpMode ? 'bg-red-50 font-semibold text-red-700' : 'bg-slate-50 text-slate-500'}`}>{t("2. Email code")}</li></ol>
-          {otpMode ? <div><label className="label" htmlFor="login-otp">{t("Email sign-in code")}</label><input id="login-otp" className="input" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" value={otp} onChange={e => setOtp(e.target.value.replace(/[^0-9]/g, ''))} /><p className="mt-2 text-sm text-slate-500">{t("Check your inbox and spam folder. Enter the code from your most recent email.")}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" disabled={loading || resendSeconds > 0} onClick={sendOtp}>{resendSeconds ? t("Resend in {v0}s", {
+          {otpMode ? <div><label className="label" htmlFor="login-otp">{t("Email sign-in code")}</label><input id="login-otp" className="input" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" value={otp} onChange={e => setOtp(e.target.value.replace(/[^0-9]/g, ''))} /><p className="mt-2 text-sm text-slate-500">{otpSent?t("Check your inbox and spam folder. Enter the code from your most recent email."):t('Request a code first. If sending fails, check the message above.')}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" disabled={loading || resendSeconds > 0} onClick={sendOtp}>{resendSeconds ? t("Resend in {v0}s", {
                   v0: resendSeconds
                 }) : otpSent ? t('Resend code') : t('Send email code')}</button><button type="button" className="btn-secondary" disabled={loading} onClick={signOut}>{t("Use another account")}</button></div></div> : <PasswordField id="login-password" value={login.password} onChange={e => setLogin({
             ...login,
@@ -227,7 +227,7 @@ export default function LoginPage() {
 
         <div className="mt-6 border-t border-slate-100 pt-5">
           <p className="text-sm font-semibold text-slate-700">{t("Need help signing in?")}</p>
-          <p className="mt-1 text-sm leading-6 text-slate-500">{t("Ask your store owner to check your account or password.")}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">{otpMode?t('Ask your Super Admin to check Gmail settings if an email code cannot be sent.'):t("Ask your store owner to check your account or password.")}</p>
         </div>
       </section>
     </div>

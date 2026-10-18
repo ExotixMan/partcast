@@ -551,3 +551,21 @@ test('a separate demo database uses the usual planning page while keeping genera
  for(const width of [320,768,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),String(width)).toBe(true);}
  await page.getByLabel('Website language').selectOption('fil');await expect(page.getByText('Mga ginawang halimbawang dami sa hiwalay na demo database.')).toBeVisible();
 });
+
+test('Gmail code delivery failures stay on the email step, show the cause and recover after correction',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:390,height:844});let broken=true,requests=0;
+ const headers={'access-control-allow-origin':'*'};
+ await context.route('http://localhost:10000/api/me',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({status:428,json:{error:'Enter the email code to finish signing in.',code:'OTP_REQUIRED'},headers}));
+ await context.route('http://localhost:10000/auth/otp/request',route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();requests++;
+  return route.fulfill({status:broken?503:200,json:broken?{error:'Google rejected the Gmail client ID or client secret. Ask the Super Admin to check the matching Google OAuth credentials.',code:'GMAIL_OAUTH_INVALID_CLIENT'}:{sent:true},headers});
+ });
+ await page.goto('/counter');await expect(page.getByRole('heading',{name:'Check your email',exact:true})).toBeVisible();
+ await expect(page.getByRole('alert')).toContainText('client ID or client secret');await expect(page.getByRole('button',{name:'Send email code',exact:true})).toBeEnabled();
+ await expect(page.getByText('Your password is correct. Request an email code to finish signing in.')).toBeVisible();await expect(page.getByText('Request a code first. If sending fails, check the message above.')).toBeVisible();
+ await expect(page.getByText('Check your inbox and spam folder. Enter the code from your most recent email.')).toHaveCount(0);await expect(page.getByText('Ask your Super Admin to check Gmail settings if an email code cannot be sent.')).toBeVisible();await expect(page.getByRole('main')).toHaveCount(0);
+ await page.getByLabel('Website language').selectOption('fil');await expect(page.getByRole('alert')).toContainText('Tinanggihan ng Google');await page.getByLabel('Wika ng website').selectOption('en');
+ expect(requests).toBe(1);broken=false;await page.getByRole('button',{name:'Send email code',exact:true}).click();
+ await expect(page.getByRole('alert')).toHaveCount(0);await expect(page.getByText('Check your inbox and spam folder. Enter the code from your most recent email.')).toBeVisible();await expect(page.getByRole('button',{name:/Resend in/})).toBeDisabled();expect(requests).toBe(2);await expect(page.getByRole('main')).toHaveCount(0);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});

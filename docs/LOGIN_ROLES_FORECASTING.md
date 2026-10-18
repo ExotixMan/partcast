@@ -109,3 +109,34 @@ Forecasting now uses the Philippines calendar day for training and live sales ob
 ## Activation check
 
 Set both Render services to the saved branch and rebuild/redeploy with the matching Supabase project keys. Confirm `/health`, then password plus email-code login and **Inventory saved**. Check Owner/Cashier restrictions with test accounts. Record a test sale/delivery, reconnect an offline sale, inspect photos and stock alerts, then update demand using eligible recent sales. Refer to [verification](VERIFICATION.md) for completed local checks and remaining live checks.
+
+
+## Diagnose a Gmail sign-in failure
+
+New API logs include controlled Gmail error codes and configuration origin.
+The old generic “Gmail connection needs attention” stack alone cannot identify
+why Google rejected authorization. After deploying this update, request a code
+once and inspect the API log:
+
+| Code | Meaning and repair |
+| --- | --- |
+| `GMAIL_OAUTH_INVALID_CLIENT` | Google rejected the OAuth client ID/secret pair. Copy both from the same Google OAuth client. A Gemini API key is not an OAuth client ID. |
+| `GMAIL_OAUTH_INVALID_GRANT` | The refresh token expired, was revoked, or belongs to another client. Reauthorize the sending account with the same OAuth client and `gmail.send`, then save its new refresh token. Testing apps can have seven-day refresh tokens. |
+| `GMAIL_OAUTH_INVALID_SCOPE` | Authorize `https://www.googleapis.com/auth/gmail.send`. |
+| `GMAIL_OAUTH_UNAUTHORIZED_CLIENT` / `GMAIL_OAUTH_ACCESS_DENIED` | Review OAuth client configuration and the sending account's consent/test-user access. |
+| `GMAIL_OAUTH_UNAVAILABLE` | A timeout, network failure, rate limit or Google outage. Retry shortly; reconnecting credentials is not automatically required. |
+| `GMAIL_OAUTH_BAD_RESPONSE` | Google returned an unexpected response. Check the API connection and retry. |
+
+`details.settings_source` is `saved_partcast_settings` when a saved encrypted
+Gmail connection overrides Render, or `api_environment` when the API environment
+provides the credentials. `details.google_error` contains only a known OAuth
+error name; `http_status` is Google's token endpoint status. No upstream
+response body, `error_description`, token, client secret or request body is
+logged or returned. The login response includes only the safe message and
+Gmail error code, without the server diagnostic details.
+
+If login is blocked, supply the correct four Gmail environment variables in
+the API service first. Then, when a saved override is the problem, use the
+Gmail-only recovery query above and restart that API. Inventory, accounts,
+Gemini settings and other services do not need a reset. Verification of the
+password and delivered email code remains required.
