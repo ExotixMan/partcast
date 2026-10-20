@@ -27,6 +27,6 @@ Browser tests use isolated mocked store records. PostgreSQL tests execute the sc
 
 ## Maintainer guides
 
-[Deployment](docs/DEPLOYMENT.md) · [Security](docs/SECURITY.md) · [Store workflows](docs/STORE_WORKFLOWS.md) · [Offline use](docs/OFFLINE_AND_SETUP.md) · [Forecasting data](docs/FORECASTING_DATA.md) · [Verification](docs/VERIFICATION.md) · [Design references](docs/DESIGN_REFERENCES.md) · [API](docs/API.md) · [Architecture](docs/ARCHITECTURE.md) · [Capstone scope](docs/CAPSTONE_SCOPE.md).
+[Deployment](docs/DEPLOYMENT.md) · [Security](docs/SECURITY.md) · [Store workflows](docs/STORE_WORKFLOWS.md) · [Offline use](docs/OFFLINE_AND_SETUP.md) · [Forecasting data](docs/FORECASTING_DATA.md) · [Verification](docs/VERIFICATION.md) · [QA checklist](docs/QA_CHECKLIST.md) · [Design references](docs/DESIGN_REFERENCES.md) · [API](docs/API.md) · [Architecture](docs/ARCHITECTURE.md) · [Capstone scope](docs/CAPSTONE_SCOPE.md).
 
 Raw uploads, exported datasets, old preparation packs and historical review documents are delivered separately in the private data archive. They are excluded from the current source tree. The labelled example workbook and simulated database fixture remain for the separate forecasting exercise and automated tests. Generated sales must never be relabelled as real transactions. Removing files from the current tree does not erase older Git commits.
