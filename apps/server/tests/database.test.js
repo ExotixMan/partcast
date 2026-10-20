@@ -26,13 +26,14 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
  for(const file of ['0001_schema.sql','0002_rls.sql','0003_training_import.sql','0004_offline_security_notifications.sql','0005_store_workflows.sql','0006_access_roles.sql']){
   await db.exec(await readFile(new URL(`../../../supabase/migrations/${file}`,import.meta.url),'utf8'));
  }
- // Match Supabase default grants, then reapply the migration's deliberate revocations.
+
  await db.exec('grant select on all tables in schema public to authenticated;');
  await db.exec(await readFile(new URL('../../../supabase/migrations/0007_verified_login_and_access.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0008_restock_threshold.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0009_small_restock_orders.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0010_sale_price_validation.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0011_restock_workflows.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../../../supabase/migrations/0012_sale_financial_integrity.sql',import.meta.url),'utf8'));
  await db.exec(`insert into auth.users(id) values('${staff}'),('${inactive}');update public.profiles set active=true where id='${staff}';insert into products(id,description,current_stock,minimum_stock)values('${product}','Brake pad',5,2);`);
  await db.exec(`insert into login_verifications(session_id,user_id,expires_at) values('${staff}','${staff}',now()+interval '12 hours'),('${inactive}','${inactive}',now()+interval '12 hours');`);
  const claims=async id=>{await db.exec(`reset role;select set_config('request.jwt.claim.sub','${id}',false);select set_config('request.jwt.claim.role','authenticated',false);select set_config('request.jwt.claims','{"session_id":"${id}","amr":[{"method":"password"}]}',false);set role authenticated;`);};
@@ -244,7 +245,7 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
   for(const supplier of [disabled,'99999999-4444-4444-8444-444444444444'])await assert.rejects(save(supplier),/active supplier/);
   await assert.rejects(save(second,-1),/valid amount/);
   assert.equal((await db.query('select supplier_id from product_suppliers where product_id=$1 and is_primary',[product])).rows[0].supplier_id,first);
-  // A failure after the old primary is cleared must restore the whole change.
+
   await db.exec(`reset role;create function reject_supplier_test() returns trigger language plpgsql as $$begin if new.supplier_id='${second}' then raise exception 'Fixture save failed';end if;return new;end$$;create trigger fixture_supplier_failure before insert on product_suppliers for each row execute function reject_supplier_test();`);
   await claims(staff);await assert.rejects(save(second),/Fixture save failed/);
   assert.equal((await db.query('select supplier_id from product_suppliers where product_id=$1 and is_primary',[product])).rows[0].supplier_id,first);
@@ -256,6 +257,98 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
   await db.exec(`reset role;update profiles set role='owner' where id='${staff}';delete from login_verifications where user_id='${staff}';`);await claims(staff);await assert.rejects(save(first),/Not authorized/);
   await db.exec('reset role;');
   await db.exec(await readFile(new URL('../../../supabase/migrations/0011_restock_workflows.sql',import.meta.url),'utf8'));
+ });
+ await t.test('sale totals are exact, normalized when missing, and reject rollback leaves all balances unchanged',async()=>{
+  const part='10101010-1010-4010-8010-101010101010';
+  await db.exec(`reset role;insert into products(id,description,current_stock)values('${part}','Financial validation fixture',10);insert into login_verifications(session_id,user_id,expires_at)values('${staff}','${staff}',now()+interval '12 hours');`);
+  await claims(staff);
+  const snapshot=async()=>({
+   products:(await db.query('select id,current_stock,unit_cost,selling_price from products order by id')).rows,
+   counts:(await db.query('select (select count(*) from inventory_transactions) transactions,(select count(*) from demand_observations) observations,(select count(*) from customer_debts) debts,(select count(*) from stock_batches) batches,(select count(*) from business_sync_receipts) receipts')).rows[0]
+  });
+  const before=await snapshot();
+  const direct=(quantity,price,total=null)=>db.query("select apply_inventory_transaction($1,'sale',$2,null,$3,null,null,null,$4) id",[part,quantity,price,total]);
+  await assert.rejects(direct(0.01,0.01),/at least ₱0.01/);
+  await assert.rejects(direct(0.01,0.01,0.01),/at least ₱0.01/);
+  for(const total of [0,1,199.99,200.01])await assert.rejects(direct(2,100,total),/must match/);
+  await assert.rejects(direct(1,1,1.001),/decimal places/);
+  assert.deepEqual(await snapshot(),before);
+  const normalized=(await direct(0.1,0.15)).rows[0].id;
+  assert.equal(Number((await db.query('select total_amount from inventory_transactions where id=$1',[normalized])).rows[0].total_amount),0.02);
+  const exact=(await direct(3,0.29,0.87)).rows[0].id;
+  assert.equal(Number((await db.query('select total_amount from inventory_transactions where id=$1',[exact])).rows[0].total_amount),0.87);
+  assert.equal(Number((await db.query('select current_stock from products where id=$1',[part])).rows[0].current_stock),6.9);
+  await db.exec('reset role;');
+  for(const change of ['total_amount=1','quantity=1','unit_price=2'])await assert.rejects(db.query(`update inventory_transactions set ${change} where id=$1`,[exact]),/must match/);
+  const original=(await db.query('select * from inventory_transactions where id=$1',[exact])).rows[0];
+  assert.equal(Number(original.quantity),3);assert.equal(Number(original.unit_price),0.29);assert.equal(Number(original.total_amount),0.87);
+  await db.exec('grant insert,select on inventory_transactions to service_role;set role service_role;');
+  const inserted=(await db.query("insert into inventory_transactions(product_id,tx_type,quantity,unit_price)values($1,'sale',2,3) returning total_amount",[part])).rows[0];
+  assert.equal(Number(inserted.total_amount),6);
+  await db.exec('reset role;');
+ });
+ await t.test('zero-cent basket lines roll back without saving stock, demand, debt or retry receipts',async()=>{
+  const part='10101010-1010-4010-8010-101010101010';
+  await claims(staff);
+  const snapshot=async()=>({
+   stocks:(await db.query('select id,current_stock from products order by id')).rows,
+   counts:(await db.query('select (select count(*) from inventory_transactions) transactions,(select count(*) from demand_observations) observations,(select count(*) from customer_debts) debts,(select count(*) from stock_batches) batches,(select count(*) from business_sync_receipts) receipts')).rows[0]
+  });
+  const before=await snapshot(),op='12121212-1212-4212-8212-121212121212';
+  const call=payload=>db.query('select sync_store_operation($1,$2::jsonb) result',[op,JSON.stringify(payload)]);
+  const batch={kind:'batch',tx_type:'sale',customer_name:'Customer',is_credit:true,paid_amount:0,lines:[{product_id:part,quantity:0.01,unit_price:0.01},{product_id:product,quantity:0.01,unit_price:100}]};
+  await assert.rejects(call(batch),/at least ₱0.01/);
+  assert.deepEqual(await snapshot(),before);
+  const fixed={...batch,lines:[{product_id:part,quantity:0.1,unit_price:0.15}]};
+  const result=(await call(fixed)).rows[0].result;
+  assert.equal(result.total,0.02);assert.equal(result.balance,0.02);
+  assert.deepEqual((await call(fixed)).rows[0].result,result);
+  assert.equal(Number((await db.query('select principal from customer_debts where id=$1',[result.debtId])).rows[0].principal),0.02);
+ });
+ await t.test('irrelevant due dates never block cash sales, free deliveries, paid sales or payments',async()=>{
+  const part='10101010-1010-4010-8010-101010101010';
+  await claims(staff);
+  let sequence=0;
+  const call=(payload,id)=>db.query('select sync_store_operation($1,$2::jsonb) result',[id||`13131313-1313-4313-8313-${String(++sequence).padStart(12,'0')}`,JSON.stringify(payload)]);
+  const batch={kind:'batch',tx_type:'sale',lines:[{product_id:part,quantity:1,unit_price:10}],occurred_at:'2026-01-01T20:00:00Z'};
+  for(const due_date of ['bad date','2020-01-01',{hidden:true}]){
+   const received=(await call({...batch,tx_type:'stock_in',lines:[{product_id:part,quantity:1,unit_price:0}],due_date})).rows[0].result;
+   assert.equal(received.total,0);assert.equal(received.balance,0);assert.equal(received.debtId,null);
+   const cash=(await call({...batch,due_date})).rows[0].result;
+   assert.equal(cash.total,10);assert.equal(cash.balance,0);assert.equal(cash.debtId,null);
+   const paid=(await call({...batch,is_credit:true,customer_name:'Paid customer',paid_amount:10,due_date})).rows[0].result;
+   assert.equal(paid.balance,0);assert.equal(paid.debtId,null);
+  }
+  const credit={...batch,is_credit:true,customer_name:'Credit customer',paid_amount:5};
+  const before=(await db.query('select current_stock from products where id=$1',[part])).rows[0];
+  await assert.rejects(call({...credit,due_date:'bad date'}),/invalid input syntax/);
+  await assert.rejects(call({...credit,due_date:'2026-01-01'}),/on or after the sale date/);
+  assert.deepEqual((await db.query('select current_stock from products where id=$1',[part])).rows[0],before);
+  const sale=(await call({...credit,due_date:'2026-01-02'})).rows[0].result;
+  const paid=(await call({kind:'payment',debt_id:sale.debtId,amount:5,due_date:'bad date',occurred_at:'2026-01-02T20:00:00Z'})).rows[0].result;
+  assert.equal(paid.balance,0);
+  const date=(await db.query('select due_date::text from customer_debts where id=$1',[sale.debtId])).rows[0].due_date;
+  assert.equal(date,'2026-01-02');
+ });
+ await t.test('financial migration preserves old records and successful receipt replays',async()=>{
+  const part='10101010-1010-4010-8010-101010101010',legacy='14141414-1414-4414-8414-141414141414';
+  const oldPayload={kind:'batch',tx_type:'sale',lines:[{product_id:part,quantity:0.01,unit_price:0.01}],due_date:'ignored legacy field'};
+  const oldResult={total:0,balance:0};
+  await db.exec('reset role;drop trigger inventory_sale_price_check on inventory_transactions;');
+  const oldSale=(await db.query("insert into inventory_transactions(product_id,tx_type,quantity,notes)values($1,'sale',1,'Historical record') returning *",[part])).rows[0];
+  await db.query('insert into business_sync_receipts(user_id,operation_id,payload,result) values($1,$2,$3::jsonb,$4::jsonb)',[staff,legacy,JSON.stringify(oldPayload),JSON.stringify(oldResult)]);
+  const stocks=(await db.query('select id,current_stock from products order by id')).rows;
+  const debts=(await db.query('select * from customer_debts order by id')).rows;
+  const migration=await readFile(new URL('../../../supabase/migrations/0012_sale_financial_integrity.sql',import.meta.url),'utf8');
+  await db.exec(migration);await db.exec(migration);
+  assert.deepEqual((await db.query('select * from inventory_transactions where id=$1',[oldSale.id])).rows[0],oldSale);
+  assert.deepEqual((await db.query('select id,current_stock from products order by id')).rows,stocks);
+  assert.deepEqual((await db.query('select * from customer_debts order by id')).rows,debts);
+  await db.query("update inventory_transactions set notes='Updated historical note' where id=$1",[oldSale.id]);
+  assert.equal((await db.query('select notes from inventory_transactions where id=$1',[oldSale.id])).rows[0].notes,'Updated historical note');
+  await claims(staff);
+  assert.deepEqual((await db.query('select sync_store_operation($1,$2::jsonb) result',[legacy,JSON.stringify(oldPayload)])).rows[0].result,oldResult);
+  assert.deepEqual((await db.query('select id,current_stock from products order by id')).rows,stocks);
  });
  await db.close();
 });

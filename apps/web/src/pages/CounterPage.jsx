@@ -29,6 +29,7 @@ export default function CounterPage() {
     [unknown, setUnknown] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
+    [catalogError,setCatalogError]=useState(''),
     [toast, setToast] = useState(null),
     [priceSaving, setPriceSaving] = useState('');
   const [credit, setCredit] = useState(false),
@@ -49,27 +50,31 @@ export default function CounterPage() {
   async function load() {
     const n = ++request.current;
     setLoading(true);
+    setCatalogError('');
     try {
       const r = await api.get(`/api/products?page=${page}&pageSize=25&q=${encodeURIComponent(q)}&category=${category}`);
+      if(!Array.isArray(r.data)||!Number.isFinite(r.count))throw new Error('The store returned incomplete information. Please try again.');
       if (n === request.current) {
         setRows(r.data || []);
         setCount(r.count || 0);
       }
     } catch (e) {
-      setError(e.message);
+      if(n===request.current)setCatalogError(e.message);
     } finally {
       if (n === request.current) setLoading(false);
     }
   }
   useEffect(() => {
+    request.current++;
     const timer = setTimeout(load, 200);
     window.addEventListener('partcast:queue', load);
     return () => {
+      request.current++;
       clearTimeout(timer);
       window.removeEventListener('partcast:queue', load);
     };
   }, [q, category, page]);
-  const {total,balance,overpaid,validPayment} = basketAmounts(cart,{txType:mode,isCredit:credit,paidAmount:paid});
+  const {total,balance,overpaid,validPayment,zeroSaleTotal} = basketAmounts(cart,{txType:mode,isCredit:credit,paidAmount:paid});
   const formattedTotal = total === null ? '—' : money(total);
   const incompletePrice = mode === 'sale' && cart.some(l=>!validAmount(l.unit_price,true));
   const paymentIssue = credit && (!validPayment || overpaid);
@@ -165,11 +170,12 @@ export default function CounterPage() {
       setError('The total is too large.');
       return;
     }
+    if(zeroSaleTotal){setError('Each part in a sale must total at least ₱0.01. Check the quantities and prices.');return;}
     if (credit && (customer.trim().length < 2 || paymentIssue)) {
       setError('Enter the customer name and a payment between 0 and the sale total.');
       return;
     }
-    if (due && due < today()) {
+    if (!operation.current&&mode==='sale'&&credit&&balance>0&&due && due < today()) {
       setError('Choose a due date today or later.');
       return;
     }
@@ -191,7 +197,7 @@ export default function CounterPage() {
       phone: phone.trim() || null,
       is_credit: mode === 'sale' && credit,
       paid_amount: mode === 'sale' && credit ? Number(paid) : 0,
-      due_date: credit ? due || null : null,
+      due_date: mode==='sale'&&credit&&balance>0 ? due || null : null,
       notes: note.trim() || null,
       reference_no: reference.trim() || null,
       supplier_id: mode === 'stock_in' ? supplier || null : null
@@ -231,6 +237,7 @@ export default function CounterPage() {
  {operation.current && !busy && <p className="mb-4 text-amber-800">{t("This save is waiting for confirmation. Choose Confirm again to retry the same basket.")}</p>}
  <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
  <section className="counter-catalog panel p-3 sm:p-4" aria-label={t('Choose parts')}><h2 className="mb-3 text-lg font-bold">{t("1. Choose your parts")}</h2>
+ {catalogError&&<div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><p>{t(catalogError)}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={load}>{t('Try again')}</button></div>}
  <div className="flex flex-wrap gap-2"><label className="min-w-0 flex-1"><span className="label">{t("Find a part")}</span><input className="input" placeholder={t("Name, part number, or barcode")} value={q} onChange={e => {
               setQ(e.target.value);
               setPage(1);
@@ -256,7 +263,7 @@ export default function CounterPage() {
     <button className="btn-secondary mt-auto w-full gap-1 px-2" onClick={() => add(p)} disabled={locked || soldOut} aria-label={t("Add {v0} to basket",{v0:p.description})}><Plus size={16} className="shrink-0" />{t('Add')}</button>
    </article>;
  })}</div>
- {!loading && !rows.length && <p className="py-8 text-center text-slate-500">{t("No parts found. Try another name or category.")}</p>}
+ {!loading && !catalogError && !rows.length && <p className="py-8 text-center text-slate-500">{t("No parts found. Try another name or category.")}</p>}
  <Pagination page={page} pageSize={25} count={count} onPage={setPage} /></section>
  <Form id="store-basket" tabIndex={-1} className="panel scroll-mt-24 p-3 sm:p-4" onSubmit={submit} noValidate><h2 className="mb-2 text-lg font-bold">{t("2. Check your basket")}</h2><p className="mb-4 text-sm text-slate-500">{mode === 'sale' ? t('Quantities below will be taken from stock.') : t('Quantities below will be added to stock.')}</p>
  <fieldset disabled={locked} className="space-y-4">
@@ -278,7 +285,8 @@ export default function CounterPage() {
  </fieldset>
  <div className="my-5 flex flex-wrap justify-between gap-2 border-t border-slate-200 pt-4 text-xl font-bold"><span>{t("Total")}</span><span>{formattedTotal}</span></div>
  {cart.length>0&&total===null&&<p className="mb-3 text-sm font-semibold text-amber-800">{incompletePrice?t('Add a selling price for every part to continue.'):t('Check the quantities and prices before saving.')}</p>}
- <button className="btn-primary w-full" disabled={busy || !!priceSaving || !cart.length || total===null || paymentIssue}>{busy ? t('Saving…') : mode === 'sale' ? t('3. Confirm sale') : t('3. Confirm delivery')}</button><p className="mt-3 text-sm text-slate-500">{navigator.onLine ? t('All selected parts save together.') : t('This basket saves on this device and sends automatically when internet returns.')}</p>
+ {zeroSaleTotal&&<p role="alert" className="mb-3 text-sm font-semibold text-red-700">{t('Each part in a sale must total at least ₱0.01. Check the quantities and prices.')}</p>}
+ <button className="btn-primary w-full" disabled={busy || !!priceSaving || !cart.length || total===null || zeroSaleTotal || paymentIssue}>{busy ? t('Saving…') : mode === 'sale' ? t('3. Confirm sale') : t('3. Confirm delivery')}</button><p className="mt-3 text-sm text-slate-500">{navigator.onLine ? t('All selected parts save together.') : t('This basket saves on this device and sends automatically when internet returns.')}</p>
  </Form></div>
  {cart.length>0&&<><div className="h-24 xl:hidden" aria-hidden="true" /><div className="counter-basket-shortcut fixed inset-x-0 z-20 flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 lg:left-64 xl:hidden"><div className="min-w-0"><p className="text-sm text-slate-600">{t('{v0} parts in basket',{v0:cart.length})}</p><p className="break-words font-bold">{formattedTotal}</p></div><a className="btn-primary shrink-0" href="#store-basket">{t('View basket')}</a></div></>}
  <BarcodeScanner open={scan} onClose={() => setScan(false)} onScan={lookup} /><Toast toast={toast} onClose={() => setToast(null)} />

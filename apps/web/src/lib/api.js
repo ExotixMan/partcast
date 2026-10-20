@@ -136,6 +136,12 @@ async function movement(body, batch = false) {
     if(body.tx_type!=='stock_in'&&Math.round(quantity*100)>Math.round(Number(product.current_stock)*100))throw new ApiError('There is not enough saved stock for this transaction.',409);
     if(body.tx_type==='sale'&&!validAmount(line.unit_price,true))throw new ApiError('Enter a selling price greater than zero for every part.',422);
     if(batch&&!validAmount(line.unit_price))throw new ApiError('Enter a valid price with at most 2 decimal places.',422);
+    if(body.tx_type==='sale'){
+      const cents=lineCents(line.quantity,line.unit_price);
+      if(cents<1)throw new ApiError('Each part in a sale must total at least ₱0.01. Check the quantities and prices.',422);
+      if(cents>=1e14)throw new ApiError('The total is too large.',422);
+      if(!batch&&line.total_amount!=null&&(!validAmount(line.total_amount)||Math.round(Number(line.total_amount)*100)!==cents))throw new ApiError('The sale total must match the quantity and selling price.',422);
+    }
   }
   if(batch){
     const total=lines.reduce((s,l)=>s+lineCents(l.quantity,l.unit_price),0)/100;

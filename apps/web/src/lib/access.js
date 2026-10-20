@@ -17,5 +17,5 @@ export function sessionId(session) {
     return claims.amr?.some(a => a.method === 'password') ? claims.session_id : null;
   } catch { return null; }
 }
-// An offline profile is usable only by the password session that passed its email check.
+
 export const verifiedCacheMatches = (session, user) => Boolean(user?.active && Date.parse(user.verification_expires_at)>Date.now() && user.id === session?.user?.id && sessionId(session) && user.session_id === sessionId(session));

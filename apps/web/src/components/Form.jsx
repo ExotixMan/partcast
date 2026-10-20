@@ -2,8 +2,8 @@ import {useEffect,useId,useRef,useState} from 'react';
 import {t,useLocale} from '../context/LocaleContext.jsx';
 import {formProblems} from '../lib/formValidation.js';
 
-// Custom inventory/basket validators keep their existing noValidate behavior.
-// Other forms show persistent, linked messages instead of browser-only popups.
+
+
 export default function Form({children,onSubmit,onInvalidCapture,onChangeCapture,noValidate=false,...props}) {
  useLocale();
  const [issues,setIssues]=useState([]),[failure,setFailure]=useState(false);

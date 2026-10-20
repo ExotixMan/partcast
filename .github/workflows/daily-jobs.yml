@@ -3,19 +3,19 @@ name: PartCast scheduled jobs
 on:
   workflow_dispatch:
   schedule:
-    # 08:15 Asia/Manila every day (GitHub cron uses UTC)
+
     - cron: '15 0 * * *'
-    # 02:00 Asia/Manila every Monday: refresh XGBoost forecasts
+
     - cron: '0 18 * * 0'
 
 jobs:
-  daily-backup-and-supplier-email:
+  daily-backup:
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 0 * * *'
     runs-on: ubuntu-latest
     steps:
       - name: Wake API
         run: curl --retry 3 --retry-delay 20 --fail --silent --show-error "${{ secrets.PARTCAST_API_URL }}/health"
-      - name: Run daily backup and configured supplier emails
+      - name: Run daily backup
         run: |
           curl --retry 3 --retry-delay 20 --fail --silent --show-error \
             -X POST "${{ secrets.PARTCAST_API_URL }}/jobs/daily" \

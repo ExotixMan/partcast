@@ -1,5 +1,5 @@
-// A small text-only format: paragraphs, bullet lists and numbered steps.
-// No HTML, images or links are interpreted from an assistant response.
+
+
 export function replyBlocks(value) {
  const blocks=[];
  let current=null;

@@ -17,3 +17,8 @@ export function frontendOrigins(value) {
     return url.origin;
   }))];
 }
+
+export function secretConfigurationIssue(value) {
+ if(typeof value==='string'&&/^(?:generate[-_ ]|replace(?:[-_ ]|$)|your[-_ ])/i.test(value.trim()))return 'Replace the example placeholder with a privately generated random secret.';
+ return null;
+}

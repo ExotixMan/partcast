@@ -45,7 +45,7 @@ async function discoverForecastRuntime(key) {
     try{const output=await processOutput(candidate,['-c','import json,platform,numpy,pandas,sklearn,xgboost; print(json.dumps({"python":platform.python_version(),"numpy":numpy.__version__,"pandas":pandas.__version__,"scikit_learn":sklearn.__version__,"xgboost":xgboost.__version__}))'],Math.min(30000,remaining));versions=JSON.parse(output.trim().split('\n').at(-1));python=candidate;break;}
     catch(error){
       failures.push({candidate:failures.length+1,code:error.code||error.exitCode||'IMPORT_FAILED',signal:error.signal||null,missing_module:/No module named ['"]([\w.]+)['"]/.exec(error.message)?.[1]||null});
-      // Repeating expensive imports after a timeout or host kill adds load.
+
       if(error.code==='FORECAST_TIMEOUT'||error.signal==='SIGKILL')break;
     }
   }

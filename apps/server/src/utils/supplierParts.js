@@ -2,8 +2,8 @@ import {adminDb} from '../supabase.js';
 import {fetchAll} from './helpers.js';
 import {normalizeRestock} from './restock.js';
 
-// The restock view picks one main supplier per part. Email requests may also
-// use any other active supplier explicitly linked to that part.
+
+
 export async function supplierParts(supplierId,productIds) {
  const links=await fetchAll(()=>{
   let query=adminDb.from('product_suppliers')
@@ -14,7 +14,7 @@ export async function supplierParts(supplierId,productIds) {
  });
  const byProduct=new Map(links.map(link=>[link.product_id,link]));
  const ids=[...byProduct.keys()],rows=[];
- // Keep PostgREST URLs bounded for suppliers with large catalogs.
+
  for(let offset=0;offset<ids.length;offset+=200){
   const page=await fetchAll(()=>adminDb.from('reorder_recommendations').select('*')
    .in('product_id',ids.slice(offset,offset+200)).order('product_id'));

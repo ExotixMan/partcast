@@ -1,5 +1,5 @@
--- PartCast upgrade: allow the cleaned XGBoost training-ready spreadsheet to be imported
--- Run this after 0001_schema.sql and 0002_rls.sql on an existing deployment.
+
+
 
 alter table public.demand_observations
   drop constraint if exists demand_observations_source_check;

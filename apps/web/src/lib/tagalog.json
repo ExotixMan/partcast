@@ -1386,5 +1386,8 @@
   "No sending record was found. Retry this same request to check or send it once.": "Walang tala ng pagpapadala. Subukan ulit ang parehong request para tingnan o ipadala ito nang isang beses.",
   "Delivery is not confirmed. Check Gmail Sent or contact the supplier before creating another request.": "Hindi pa tiyak kung naipadala. Tingnan ang Sent sa Gmail o tanungin ang supplier bago gumawa ng bagong request.",
   "The supplier email address changed. Close this request, refresh the list and review the recipient again.": "Nagbago ang email ng supplier. Isara ang request, i-refresh ang listahan at tingnan ulit ang tatanggap.",
-  "Restock setup is incomplete. Ask the Super Admin to apply migration 0011_restock_workflows.sql, then refresh the page.": "Kulang pa ang setup ng Restock. Ipa-run sa Super Admin ang 0011_restock_workflows.sql, saka i-refresh ang pahina."
+  "Restock setup is incomplete. Ask the Super Admin to apply migration 0011_restock_workflows.sql, then refresh the page.": "Kulang pa ang setup ng Restock. Ipa-run sa Super Admin ang 0011_restock_workflows.sql, saka i-refresh ang pahina.",
+  "The sale total must be at least ₱0.01. Check the quantities and prices.": "Dapat hindi bababa sa ₱0.01 ang kabuuang benta. Tingnan ang dami at presyo.",
+  "Loading payments…": "Kinukuha ang mga bayad…",
+  "Each part in a sale must total at least ₱0.01. Check the quantities and prices.": "Dapat hindi bababa sa ₱0.01 ang kabuuang halaga ng bawat piyesa sa benta. Tingnan ang dami at presyo."
 }

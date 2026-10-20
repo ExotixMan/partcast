@@ -9,7 +9,7 @@ function ipHash(req) {
 
 export async function audit(req, action, entityType, entityId = null, metadata = {}) {
   try {
-    await adminDb.from('audit_logs').insert({
+    const {error}=await adminDb.from('audit_logs').insert({
       actor_id: req.user?.id || null,
       action,
       entity_type: entityType,
@@ -17,7 +17,8 @@ export async function audit(req, action, entityType, entityId = null, metadata =
       metadata,
       ip_hash: ipHash(req)
     });
-  } catch (error) {
-    console.error('Audit log failure:', error.message);
+    if(error)console.error('Audit log could not be saved.');
+  } catch {
+    console.error('Audit log could not be saved.');
   }
 }

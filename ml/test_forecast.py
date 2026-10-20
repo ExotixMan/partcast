@@ -20,7 +20,7 @@ class ForecastTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source, target = Path(directory)/'input.json', Path(directory)/'report.json'
             source.write_text(json.dumps({'observations': rows, 'asOfDate': '2026-10-15'}))
-            # Block imports in a fresh interpreter so another test's imports cannot hide a regression.
+
             script = '''import sys, importlib.abc, runpy
 class BlockModels(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
@@ -41,7 +41,7 @@ runpy.run_path('train_forecast.py', run_name='__main__')
                 for offset in [70,50,30,10,0]]
         with patch('train_forecast.make_model', side_effect=AssertionError('Readiness must not fit')):
             report = assess_readiness(rows, origin)
-        self.assertTrue(report['ready'])  # Five observed rows can produce enough lag-feature rows.
+        self.assertTrue(report['ready'])
         self.assertEqual(report['record_count'],5)
         self.assertEqual(report['products'][0]['sale_days'],5)
         self.assertEqual(report['feature_rows'],43)
@@ -53,7 +53,7 @@ runpy.run_path('train_forecast.py', run_name='__main__')
         self.assertIn('too_few_sale_days',repeated['products'][0]['reasons'])
         old = [{**row,'occurred_on':(pd.Timestamp(row['occurred_on'])-pd.Timedelta(days=90)).date().isoformat()} for row in rows]
         report = assess_readiness(old+[{'product_id':'another-part','occurred_on':'2026-10-15','quantity':1}],origin)
-        self.assertEqual(report['status'],'stale_history')  # An unrelated new sale cannot refresh the old part.
+        self.assertEqual(report['status'],'stale_history')
         self.assertEqual(report['eligible_part_count'],1)
         self.assertEqual(report['current_part_count'],0)
 
@@ -64,7 +64,7 @@ runpy.run_path('train_forecast.py', run_name='__main__')
                for offset in [34,25,15,7,0]]
         self.assertEqual(assess_readiness(short,origin)['status'],'insufficient_feature_rows')
         same_dates=[{**row,'product_id':f'test-part-{part}'} for part in range(5) for row in short]
-        # Enough pooled feature rows still cannot replace distinct evaluation dates.
+
         self.assertEqual(assess_readiness(same_dates,origin)['status'],'insufficient_evaluation_rows')
         for field,value in [('quantity',True),('quantity',-1),('occurred_on','bad-date'),('occurred_on','2026-10-16')]:
             with self.subTest(field=field,value=value):

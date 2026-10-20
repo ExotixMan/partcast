@@ -1,4 +1,4 @@
--- Restock fixes. Preserves products, sales, accounts and existing supplier links.
+
 begin;
 create or replace function public.save_product_supplier(
   p_product_id uuid, p_supplier_id uuid, p_latest_unit_cost numeric,
@@ -16,8 +16,8 @@ begin
      or p_is_primary is null or length(p_supplier_part_number)>120 then
     raise exception 'Check the supplier, cost and delivery time.' using errcode='22023';
   end if;
-  -- Serialize supplier changes for this product. Any error rolls back both
-  -- the previous main supplier and the new link in the same transaction.
+
+
   perform 1 from public.products where id=p_product_id and active for update;
   if not found then raise exception 'Choose an active part.' using errcode='22023';end if;
   perform 1 from public.suppliers where id=p_supplier_id and active for share;
@@ -38,8 +38,8 @@ end $$;
 revoke all on function public.save_product_supplier(uuid,uuid,numeric,integer,boolean,text) from public,anon;
 grant execute on function public.save_product_supplier(uuid,uuid,numeric,integer,boolean,text) to authenticated;
 
--- A request is recorded BEFORE contacting Gmail. A timeout never becomes an
--- automatic resend; clients can safely look up or retry the same request ID.
+
+
 alter table public.supplier_email_logs add column if not exists client_request_id uuid;
 alter table public.supplier_email_logs add column if not exists request_hash text;
 create unique index if not exists supplier_email_request_id_unique on public.supplier_email_logs(client_request_id) where client_request_id is not null;

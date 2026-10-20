@@ -1,4 +1,4 @@
-// Also applies the purchase limit to recommendations cached before this release.
+
 const searchable=value=>String(value??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 export function matchesSearch(values,query) {
  const text=searchable(values.join(' '));

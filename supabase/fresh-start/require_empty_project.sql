@@ -1,4 +1,4 @@
--- This check makes no changes. Use a NEW Supabase project for a complete rebuild.
+
 do $partcast_empty_project$
 begin
   if to_regclass('auth.users') is null or to_regclass('storage.buckets') is null then

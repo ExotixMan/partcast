@@ -59,7 +59,7 @@ export default function ReportsPage() {
       await api.download(`/api/reports/${type}.xlsx?${new URLSearchParams({
         from,
         to,
-        category: type === 'reorder' || type === 'debts' ? 'all' : category
+        category: type === 'debts' ? 'all' : category
       })}`);
       setToast({
         message: 'Your report is ready. Check your device’s Downloads folder.'

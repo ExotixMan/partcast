@@ -22,13 +22,13 @@ class IntermittentTests(unittest.TestCase):
         self.assertEqual(errors([10, 0], [0, 0])['wape_percent'], 100)
 
     def test_sba_updates_size_and_time_between_actual_sales(self):
-        # Size = 10 + .1*(20-10); first measured interval = 3 days.
+
         self.assertAlmostEqual(daily_rate([10, 0, 0, 20]), .95 * 11 / 3)
-        # Unobserved future periods never update size/interval.
+
         self.assertEqual(daily_rate([10, 0, 0, 20]), daily_rate([10, 0, 0, 20, 0, 0]))
 
     def test_tsb_updates_probability_only_with_observed_days(self):
-        # Probability = 1 -> .99 -> .9801 -> .980299; size = 11.
+
         self.assertAlmostEqual(daily_rate([10, 0, 0, 20], 'tsb'), .980299 * 11)
         self.assertLess(daily_rate([10, 0, 0, 20, 0], 'tsb'), daily_rate([10, 0, 0, 20], 'tsb'))
 

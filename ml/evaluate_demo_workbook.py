@@ -117,13 +117,13 @@ def evaluate_split(all_series, split, forecasters=None):
 
 def evaluate_workbook(payload, forecasters=None, include_future=True):
     splits = parse_splits(payload)
-    # Only train + validation are available when choosing an XGBoost strategy.
+
     development = {pid: pd.concat([splits['train'][pid], splits['validation'][pid]]) for pid in splits['train']}
     validation = evaluate_split(development, splits['validation'], forecasters)
     candidates = [method for method in XGBOOST_METHODS if validation[method]['metrics']['wape_percent'] is not None]
     selected = min(candidates, key=lambda method: (validation[method]['metrics']['wape_percent'], method)) if candidates else None
     full = {pid: pd.concat([development[pid], splits['test'][pid]]) for pid in development}
-    # Keep this selection fixed before any test target is evaluated.
+
     test = evaluate_split(full, splits['test'], forecasters)
     future = []
     if include_future and selected:

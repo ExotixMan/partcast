@@ -7,8 +7,8 @@ import {isSimulationWorksheetName,simulatedDemandError} from './simulationData.j
 
 const MAIN_NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const xmlEscape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\"','&quot;');
-// ExcelJS expects unprefixed OOXML element names. Some valid producers use x:.
-// Parse namespaces before normalizing, rather than applying replacements to data.
+
+
 export function normalizeSpreadsheetXml(xml,relationshipsBase=null){
   const parser=new SaxesParser({xmlns:true});
   let output='',depth=0;
@@ -26,7 +26,7 @@ export function normalizeSpreadsheetXml(xml,relationshipsBase=null){
   return output;
 }
 
-// Bound decompressed uploads before parsing. Never evaluate formulas or macros.
+
 export async function loadSpreadsheet(buffer,fileName='',{rejectSimulated=false}={}) {
   const extension=path.extname(fileName).toLowerCase();
   if(!Buffer.isBuffer(buffer)||!buffer.length)throw Object.assign(new Error('The spreadsheet is empty.'),{status:400});
@@ -41,8 +41,8 @@ export async function loadSpreadsheet(buffer,fileName='',{rejectSimulated=false}
       const entries=Object.values(archive.files);
       const expanded=entries.reduce((total,file)=>total+(file._data?.uncompressedSize||0),0);
       if(entries.length>5000||expanded>80*1024*1024)throw new Error('The expanded workbook is too large. Split it into smaller files.');
-      // Read only the bounded workbook manifest before materializing large demo
-      // sheets. This declaration also survives renaming the uploaded file.
+
+
       if(rejectSimulated&&archive.file('xl/workbook.xml')){
         let simulated=false;
         const parser=new SaxesParser({xmlns:true});
@@ -55,7 +55,7 @@ export async function loadSpreadsheet(buffer,fileName='',{rejectSimulated=false}
         parser.write(await archive.file('xl/workbook.xml').async('string')).close();
         if(simulated)throw simulatedDemandError();
       }
-      // Normalize only spreadsheet namespaces; relationship attributes remain intact.
+
       for(const entry of entries){
         if(entry.name.startsWith('xl/')&&entry.name.endsWith('.xml')){
           const xml=await entry.async('string');

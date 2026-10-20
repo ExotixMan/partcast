@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
+import {parseLiteralFilters} from './fixtures/postgrest.js';
 Object.assign(process.env,{SUPABASE_URL:'http://127.0.0.1:9',SUPABASE_ANON_KEY:'test-only-public-key-12345',SUPABASE_SERVICE_ROLE_KEY:'test-only-service-key-12345',SETUP_SECRET:'test-only-setup-secret',CRON_SECRET:'test-only-cron-secret-long-enough',IP_HASH_SECRET:'test-only-hash-secret',INTEGRATION_ENCRYPTION_KEY:'test-only-encryption-key-32-characters'});
 const {adminDb}=await import('../src/supabase.js');
 const {authenticate}=await import('../src/middleware/auth.js');
@@ -30,7 +31,7 @@ test('imported invoice browser returns persisted invoices, validates filters and
       rows=rows.filter(row=>filters.every(([key,value,op])=>op==='gte'?row[key]&&row[key]>=value:op==='lte'?row[key]&&row[key]<=value:row[key]===value));
       if(table==='legacy_sales'){
         invoiceReads++;queries.push({selected,filters,logic,orders,start,end});
-        if(logic){const term=logic.split('.ilike.%')[1].split('%')[0].replace(/\\_/g,'_').toLowerCase();rows=rows.filter(row=>[row.reference_no,row.raw_items].some(v=>String(v||'').toLowerCase().includes(term)));}
+        if(logic){const filters=parseLiteralFilters(logic);rows=rows.filter(row=>filters.some(({column,pattern})=>new RegExp(pattern,'iu').test(String(row[column]||''))));}
         rows=[...rows].sort((a,b)=>{for(const [key,options] of orders){if(a[key]===b[key])continue;if(a[key]==null)return 1;if(b[key]==null)return -1;const comparison=String(a[key]).localeCompare(String(b[key]));return options?.ascending===false?-comparison:comparison;}return 0;});
       }
       const count=rows.length;
@@ -54,9 +55,9 @@ test('imported invoice browser returns persisted invoices, validates filters and
     assert.equal((await fetch(base+'/sales')).status,401);
     for(const denied of ['cashier','inventory_staff']){role=denied;assert.equal((await get()).status,403);}
     role='owner';verified=false;assert.equal((await get()).status,428);verified=true;
-    for(const query of ['?page=0','?pageSize=51','?q='+encodeURIComponent('x'.repeat(121)),'?from=bad-date','?from=2026-02-30'])assert.equal((await get(query)).status,400);
+    for(const query of ['?page=0','?pageSize=51','?q='+encodeURIComponent('x'.repeat(121)),'?q='+encodeURIComponent('x\u0000y'),'?from=bad-date','?from=2026-02-30'])assert.equal((await get(query)).status,400);
     assert.equal((await get('?from=2026-02-01&to=2026-01-01')).status,422);
-    assert.equal((await get('?q='+encodeURIComponent('%,()*'))).status,422);assert.equal(invoiceReads,0);
+    assert.equal(invoiceReads,0);
     const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Past sales');sheet.addRow(['Reference','Date','Customer','Amount','Items']);
     sheet.addRow(['SI#1','2026-01-05','',100,'BP-001 Brake pad']);
     sheet.addRow(['SI#2','2026-02-12','',250,'Oil filter']);sheet.addRow(['SI#3',null,'',0,'Unknown date']);
@@ -72,7 +73,8 @@ test('imported invoice browser returns persisted invoices, validates filters and
     const paged=await (await get('?page=2&pageSize=1')).json();assert.equal(paged.count,3);assert.equal(paged.data[0].reference_no,'SI#1');
     assert.equal((await (await get('?q=missing')).json()).count,0);
     await get('?q='+encodeURIComponent('SI#1,raw_items.neq.x'));
-    assert.equal(queries.at(-1).logic.split(',').length,2);assert(!queries.at(-1).logic.includes('neq.'));
+    const filters=parseLiteralFilters(queries.at(-1).logic);assert.deepEqual(filters.map(filter=>filter.column),['reference_no','raw_items']);
+    for(const {pattern} of filters){const expression=new RegExp(pattern,'iu');assert(expression.test('SI#1,raw_items.neq.x'));assert(!expression.test('SI#1'));}
     for(const manager of ['admin','super_admin']){role=manager;assert.equal((await get()).status,200);}
     assert.equal(writes.length,afterWrites);
   }finally{adminDb.from=original.from;adminDb.auth.getUser=original.getUser;await new Promise(resolve=>server.close(resolve));}

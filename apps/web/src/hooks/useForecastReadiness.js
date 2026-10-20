@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {api} from '../lib/api.js';
 
-// Eligibility remains enforced even though the diagnostic panel is no longer shown.
+
 export default function useForecastReadiness(enabled,refreshKey) {
   const [report,setReport]=useState(null),[error,setError]=useState('');
   const [checking,setChecking]=useState(true),[slow,setSlow]=useState(false);

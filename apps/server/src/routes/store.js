@@ -20,12 +20,12 @@ for(const [path,schema] of [['/inventory/batch',batchSchema],['/debts',debtSchem
  }catch(e){next(e);}});
 }
 router.get('/debts',async(req,res,next)=>{try{
- const data=await fetchAll(()=>adminDb.from('customer_balances').select('*').order('occurred_at',{ascending:false}));
+ const data=await fetchAll(()=>adminDb.from('customer_balances').select('*').order('occurred_at',{ascending:false}).order('id'));
  res.json({data,savedAt:new Date().toISOString()});
 }catch(e){next(e);}});
 router.get('/debts/:id/payments',async(req,res,next)=>{try{
  const id=z.string().uuid().parse(req.params.id);
- const {data,error}=await adminDb.from('debt_payments').select('*').eq('debt_id',id).order('paid_at',{ascending:false});if(error)throw error;res.json({data});
+ const data=await fetchAll(()=>adminDb.from('debt_payments').select('*').eq('debt_id',id).order('paid_at',{ascending:false}).order('id'));res.json({data});
 }catch(e){next(e);}});
 router.get('/barcode/:code',async(req,res,next)=>{try{
  const code=z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9 ._/-]+$/).parse(req.params.code);

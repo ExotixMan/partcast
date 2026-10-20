@@ -1,5 +1,5 @@
--- Read-only installation check. Run AFTER Parts 1 and 2 in the new project.
--- This checks database configuration, not Gmail delivery or forecast accuracy.
+
+
 begin read only;
 do $partcast_verify_installation$
 declare tab text;

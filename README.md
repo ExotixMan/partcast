@@ -1,122 +1,32 @@
 # PartCast
 
-**PartCast: A Demand Forecasting Inventory Management System for NPG Autoparts Using XGBoost Regression**
+Demand forecasting and inventory management for NPG Auto Parts. The application uses React, Node.js/Express, Supabase and Python/XGBoost. The release branch is **production**.
 
-Full-stack capstone system using React + Tailwind CSS, Node.js/Express, Supabase, Python/XGBoost, Excel backups, supplier email automation, and an AI-assisted inventory chatbot.
+Inventory manages part details and stock corrections. Sell or receive records multi-part baskets. Sales shows transaction history. Customer utang tracks balances and partial payments. Restock supports small purchase suggestions, supplier filters and reviewed Gmail requests with editable tables. The application also supports private photos, barcode lookup, English/Tagalog, dark mode, date-range exports, and queued offline stock operations.
 
-## New in this build
+## Upgrade an existing store
 
-- Guided multi-part sales/deliveries and customer-only utang with partial payments.
-- Categories, alternate names, private product photos, and camera/manual barcode search.
-- English/Tagalog interface, Tagalog part terminology, light default and optional dark mode.
-- Gmail supplier email drafts with editable rows, units and custom columns; date/category-filtered Excel inventory and sales reports.
-- Restock includes every low/out-of-stock part, including stock exactly at its minimum level.
-- Prediction runs now check their full planning period against unseen sales, disclose baseline/error totals, and batch recursive estimates by date.
-- Required password followed by a Gmail email code, Super Admin/Owner/Cashier permissions, and encrypted Google API settings.
-- Header/mobile-help PartCast chatbot that keeps pagination clear.
-- Works immediately in **Smart Local** mode using live PartCast database facts.
-- Optional **Gemini-assisted** mode using `GEMINI_API_KEY`; only minimized inventory/forecast context is sent, not passwords, customer names, or supplier email addresses.
-- Smart spreadsheet import accepts files with **any base file name** in `.xlsx`, `.xlsm`, or `.csv` format.
-- Auto-detects inventory, historical sales, and demand-training spreadsheets by column structure.
-- Multiple spreadsheets can be selected and imported sequentially.
-- Direct importer for the supplied `PartCast_XGBoost_TRAINING_READY` workbook.
-- XGBoost training now automatically includes imported training observations plus real PartCast sales.
-- Improved intermittent-demand feature engineering for sparse automotive spare-parts demand.
-- Forecast page shows exactly which products were forecast and automatically opens a forecasted product.
-- Added missing Render `Dockerfile` and `render.yaml`.
+Apply only missing migrations, in order. A store already through 0011 needs [0012_sale_financial_integrity.sql](supabase/migrations/0012_sale_financial_integrity.sql). It enforces sale quantities, rounded totals and credit due dates without rewriting old sales. Back up the store and apply the migration before deploying both services from `production`. Run migration 0006 and 0007 in separate committed executions if upgrading an older store.
 
-## Required database upgrade for an existing Supabase project
+For a fresh installation or recognized-schema upgrade, use the [complete two-part SQL installer](supabase/paste-ready/README.md). The application does not require resetting or reimporting existing stock for this release.
 
-Apply only unapplied migrations. Existing installations through 0010 need [0011_restock_workflows.sql](supabase/migrations/0011_restock_workflows.sql) for atomic supplier changes and duplicate-safe email request retries. Stores through 0009 also need [0010_sale_price_validation.sql](supabase/migrations/0010_sale_price_validation.sql). Older installations must apply their missing migrations in order. Run `0006_access_roles.sql` and `0007_verified_login_and_access.sql` in separate executions. Fresh projects need all eleven in order, or the complete two-part SQL installer:
+## Develop locally
 
-1. `0001_schema.sql`
-2. `0002_rls.sql`
-3. `0003_training_import.sql`
-4. `0004_offline_security_notifications.sql`
-5. `0005_store_workflows.sql`
-6. `0006_access_roles.sql` (separate execution; commit before step 7)
-7. `0007_verified_login_and_access.sql`
-8. `0008_restock_threshold.sql`
-9. `0009_small_restock_orders.sql`
-10. `0010_sale_price_validation.sql`
-11. `0011_restock_workflows.sql`
+Use Node 20.19 or newer and Python 3.11 or newer. Install both applications with `npm ci` in `apps/server` and `apps/web`. Create a Python virtual environment at the repository root and install `ml/requirements.txt`. Copy each application's `.env.example` to `.env` and enter matching Supabase credentials privately. Configure Gmail on the API for password-followed-by-email-code sign-in. Server secrets must never enter a `VITE_` variable.
 
-See [Activate and use the new features](docs/STORE_WORKFLOWS.md) for everyday sales/utang workflows and validation limits. See [Required login, roles, Google API setup and Python repair](docs/LOGIN_ROLES_FORECASTING.md) before deploying; configure Gmail first and apply 0006 separately before 0007.
+Run `npm run dev` in each application directory. The website opens at `http://localhost:5173`; the API defaults to port 10000. For this cloud workspace, `bash scripts/cloud-setup.sh` installs dependencies and runs local checks; it does not import store data.
 
-See [Restock, Gmail and supplier table setup](docs/RESTOCK_GMAIL.md) for the latest upgrade, required stock fields and custom email columns. Login codes and all supplier messages share the same secured Gmail connection.
+## Validate
 
-See [measured prediction accuracy and defense/deployment readiness](docs/PREDICTION_READINESS.md) before claiming accurate forecasts. The uploaded extract currently has no fresh eligible product histories; historical quantity error is about 100%. Reimporting stock snapshots cannot fix missing sales history.
+- Server: `npm test` in `apps/server`.
+- Website: `npm test` and `npm run build` in `apps/web`.
+- Browser workflows: build the website with test connection settings, then `npm run test:e2e` in `apps/web`.
+- Forecasting: `.venv/bin/python -m unittest discover -s ml -p 'test_*.py'` at the repository root.
 
-For a separate exercise using existing catalog items and entirely generated demand, see the [labelled simulated training demo](docs/SIMULATED_DEMO.md). It trains and evaluates XGBoost locally without Supabase and keeps simulated performance separate from actual-store accuracy.
+Browser tests use isolated mocked store records. PostgreSQL tests execute the schema and permission rules locally. Neither establishes hosted Gmail delivery or forecast accuracy on actual store sales.
 
-For complete files to copy into Supabase SQL Editor, use [Paste-ready SQL and API settings](supabase/paste-ready/README.md). Run the two main files separately, in order. They support fresh and recognized existing PartCast databases and preserve store records; business-table access pauses between the two executions.
+## Maintainer guides
 
-## Recommended dataset import order
+[Deployment](docs/DEPLOYMENT.md) · [Security](docs/SECURITY.md) · [Store workflows](docs/STORE_WORKFLOWS.md) · [Offline use](docs/OFFLINE_AND_SETUP.md) · [Forecasting data](docs/FORECASTING_DATA.md) · [Verification](docs/VERIFICATION.md) · [Design references](docs/DESIGN_REFERENCES.md) · [API](docs/API.md) · [Architecture](docs/ARCHITECTURE.md) · [Capstone scope](docs/CAPSTONE_SCOPE.md).
 
-1. Clean inventory spreadsheet
-2. Reviewed customer/reference transactions spreadsheet for invoice history
-3. Reviewed actual-quantity training workbook prepared from the raw receipts
-4. Go to **Demand planning** and click **Update demand estimate** once recent history meets the eligibility checks
-
-See [Forecasting data preparation](docs/FORECASTING_DATA.md). The original training-ready workbook contains inferred/proxy quantities; its older metrics do not establish current forecast accuracy.
-
-The file name itself is not used to decide the dataset type. Auto detection uses the table headers.
-
-## Local development
-
-Backend:
-
-```bash
-cd apps/server
-cp .env.example .env
-npm ci
-npm run dev
-```
-
-ML environment from project root:
-
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r ml/requirements.txt
-```
-
-Frontend:
-
-```bash
-cd apps/web
-cp .env.example .env
-npm ci
-npm run dev
-```
-
-Open `http://localhost:5173`.
-
-## AI assistant
-
-Without a Gemini key, the chatbot still works in Smart Local mode and answers live inventory, low-stock, reorder, forecast-status, and data-quality questions.
-
-To enable Gemini-assisted answers, set on the **Render API service only**:
-
-```text
-GEMINI_API_KEY=your_key
-GEMINI_MODEL=gemini-2.5-flash
-```
-
-Never put `GEMINI_API_KEY` in the React/Vite environment.
-
-
-## Offline-first update
-
-See [Offline use and setup](docs/OFFLINE_AND_SETUP.md) for installation, secure configuration, migrations, data import order, testing, and limitations. Apply unapplied migrations through `0011_restock_workflows.sql` before starting this version.
-
-See [Light interface and everyday workflows](docs/USABILITY_REDESIGN.md) for the responsive redesign, guided stock forms, accessible navigation, and usability checks.
-
-See [Design references](docs/DESIGN_REFERENCES.md) for the Google Material, Nielsen, progressive disclosure, Fitts/Hick and WCAG guidance applied to the compact pages, Restock search/filters and field validation.
-
-This version adds an installable PWA, saved inventory and duplicate-safe stock movement sync, readable mobile stock controls, in-app stock notifications and automatic supplier checks. The assistant uses local help, then live store records, then optional AI. Forecast evaluation now excludes same-day demand leakage and compares against a simple baseline; the supplied data does not establish reliable forecast accuracy.
-
-See [Preparing actual forecasting data](docs/FORECASTING_DATA.md) for joining raw inventory quantities to sales invoices, producing cleaned workbooks with row provenance, and comparing historical 30-day forecasts. Current forecasting rejects future dates and stale eligible history rather than assuming unrecorded days had zero sales.
-
-For a Render “Failed to fetch” error, see [Render connection settings](docs/RENDER_CONNECTION.md) for the exact website/API addresses, matching Supabase keys, and rebuild checks.
+Raw uploads, exported datasets, old preparation packs and historical review documents are delivered separately in the private data archive. They are excluded from the current source tree. The labelled example workbook and simulated database fixture remain for the separate forecasting exercise and automated tests. Generated sales must never be relabelled as real transactions. Removing files from the current tree does not erase older Git commits.

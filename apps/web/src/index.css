@@ -55,13 +55,13 @@ html[data-theme="dark"] .input[aria-invalid="true"] { border-color:#fca5a5; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
 
-/* The sign-in screen uses a plain form, without the store's dashboard cards. */
+
 .login-page :is(.input,.btn-primary,.btn-secondary,header button,header select) { border-radius: 5px; }
 .login-page :is(.btn-primary,.btn-secondary) { box-shadow: none; }
 .login-page .input:focus { border-color: #475569; box-shadow: none; }
 .login-page .input:focus-visible { outline: 2px solid #475569; outline-offset: 2px; }
 
-/* Theme tokens apply to every shared control and existing screen. */
+
 html[data-theme="dark"] { color-scheme: dark; background:#111827; }
 html[data-theme="dark"] body {background:#111827;color:#f1f5f9;}
 html[data-theme="dark"] :is(.bg-white,.panel,.input,.btn-secondary,.skip-link) {background-color:#1f2937;color:#e2e8f0;border-color:#475569;}

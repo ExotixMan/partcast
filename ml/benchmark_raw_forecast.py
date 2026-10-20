@@ -43,8 +43,8 @@ def benchmark(csv_path):
     for method, pred in daily_predictions.items():
         methods[method] = errors(y, pred)
 
-    # Predict every full block before seeing its sales. History is updated only
-    # between blocks; neither model fit nor recursive features see future labels.
+
+
     totals = {label: [] for label in [*fitted, 'recent_average_28', 'Croston_SBA', 'TSB', 'zero_diagnostic']}
     targets, block_rows = [], []
     for start in pd.date_range(first, last, freq='30D'):

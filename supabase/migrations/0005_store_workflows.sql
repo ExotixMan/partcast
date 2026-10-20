@@ -1,4 +1,4 @@
--- Customer credit, atomic baskets, product identification and private photos.
+
 begin;
 alter table public.products
  add column category text not null default 'parts' check(category in ('parts','lubricants','fuel','accessories','other')),

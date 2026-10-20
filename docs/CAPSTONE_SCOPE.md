@@ -90,9 +90,9 @@ test WAPE **17.5016%**, MAE **3.0725**, RMSE **5.0789**, over 18 complete
 better on this sample and is shown alongside XGBoost. These previously
 inspected simulated periods are not a fresh independent actual-sales test.
 
-See `downloads/capstone-demo/START_HERE.txt` for the demo-only delivery.
-Deploy API and website together from the latest Codex branch commit. No new
-keys or migrations are required. The live API still needs Python with numpy,
+The labelled example is available from the separate forecasting exercise.
+Deploy API and website together from `production` after applying missing
+migrations through 0012. No new provider key is required for this update. The live API still needs Python with numpy,
 pandas, scikit-learn and xgboost; use the supplied Render build/start scripts.
 Local automated tests do not confirm live Gmail delivery, physical camera
 behavior, supplier catalog fitment, deployment status or real-store accuracy.

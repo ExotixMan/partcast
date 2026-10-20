@@ -109,7 +109,7 @@ def add_days_since_demand(frame):
     values = frame["y"].to_numpy(dtype=float)
     output = np.zeros(len(frame), dtype=float)
     for i, value in enumerate(values):
-        # Predict day i using only information from days strictly before i.
+
         output[i] = (i - 1 - last_event_index) if last_event_index >= 0 else i
         if value > 0:
             last_event_index = i
@@ -161,7 +161,7 @@ def feature_columns():
 
 
 def make_model():
-    # History readiness does not fit a model or need these heavier imports.
+
     from xgboost import XGBRegressor
 
     return XGBRegressor(
@@ -209,7 +209,7 @@ def assess_readiness(observations, as_of_date):
         return {**report, "status": "no_observations", "message": "No actual sales quantities are available. Import verified dated quantities or record sales in Sell or receive."}
     try:
         daily = daily_demand(observations)
-        # Validate all dates, including explicit zero rows, as main() does.
+
         if pd.to_datetime([row["occurred_on"] for row in observations]).max().normalize() > origin:
             raise ValueError("Demand contains future dates. Review the invoice dates before training.")
     except ValueError as error:
@@ -261,8 +261,8 @@ def train_model(feature_df, positive_weight=1.0, refit=True):
     cols = feature_columns()
     train, test = chronological_split(feature_df)
     model = make_model()
-    # Weighting positive days 4x inflated expected quantities. Equal weights fit
-    # the recorded distribution; stockout costs belong in replenishment policy.
+
+
     train_weights = np.where(train["y"].to_numpy(dtype=float) > 0, positive_weight, 1.0)
     model.fit(train[cols], train["y"], sample_weight=train_weights)
     pred = np.maximum(0, model.predict(test[cols]))
@@ -305,8 +305,8 @@ def current_days_since_demand(history):
 
 def row_for_next_date(code, history, next_date, days_from_start, event_history=None):
     values = np.asarray(history, dtype=float)
-    # Expected quantities can enter quantity lags, but do not confirm a sale.
-    # Keep observed events separate throughout multi-step prediction.
+
+
     events = np.asarray(event_history if event_history is not None else values > 0, dtype=float)
     row = {
         "product_code": code,
@@ -346,8 +346,8 @@ def forecast(model, cols, series_by_product, product_codes, horizon_days, as_of_
                        "next_date": last_date + timedelta(days=1)}
     if not states:
         return results
-    # Predict all available parts together on each date. This retains the same
-    # recursive features while avoiding one DataFrame/model call per part/day.
+
+
     first_day = min(state["next_date"] for state in states.values())
     for next_date in pd.date_range(first_day, today + timedelta(days=horizon_days)):
         ids = [pid for pid, state in states.items() if state["next_date"] <= next_date]
@@ -365,11 +365,11 @@ def forecast(model, cols, series_by_product, product_codes, horizon_days, as_of_
                     "forecast_date": next_date.date().isoformat(),
                     "predicted_quantity": round(yhat, 4),
                 })
-            # Missing recent days are estimates, never written as actual sales.
+
             states[pid]["history"].append(yhat)
-            # Future sale events are unknown. Count only observed events; this
-            # is not evidence that future demand is zero (quantity lags above
-            # still carry estimates). A point estimate is not a simulated sale.
+
+
+
             states[pid]["events"].append(0.0)
     return sorted(results, key=lambda row: (row["product_id"], row["forecast_date"]))
 
@@ -401,7 +401,7 @@ def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_facto
         history = {}
         for pid, series in series_by_product.items():
             before = series.loc[series.index <= origin]
-            # Determine eligibility using past data only, never holdout sales.
+
             if (len(before) >= MIN_SPAN_DAYS and int((before > 0).sum()) >= MIN_NONZERO_DAYS
                     and series.index.max() >= period_end):
                 history[pid] = before
@@ -497,8 +497,8 @@ def main():
     metrics["as_of_date"] = origin.date().isoformat()
     metrics["stale_product_count"] = len(stale_products)
     metrics["source_counts"] = {str(key): int(count) for key, count in pd.Series([x.get("source", "unspecified") for x in observations]).value_counts().items()}
-    # Dense daily training necessarily assumes zeros between event rows. Partial
-    # legacy extracts do not establish that assumption, so disclose it clearly.
+
+
     if any(x.get("source") != "actual_sale" for x in observations):
         metrics["coverage_warning"] = "Imported history may omit sales. Days without records are not verified zero demand; validate coverage before using estimates to order stock."
     metrics["gap_handling"] = "Up to 31 unobserved days estimated recursively; stale products excluded."

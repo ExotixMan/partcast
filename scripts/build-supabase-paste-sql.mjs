@@ -12,6 +12,7 @@ const restock=await read('0008_restock_threshold.sql');
 const smallOrders=await read('0009_small_restock_orders.sql');
 const salePrices=await read('0010_sale_price_validation.sql');
 const restockWorkflows=await read('0011_restock_workflows.sql');
+const saleIntegrity=await read('0012_sale_financial_integrity.sql');
 const body = sql => sql.replace(/^begin;\s*$/gm, '').replace(/^commit;\s*$/gm, '').trim();
 const baseline = [...schema.matchAll(/^create table public\.(\w+) \(\n([\s\S]*?)\n\);/gm)];
 const business = [...baseline.map(([_, name]) => name), 'stock_batches', 'customer_debts', 'debt_payments', 'stock_notifications', 'notification_reads'];
@@ -59,22 +60,22 @@ ${body(sql)}
   end if;
 end $partcast_${tag}$;`;
 
-const first = `-- PARTCAST COMPLETE SETUP / UPGRADE: PART 1 OF 2
--- Expected project: ragdjkdcrvexqfadlqbf (check the Supabase dashboard project).
--- Run this entire file in SQL Editor as postgres, wait for success, then run Part 2
--- in a SEPARATE execution. This preserves inventory, sales, balances and Auth users.
--- Store access pauses after this file until Part 2 succeeds. Configure Gmail before deploying.
--- Unrecognized/partial older schemas stop with an error instead of deleting records.
+const first = `
+
+
+
+
+
 begin;
 ${preflight}
 
--- Fresh projects get the complete original schema. Recognized existing projects keep it.
+
 ${stage('baseline', "to_regclass('public.profiles') is null", schema + '\n' + rls)}
 
--- These two constraints can be safely reapplied to existing PartCast records.
+
 ${training.trim()}
 
--- Each original feature migration is transactional. Only install a missing feature.
+
 ${stage('offline', "to_regclass('public.inventory_sync_receipts') is null", offline)}
 ${stage('workflows', "to_regclass('public.stock_batches') is null", workflows)}
 
@@ -106,8 +107,8 @@ end $partcast_features$;
 
 ${roles.trim()}
 
--- Explicit grants support fresh Supabase projects and restore the intended privileges.
--- No grant is made on other applications' tables or on Supabase Auth internals.
+
+
 grant usage on schema public to authenticated, service_role;
 do $partcast_permissions$
 declare tab text; pol record; col record;
@@ -120,7 +121,7 @@ begin
     end loop;
     execute format('grant select on public.%I to authenticated',tab);
     execute format('grant all on public.%I to service_role',tab);
-    -- Part 2 installs the final password/code/role policies. Deny access in between.
+
     for pol in select policyname from pg_policies where schemaname='public' and tablename=tab loop
       execute format('drop policy %I on public.%I',pol.policyname,tab);
     end loop;
@@ -150,12 +151,12 @@ revoke all on sequence public.audit_logs_id_seq from public,anon,authenticated;
 revoke execute on function public.apply_inventory_transaction(uuid,public.inventory_tx_type,numeric,numeric,numeric,text,uuid,text,numeric,text,timestamptz) from public,anon;
 grant execute on function public.apply_inventory_transaction(uuid,public.inventory_tx_type,numeric,numeric,numeric,text,uuid,text,numeric,text,timestamptz) to authenticated,service_role;
 
--- Add missing profiles for existing Auth users without promoting or activating them.
+
 insert into public.profiles(id,full_name)
 select id,coalesce(raw_user_meta_data->>'full_name','') from auth.users
 on conflict(id) do nothing;
 
--- Also block privileged movement functions until the final policies are installed.
+
 create or replace function public.current_app_role()
 returns public.app_role language sql stable security definer set search_path=public
 as $$select null::public.app_role$$;
@@ -167,9 +168,9 @@ const reusableLogin = body(login)
   .replace(/^create table public\./gm, 'create table if not exists public.')
   .replace(/^create function public\./gm, 'create or replace function public.')
   .replace(/^drop policy (\w+) on /gm, 'drop policy if exists $1 on ');
-const second = `-- PARTCAST COMPLETE SETUP / UPGRADE: PART 2 OF 2
--- Run separately AFTER Part 1 succeeds and commits. Safe to repeat after a successful installation.
--- Requires the current API/frontend release and Gmail OAuth configuration for staff login.
+const second = `
+
+
 begin;
 do $partcast_requires_part_one$
 begin
@@ -191,9 +192,11 @@ ${body(salePrices)}
 
 ${body(restockWorkflows)}
 
--- Private buckets stay private when upgrading an existing store.
+${body(saleIntegrity)}
+
+
 update storage.buckets set public=false where id in ('partcast-photos','partcast-models','partcast-backups');
--- Ask Supabase's API to refresh its schema cache after the transaction commits.
+
 notify pgrst,'reload schema';
 commit;
 select 'PartCast schema, required email verification and access roles are ready. Configure Gmail and redeploy both services.' as result;

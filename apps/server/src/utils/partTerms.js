@@ -1,4 +1,4 @@
-// Synonyms describe the same item; related components are kept separate.
+
 export const partTerms=[
  {term:'coolant',names:['coolant','antifreeze','cooling fluid','radiator fluid','radiator coolant','tubig ng radiator','tubig radiator']},
  {term:'radiator',names:['radiator','radiyador']},

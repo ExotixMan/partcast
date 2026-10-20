@@ -131,8 +131,8 @@ class RawDataTests(unittest.TestCase):
                 payload = self.fixture([self.row(note=note, part=part)])
                 payload['customer_allocation_is_sold'] = True
                 self.assertEqual(prepare(payload)[5], [])
-        # An explicitly identified historical part is retained exactly, even
-        # when it has no current snapshot match. Never merge a slash variant.
+
+
         payload = self.fixture([self.row(note=note, part='ABC-123/ALT')])
         payload['customer_allocation_is_sold'] = True
         result = prepare(payload)
@@ -145,7 +145,7 @@ class RawDataTests(unittest.TestCase):
                 payload = self.fixture([self.row(note=note)], [['123', day, 'omit', amount, description]])
                 payload['customer_allocation_is_sold'] = True
                 self.assertEqual(prepare(payload)[5], [])
-        # Invoice explicitly says one sold piece, not the two-unit purchase total.
+
         payload = self.fixture([self.row(note=note)], [['123', '2026-01-19', 'omit', 500, 'ABC-123 1 PC']])
         payload['customer_allocation_is_sold'] = True
         self.assertEqual(prepare(payload)[5][0]['Demand Quantity'], 1)

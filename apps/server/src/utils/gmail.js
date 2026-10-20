@@ -14,8 +14,8 @@ const oauthMessages={
 const unavailable=['GMAIL_OAUTH_UNAVAILABLE','Google email access is temporarily unavailable. Please try again shortly.'];
 const unexpected=['GMAIL_OAUTH_BAD_RESPONSE','Google returned an unexpected Gmail authorization response. Try again or ask the Super Admin to check the connection.'];
 function connectionError([code,message],source,{httpStatus=null,googleError=null}={}){
- // Only controlled values reach logs. Never attach Google's response, request
- // body, error_description, tokens, credentials or a raw network error cause.
+
+
  const settings=source==='saved_partcast_settings'?'saved PartCast IT settings':'API environment variables';
  const hint=code==='GMAIL_OAUTH_INVALID_CLIENT'
   ? `Check the matching Google OAuth client ID and client secret in ${settings}.`
@@ -38,7 +38,7 @@ export async function gmailAccessToken(){
  let body;
  try{body=await response.json();}catch{body=null;}
  if(!body||typeof body!=='object'||Array.isArray(body))body={};
- // Whitelist error names; an upstream server can put arbitrary data in its body.
+
  const googleError=typeof body.error==='string'&&Object.hasOwn(oauthMessages,body.error)?body.error:null;
  if(response.status===429||response.status>=500)throw connectionError(unavailable,source,{httpStatus:response.status});
  if(!response.ok||typeof body.access_token!=='string'||!body.access_token.trim())

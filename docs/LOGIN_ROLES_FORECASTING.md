@@ -1,6 +1,6 @@
 # Required login, access roles, and forecasting upgrade
 
-The saved branch is `codex/partcast-offline-forecasting-20261009`. This release requires password **then** a six-digit email code through **Gmail API**. Owners manage the store; Super Admin manages Google connections and technical settings. Inventory contains part editing and stock corrections; Sell or receive contains all sales and deliveries.
+The saved branch is `production`. This release requires password **then** a six-digit email code through **Gmail API**. Owners manage the store; Super Admin manages Google connections and technical settings. Inventory contains part editing and stock corrections; Sell or receive contains all sales and deliveries.
 
 For full files to copy into SQL Editor, use [Complete SQL and API configuration](../supabase/paste-ready/README.md). Its two main scripts install missing official migrations on a fresh or recognized existing PartCast schema and safely replace final functions/policies. Run both parts in separate executions; Part 1 pauses business-table access until Part 2 finishes. Use either these complete scripts or the individual migration procedure below.
 
@@ -11,7 +11,7 @@ Keep the existing database. These migrations add tables, roles, and policies; th
 1. Install any missing migrations 0001–0005 in order.
 2. Run **0006_access_roles.sql by itself** and let it finish. PostgreSQL must commit the new enum values before another migration uses them.
 3. Run **0007_verified_login_and_access.sql** in a separate SQL Editor execution.
-4. Run **0008_restock_threshold.sql** to align low-stock alerts with Restock suggestions. If 0001–0007 are already installed, only this file is needed for the latest Restock update.
+4. Run **0008_restock_threshold.sql** to align low-stock alerts with Restock suggestions. Then apply missing migrations 0009–0012 in order. A store already through 0011 needs only 0012 for this release.
 5. Promote one trusted IT account to Super Admin. Existing Owners are deliberately not promoted automatically. Replace the email in this exact-account query:
 
 ```sql
@@ -30,7 +30,7 @@ Deploy the API and website together after the migration and Gmail configuration.
 
 First add these variables to **Render → PartCast API → Environment**. They are server variables, never `VITE_` variables:
 
-The same Gmail connection sends required login codes and both manual/automatic supplier requests. See [stock limits and editable supplier tables](RESTOCK_GMAIL.md) for the Restock workflow.
+The same Gmail connection sends required login codes and staff-reviewed supplier requests. See [stock limits and editable supplier tables](RESTOCK_GMAIL.md) for the Restock workflow.
 
 | Variable | Value to supply |
 | --- | --- |

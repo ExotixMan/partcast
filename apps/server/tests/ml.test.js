@@ -49,7 +49,7 @@ test('concurrent identical history checks share one result and later checks use 
 test('forecast results cannot invent parts, repeat dates, shorten the horizon or claim false counts',()=>{
  const input={asOfDate:'2026-10-14',horizonDays:7,observations:[{product_id:'identified-part'},{product_id:'sparse-identified-part'}]};
  const valid={forecast_product_count:1,forecast_horizon_days:7,forecasts:Array.from({length:7},(_,i)=>({product_id:'identified-part',forecast_date:`2026-10-${15+i}`,predicted_quantity:0.25}))};
- assert.doesNotThrow(()=>validateForecastResult(valid,input)); // Sparse input parts may legitimately be excluded.
+ assert.doesNotThrow(()=>validateForecastResult(valid,input));
  const altered=change=>{const value=structuredClone(valid);change(value);return value;};
  for(const value of [
   altered(r=>r.forecasts[0].product_id='unidentified-part'),

@@ -1,5 +1,5 @@
--- Required password-session email verification and role-specific access.
--- Apply after the separately committed 0006 enum migration.
+
+
 begin;
 create table public.email_login_challenges (
  session_id uuid primary key,user_id uuid not null references auth.users(id) on delete cascade,
@@ -51,7 +51,7 @@ create or replace function public.current_app_role() returns public.app_role lan
  select p.role from public.profiles p where p.id=auth.uid() and p.active and auth.jwt()->'amr' @> '[{"method":"password"}]'::jsonb and exists(
  select 1 from public.login_verifications v where v.user_id=p.id and v.session_id=nullif(auth.jwt()->>'session_id','')::uuid and v.expires_at>now())
 $$;
--- Replace SELECT and mutable metadata policies without exposing account/API settings to cashiers.
+
 do $$declare tab text;pol record;allowed text;begin
  foreach tab in array array['profiles','products','suppliers','product_suppliers','inventory_transactions','demand_observations','legacy_sales','purchase_history','import_batches','forecast_runs','demand_forecasts','supplier_email_logs','backup_logs','audit_logs','system_settings','stock_batches','customer_debts','debt_payments','stock_notifications','notification_reads'] loop
  for pol in select policyname from pg_policies where schemaname='public' and tablename=tab loop execute format('drop policy %I on public.%I',pol.policyname,tab);end loop;
@@ -135,8 +135,8 @@ begin
 
   update public.products
   set current_stock = v_new,
-      -- A delivery updates purchase cost; a sale's charged price belongs to its transaction.
-      -- Catalog selling prices are edited through Inventory, not by recording a sale.
+
+
       unit_cost = case when p_tx_type in ('initial','stock_in') and p_unit_cost is not null and p_unit_cost >= 0 then p_unit_cost else unit_cost end
   where id = p_product_id;
 

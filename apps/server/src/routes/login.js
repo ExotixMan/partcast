@@ -17,7 +17,7 @@ router.post('/otp/request',rateLimit({windowMs:15*60*1000,limit:15,keyGenerator:
   res.json({sent:true,expiresIn:600,resendAfter:60});
  }catch(e){next(e);}
 });
-router.post('/otp/verify',rateLimit({windowMs:15*60*1000,limit:40,keyGenerator:req=>req.user.id,standardHeaders:'draft-8',legacyHeaders:false}),async(req,res,next)=>{
+router.post('/otp/verify',rateLimit({windowMs:15*60*1000,limit:40,keyGenerator:req=>req.user.id,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Too many code attempts. Wait before trying again.'}}),async(req,res,next)=>{
  try{
   const {code}=z.object({code:z.string().regex(/^[0-9]{6}$/,'Enter the 6 digit code from your email.')}).parse(req.body);
   const {data,error}=await adminDb.rpc('verify_email_challenge',{p_user:req.user.id,p_session:req.user.session_id,p_hash:hash(req,code)});if(error)throw error;

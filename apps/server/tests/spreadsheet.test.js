@@ -44,7 +44,7 @@ test('declared demo manifests are rejected before reading worksheets, while real
  const actual=new ExcelJS.Workbook();actual.addWorksheet('Synthetic Oil').addRows([['Date','Part Number','Demand Quantity','Tier'],['2026-01-01','OIL-001',2,'actual_quantity']]);
  const parsed=await loadSpreadsheet(Buffer.from(await actual.xlsx.writeBuffer()),'oil.xlsx',{rejectSimulated:true});
  assert.equal(parsed.getWorksheet('Synthetic Oil').getCell('C2').value,2);
- // The same simulation remains readable by the separately labelled demo.
+
  const demo=await loadSpreadsheet(Buffer.from(await book.xlsx.writeBuffer()),'demo.xlsx');
  assert.equal(demo.getWorksheet('CAPSTONE_SYNTHETIC_ALL').getCell('A1').value,'Date');
 });

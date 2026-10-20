@@ -1,9 +1,9 @@
--- PARTCAST COMPLETE SETUP / UPGRADE: PART 1 OF 2
--- Expected project: ragdjkdcrvexqfadlqbf (check the Supabase dashboard project).
--- Run this entire file in SQL Editor as postgres, wait for success, then run Part 2
--- in a SEPARATE execution. This preserves inventory, sales, balances and Auth users.
--- Store access pauses after this file until Part 2 succeeds. Configure Gmail before deploying.
--- Unrecognized/partial older schemas stop with an error instead of deleting records.
+
+
+
+
+
+
 begin;
 do $partcast_preflight$
 declare tab text; col record;
@@ -179,7 +179,7 @@ begin
   end if;
 end $partcast_preflight$;
 
--- Fresh projects get the complete original schema. Recognized existing projects keep it.
+
 do $partcast_baseline$
 begin
   if to_regclass('public.profiles') is null then
@@ -753,9 +753,6 @@ grant execute on function public.apply_inventory_transaction(uuid, public.invent
   end if;
 end $partcast_baseline$;
 
--- These two constraints can be safely reapplied to existing PartCast records.
--- PartCast upgrade: allow the cleaned XGBoost training-ready spreadsheet to be imported
--- Run this after 0001_schema.sql and 0002_rls.sql on an existing deployment.
 
 alter table public.demand_observations
   drop constraint if exists demand_observations_source_check;
@@ -771,13 +768,11 @@ alter table public.import_batches
   add constraint import_batches_import_type_check
   check (import_type in ('inventory', 'legacy_sales', 'demand_training'));
 
--- Each original feature migration is transactional. Only install a missing feature.
+
 do $partcast_offline$
 begin
   if to_regclass('public.inventory_sync_receipts') is null then
     execute $partcast_offline_sql$
--- Offline sync, active-account access and stock alerts. Apply after 0003.
-
 create or replace function public.apply_inventory_transaction(
   p_product_id uuid,
   p_tx_type public.inventory_tx_type,
@@ -849,7 +844,7 @@ begin
   return v_tx_id;
 end $$;
 
--- Every retry uses the same UUID; the movement and receipt commit together.
+
 create table public.inventory_sync_receipts (
   user_id uuid not null references auth.users(id),
   operation_id uuid not null,
@@ -894,7 +889,7 @@ end $$;
 revoke all on function public.sync_inventory_movement(uuid,jsonb) from public, anon;
 grant execute on function public.sync_inventory_movement(uuid,jsonb) to authenticated;
 
--- Inactive or merely registered users must not read business records directly.
+
 do $$
 declare v_table text; v_policy text;
 begin
@@ -904,7 +899,7 @@ begin
     execute format('create policy active_staff_read on public.%I for select to authenticated using (public.current_app_role() is not null)',v_table);
   end loop;
 end $$;
--- Stock can only change through the atomic function, never direct table writes.
+
 revoke insert, update on public.products from authenticated;
 grant insert (part_number,sub_number,description,brand,unit,location,minimum_stock,safety_stock,unit_cost,selling_price,active) on public.products to authenticated;
 grant update (part_number,sub_number,description,brand,unit,location,minimum_stock,safety_stock,unit_cost,selling_price,active) on public.products to authenticated;
@@ -959,7 +954,7 @@ case when current_stock=0 then 'Out of stock: ' else 'Low stock: ' end || descri
 coalesce(part_number,'No part number') || ' has ' || current_stock || ' ' || coalesce(unit,'units') || ' available. Minimum: ' || minimum_stock || '.'
 from public.products where active and current_stock<=minimum_stock;
 
--- A lease prevents overlapping server instances and scheduled jobs sending together.
+
 create table public.job_leases (name text primary key, token uuid not null, expires_at timestamptz not null);
 alter table public.job_leases enable row level security;
 revoke all on public.job_leases from public, anon, authenticated;
@@ -985,8 +980,6 @@ do $partcast_workflows$
 begin
   if to_regclass('public.stock_batches') is null then
     execute $partcast_workflows_sql$
--- Customer credit, atomic baskets, product identification and private photos.
-
 alter table public.products
  add column category text not null default 'parts' check(category in ('parts','lubricants','fuel','accessories','other')),
  add column barcode text check(barcode is null or barcode ~ '^[A-Za-z0-9 ._/-]{1,80}$'),
@@ -1235,13 +1228,11 @@ begin
   end if;
 end $partcast_features$;
 
--- Apply this file in a separate SQL Editor run before 0007.
--- PostgreSQL must commit new enum values before another migration uses them.
 alter type public.app_role add value if not exists 'super_admin';
 alter type public.app_role add value if not exists 'cashier';
 
--- Explicit grants support fresh Supabase projects and restore the intended privileges.
--- No grant is made on other applications' tables or on Supabase Auth internals.
+
+
 grant usage on schema public to authenticated, service_role;
 do $partcast_permissions$
 declare tab text; pol record; col record;
@@ -1254,7 +1245,7 @@ begin
     end loop;
     execute format('grant select on public.%I to authenticated',tab);
     execute format('grant all on public.%I to service_role',tab);
-    -- Part 2 installs the final password/code/role policies. Deny access in between.
+
     for pol in select policyname from pg_policies where schemaname='public' and tablename=tab loop
       execute format('drop policy %I on public.%I',pol.policyname,tab);
     end loop;
@@ -1284,12 +1275,12 @@ revoke all on sequence public.audit_logs_id_seq from public,anon,authenticated;
 revoke execute on function public.apply_inventory_transaction(uuid,public.inventory_tx_type,numeric,numeric,numeric,text,uuid,text,numeric,text,timestamptz) from public,anon;
 grant execute on function public.apply_inventory_transaction(uuid,public.inventory_tx_type,numeric,numeric,numeric,text,uuid,text,numeric,text,timestamptz) to authenticated,service_role;
 
--- Add missing profiles for existing Auth users without promoting or activating them.
+
 insert into public.profiles(id,full_name)
 select id,coalesce(raw_user_meta_data->>'full_name','') from auth.users
 on conflict(id) do nothing;
 
--- Also block privileged movement functions until the final policies are installed.
+
 create or replace function public.current_app_role()
 returns public.app_role language sql stable security definer set search_path=public
 as $$select null::public.app_role$$;

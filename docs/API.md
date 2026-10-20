@@ -128,5 +128,5 @@ project prepared with the generated-data seed. The API also requires the
 `simulated_demo`, including on the normal readiness, training, sales-summary
 and cron forecast paths. Forecast metrics retain `data_mode=simulated_demo`
 and `production_accuracy_established=false`. Normal spreadsheet imports still
-reject generated demand. See [DEMO_DATABASE.md](DEMO_DATABASE.md) for the SQL,
+reject generated demand. See [Forecasting data](FORECASTING_DATA.md) for the source rules,
 project configuration and walkthrough.

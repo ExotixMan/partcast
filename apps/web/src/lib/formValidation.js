@@ -1,4 +1,4 @@
-// Keep native constraints and add checks browsers omit for trimmed text.
+
 export function fieldProblem(field) {
  if(!field.willValidate)return null;
  const v=field.validity,value=field.value??'',text=['text','search','email','url','tel'].includes(field.type)||field.tagName==='TEXTAREA';

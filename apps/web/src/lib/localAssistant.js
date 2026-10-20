@@ -17,7 +17,7 @@ export async function answerLocally(message,userId,online,language='en',role='in
  if(/how (do|can|to).*?(find|search).*part/.test(q))return {answer:'Open Inventory (Parts on your phone).\n\n1. Type the part name, part number or brand in the search box.\n2. Check its stock, price and shelf location.',mode:'local'};
  if(/offline|no internet|sync/.test(q))return {answer:'After signing in online, your inventory is saved on this device for up to 12 hours. You can view saved parts and record sales or deliveries offline. Keep PartCast open after reconnecting so waiting changes send automatically. If stock has changed, review the waiting transaction. Do not sign out before your changes have been sent.',mode:'local'};
  if(/install|download.*app/.test(q))return {answer:'Use Install app when offered, or your browser menu → Install app / Add to Home Screen. On iPhone use Safari → Share → Add to Home Screen. Installation needs a secure HTTPS site and one online visit.',mode:'local'};
- if(online)return null; // Live database facts take precedence whenever connected.
+ if(online)return null;
  const snapshot=await readCache(userId,'/api/offline-snapshot');
  if(!snapshot)return {answer:fil?'Wala pang na-save na stock dito. Kumonekta sa internet at mag-sign in muna.':'No inventory is saved on this device yet. Connect and sign in once to prepare offline use.',mode:'local'};
  const rows=projectedProducts(snapshot.value.products,await queueItems(userId));

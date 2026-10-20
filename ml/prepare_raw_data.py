@@ -15,7 +15,7 @@ def text(value):
 
 
 def part_key(value):
-    # Preserve O/0, punctuation, brand suffixes and slash variants.
+
     return re.sub(r'\s+', ' ', text(value)).upper()
 
 
@@ -48,8 +48,8 @@ def explicit_customer_allocation(notes, total):
     if len(stock_markers) != 1 or len(refs) != 1 or len(stocks) != 1:
         return None
     stock = stocks[0]
-    # A customer label starts with a letter. Numeric business names and extra
-    # quantities stay in review rather than allowing a digit to become a name.
+
+
     customer_prefix = r'([1-9]\d*)\s*([A-Z][A-Z .&\'()/-]*?)\s*SI\s*#\s*\d+'
     if stock.start() == 0:
         customer = re.match(r'\s*[/,;]?\s*' + customer_prefix, note[stock.end():])
@@ -114,7 +114,7 @@ def write_csv(path, records, fields):
     with path.open('w', newline='', encoding='utf-8-sig') as stream:
         writer = csv.DictWriter(stream, fieldnames=fields, extrasaction='ignore')
         writer.writeheader()
-        # XLSX stores text safely; CSV readers may otherwise interpret text as formulas.
+
         writer.writerows({key: ("'" + value if isinstance(value, str) and value.lstrip().startswith(('=', '+', '-', '@')) else value)
                           for key, value in row.items()} for row in records)
 
@@ -162,7 +162,7 @@ def prepare(payload):
             for match in matches:
                 issue('sales', match['Source Sheet'], match['Source Row'], 'duplicate_invoice_reference', ref)
 
-    # Propose, but do not apply, plausible day/month swaps suggested by adjacent invoices.
+
     for index, invoice in enumerate(invoices):
         if not invoice['Date'] or invoice['Date Status'] != 'valid':
             continue
@@ -180,8 +180,8 @@ def prepare(payload):
             issue('sales', invoice['Source Sheet'], invoice['Source Row'], 'possible_day_month_swap', f"Original {original}; candidate {alternative}. Needs confirmation; not changed.")
 
     catalog = defaultdict(list)
-    # A blank primary ID can be resolved only by an exact existing SKU in Sub#
-    # independently corroborated by its linked invoice. Never forward-fill IDs.
+
+
     known_snapshot_parts = set()
     for sheet in payload['inventory']['sheets']:
         if sheet['name'].lower() != 'inventory':
@@ -200,7 +200,7 @@ def prepare(payload):
             row = row + [None] * max(0, 12 - len(row))
             qty = numeric(row[4])
             if qty is None:
-                # Cached formula-only blanks and supplier title rows are not transactions.
+
                 if any(text(row[col]) for col in (1, 2, 3, 4, 5, 8)) and text(row[4]):
                     issue('inventory', sheet['name'], row_number, 'invalid_quantity', 'Quantity must be numeric; no default quantity supplied.')
                 elif is_snapshot and text(row[2]) and (text(row[0]) or text(row[1])):
@@ -225,8 +225,8 @@ def prepare(payload):
             notes = ' '.join(text(v) for v in row[10:] if text(v))
             sale_refs = re.findall(r'\bSI\s*#\s*0*(\d+)', notes, re.I)
             refs = [f'SI#{int(ref)}' for ref in sale_refs]
-            # Notes also contain "2STOCK" and "STOCKS"; ordinary word
-            # boundaries miss those and can turn a purchase total into a sale.
+
+
             stock_note = bool(re.search(r'(?<![A-Z])STOCKS?(?![A-Z])', notes, re.I))
             record.update({'Unit cost': numeric(row[5]), 'Amount': numeric(row[6]), 'Purchase Reference': text(row[7]),
                            'Purchase Date': occurred, 'Original Purchase Date': text(row[8]), 'Purchase Date Status': status or 'valid',
@@ -293,8 +293,8 @@ def prepare(payload):
             if not reason:
                 demand.append(candidate)
 
-    # Two identical invoice/part/brand/quantity rows may be copy-paste duplication or real split lines.
-    # Keep both in the review file, use neither until somebody resolves the ambiguity.
+
+
     duplicate_groups = defaultdict(list)
     for item in demand:
         duplicate_groups[(item['Sales Reference'], item['Part Number'], item['Brand'], item['Demand Quantity'])].append(item)
@@ -308,8 +308,8 @@ def prepare(payload):
         if len(entries) > 1:
             issue('inventory', 'Inventory', entries[0]['Source Row'], 'multiple_stock_rows_same_part', f'{part}: {len(entries)} rows. Brands, units and locations retained; stock not silently summed.')
 
-    # Explicit piece quantities are independent evidence, never inferred from total invoice value.
-    # Accept only a single exact inventory part token and a single declared piece quantity.
+
+
     token_catalog = {part: re.compile(r'(?<![A-Z0-9])' + re.escape(part) + r'(?![A-Z0-9])') for part in catalog if len(part) >= 4 and re.search(r'\d', part)}
     linked_keys = {(item['Sales Reference'], item['Part Number']) for item in candidates if item['Part Number']}
     for invoice in invoices:

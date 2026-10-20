@@ -55,7 +55,7 @@ def development_comparison(series, horizon_days=30, factories=None, period_forec
         if comparable and all(w == windows[0] for w in windows):
             selected = min(comparable, key=lambda name: comparable[name]['model']['mae'])
             reason = 'Lowest development-period MAE; final-period labels did not affect selection.'
-    # Never run every candidate on the final period to pick a favorable score.
+
     final = evaluate_horizon(series, horizon_days, max_origins=1,
                              model_factory=factories.get(selected),
                              period_forecaster=period_forecasters.get(selected)) if selected else None

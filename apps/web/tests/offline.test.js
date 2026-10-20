@@ -72,9 +72,9 @@ test('basket amounts use decimal cent arithmetic instead of binary product round
 test('basket prices and edited credit payments never produce a negative or invented balance',async()=>{
  const {basketAmounts}=await import('../src/lib/store.js');
  const lines=[{quantity:'1',unit_price:'19.90'},{quantity:'0.1',unit_price:'0.15'}];
- assert.deepEqual(basketAmounts(lines,{isCredit:true,paidAmount:'19.91'}),{total:19.92,balance:0.01,validPayment:true,overpaid:false});
+ assert.deepEqual(basketAmounts(lines,{isCredit:true,paidAmount:'19.91'}),{total:19.92,balance:0.01,validPayment:true,overpaid:false,zeroSaleTotal:false});
  const edited=[{quantity:'1',unit_price:'10'}];
- assert.deepEqual(basketAmounts(edited,{isCredit:true,paidAmount:'19.91'}),{total:10,balance:null,validPayment:true,overpaid:true});
+ assert.deepEqual(basketAmounts(edited,{isCredit:true,paidAmount:'19.91'}),{total:10,balance:null,validPayment:true,overpaid:true,zeroSaleTotal:false});
  assert.equal(basketAmounts(edited,{isCredit:true,paidAmount:'10'}).balance,0);
  for(const value of ['',0,null,-1,'0.001']){
   const missing=[{quantity:1,unit_price:value}];
@@ -82,6 +82,16 @@ test('basket prices and edited credit payments never produce a negative or inven
   assert.equal(basketAmounts(missing,{isCredit:true,paidAmount:0}).balance,null);
  }
  assert.equal(basketAmounts([{quantity:1,unit_price:0}],{txType:'stock_in'}).total,0);
+ assert.equal(basketAmounts([{quantity:'0.01',unit_price:'0.01'}]).zeroSaleTotal,true);
+ assert.equal(basketAmounts([{quantity:'0.01',unit_price:'0.01'}],{txType:'stock_in'}).zeroSaleTotal,false);
+ assert.equal(basketAmounts([{quantity:'0.01',unit_price:'1'}]).zeroSaleTotal,false);
+ const mixed=[{quantity:'0.01',unit_price:'0.01'},{quantity:1,unit_price:100}];
+ assert.equal(basketAmounts(mixed).total,100);
+ assert.equal(basketAmounts(mixed).zeroSaleTotal,true);
+ assert.equal(basketAmounts(mixed,{txType:'stock_in'}).zeroSaleTotal,false);
+ const paidMixed=[{quantity:'0.01',unit_price:1},{quantity:1,unit_price:100}];
+ assert.equal(basketAmounts(paidMixed,{isCredit:true,paidAmount:'100.01'}).balance,0);
+ assert.equal(basketAmounts(paidMixed).zeroSaleTotal,false);
  assert.equal(basketAmounts(edited,{isCredit:true,paidAmount:''}).balance,null);
  assert.equal(basketAmounts([{quantity:999999999999,unit_price:999999999999}]).total,null);
 });

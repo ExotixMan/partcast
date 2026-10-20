@@ -1,4 +1,4 @@
-// Strong dataset declarations, rather than product terms such as "synthetic oil".
+
 const demoSheets = new Set(['CAPSTONE_SYNTHETIC_ALL', 'SIMULATED_DAILY', 'SIMULATED_DEMAND', 'DAILY_MODELED_HISTORY']);
 export const isSimulationWorksheetName = name => demoSheets.has(String(name ?? '').trim().toUpperCase());
 export function simulatedDemandError() {

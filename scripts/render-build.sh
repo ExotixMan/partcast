@@ -5,7 +5,7 @@ partcast_venv="${PARTCAST_VENV_PATH:-$partcast_root/.venv}"
 cd "$partcast_root"
 node -e "if(Number(process.versions.node.split('.')[0])<20)throw Error('PartCast API needs Node 20 or newer')"
 
-# Native Render Node services do not execute the repository's Dockerfile.
+
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
 python3 -m venv "$partcast_venv"
 "$partcast_venv/bin/python" -m pip install --disable-pip-version-check --cache-dir "${PIP_CACHE_DIR:-${TMPDIR:-/tmp}/partcast-pip-cache}" -r ml/requirements.txt

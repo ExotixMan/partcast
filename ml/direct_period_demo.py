@@ -48,8 +48,8 @@ def predict_period(model, codes, series_by_product, horizon, origin):
     results = []
     for pid, quantity in zip(codes, quantities):
         total = round(max(0.0, float(quantity)), 4)
-        # These daily rows are an even allocation of a predicted period total,
-        # not separately trained daily forecasts. Preserve the rounded total.
+
+
         amount = np.floor(total / horizon * 10000) / 10000
         for step in range(1, horizon + 1):
             results.append({"product_id": pid, "forecast_date": (origin + timedelta(days=step)).date().isoformat(),

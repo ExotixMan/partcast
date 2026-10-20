@@ -7,7 +7,7 @@ Open the API service at **https://partcast.onrender.com** in Render and use:
 | Setting | Value |
 | --- | --- |
 | Runtime | Node |
-| Branch | `codex/partcast-offline-forecasting-20261009` |
+| Branch | `production` |
 | Root Directory | Leave blank, using the repository root |
 | Build Command | `bash scripts/render-build.sh` |
 | Start Command | `bash scripts/render-start.sh` |

@@ -20,8 +20,8 @@ export async function prepareSupplierRequest(supplierId,draft){
  return {supplier,items,subject:draft?.subject,message:draft?.message,extra_columns:draft?.extra_columns};
 }
 
-// Durable duplicate protection. A network error AFTER submitting to Gmail is
-// uncertain: checking the same request never sends a second message.
+
+
 export function createSupplierRequestSender({db=adminDb,send=sendSupplierEmail,prepare=prepareSupplierRequest}={}){
  const find=async id=>{
   const {data,error}=await db.from('supplier_email_logs').select('*').eq('client_request_id',id).maybeSingle();
@@ -58,7 +58,7 @@ export function createSupplierRequestSender({db=adminDb,send=sendSupplierEmail,p
      const row=await find(requestId);if(row){authorize(row,actorId,supplierId);if(row.request_hash===hash&&row.status==='sent')return {message:'Supplier email sent.',items:row.item_count,replayed:true};}
      throw pending();
     }
-    throw error; // A missing migration or failed claim stops BEFORE Gmail.
+    throw error;
    }
   }
   let provider;

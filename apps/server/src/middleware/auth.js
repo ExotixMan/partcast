@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { adminDb } from '../supabase.js';
 
-// Claims are decoded only after Supabase validates the bearer token.
+
 export function sessionClaims(token){try{return JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString());}catch{return {};}}
 export async function authenticateBase(req,res,next){
  try{

@@ -1,6 +1,6 @@
 # Restock alerts, Gmail and editable supplier tables
 
-Deploy the API and website from `codex/partcast-offline-forecasting-20261009`. Existing stores through 0010 need [0011_restock_workflows.sql](../supabase/migrations/0011_restock_workflows.sql) in Supabase SQL Editor. Apply any older missing migrations first, in order. Fresh stores can use the updated [complete SQL files](../supabase/paste-ready/README.md), whose Part 2 includes these upgrades. A database rebuild or data reimport is unnecessary.
+Deploy the API and website from `production`. Existing stores through 0010 need [0011_restock_workflows.sql](../supabase/migrations/0011_restock_workflows.sql) in Supabase SQL Editor. Also apply [0012_sale_financial_integrity.sql](../supabase/migrations/0012_sale_financial_integrity.sql) for sale integrity; stores through 0011 need only 0012. Apply any older missing migrations first, in order. Fresh stores can use the updated [complete SQL files](../supabase/paste-ready/README.md), whose Part 2 includes these upgrades. A database rebuild or data reimport is unnecessary.
 
 ## Restock workflow repair — 18 October 2026
 

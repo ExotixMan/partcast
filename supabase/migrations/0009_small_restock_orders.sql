@@ -1,5 +1,5 @@
--- The owner buys 1–2 units per part per purchase, rather than the full forecast.
--- Apply after 0008. Changes a view only; no sales, forecasts or stock are edited.
+
+
 begin;
 create or replace view public.reorder_recommendations with (security_invoker = true) as
 with latest as (

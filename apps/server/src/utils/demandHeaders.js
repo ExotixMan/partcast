@@ -1,4 +1,4 @@
-// Keep import recognition and the non-actual-data check on the same vocabulary.
+
 const quantityHeaders = new Set([
   'demand quantity', 'demand qty', 'quantity sold', 'sales quantity',
   'units sold', 'qty sold', 'demand',

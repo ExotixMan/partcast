@@ -3,6 +3,7 @@ import {normalizeQuestion,isTagalog,explainParts,productTerms} from '../utils/pa
 import { adminDb } from '../supabase.js';
 import {neededRestock,normalizeRestock} from '../utils/restock.js';
 import {partReply,replyList,partUnit} from '../utils/assistantReplies.js';
+import {literalSearchFilter} from '../utils/search.js';
 
 function safeNumber(value) {
   const number = Number(value);
@@ -54,7 +55,7 @@ function extractSearchTerm(message) {
 
 function sanitizeSearchTerm(term) {
   return String(term || '')
-    .replace(/[^A-Za-z0-9_\-./ ()]/g, '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .trim()
     .slice(0, 80);
 }
@@ -85,7 +86,7 @@ async function loadContext(message) {
   const searchTerm = productTerms(message)[0]||extractSearchTerm(normalizeQuestion(message));
   const safeTerm = sanitizeSearchTerm(searchTerm);
   const terms=(productTerms(message).length?productTerms(message):[safeTerm]).map(sanitizeSearchTerm).filter(Boolean);
-  const searchFilter=terms.flatMap(term=>[`part_number.ilike.%${term}%,description.ilike.%${term}%,brand.ilike.%${term}%,barcode.ilike.%${term}%,alias_text.ilike.%${term}%`]).join(',');
+  const searchFilter=literalSearchFilter(['part_number','description','brand','barcode','alias_text'],terms);
 
   const defaultProducts = adminDb
     .from('inventory_status')
@@ -116,7 +117,7 @@ async function loadContext(message) {
           'product_id,part_number,description,current_stock,minimum_stock,safety_stock,predicted_quantity,recommended_quantity,unit,supplier_name,estimated_unit_cost,estimated_order_cost,status'
         )
         .or(
-          `part_number.ilike.%${safeTerm}%,description.ilike.%${safeTerm}%`
+          literalSearchFilter(['part_number','description'],[safeTerm])
         )
         .limit(8)
     : Promise.resolve({ data: [], error: null });
@@ -438,7 +439,7 @@ async function cashierAnswer(message,fil){
  const terms=productTerms(message),term=terms[0]||extractSearchTerm(q);
  let query=adminDb.from('inventory_status').select('part_number,description,current_stock,unit,location,selling_price,stock_status').eq('active',true);
  if(/out of stock/.test(q))query=query.eq('stock_status','out');else if(/low stock/.test(q))query=query.eq('stock_status','low');
- else if(term)query=query.or((terms.length?terms:[term]).map(sanitizeSearchTerm).filter(Boolean).flatMap(t=>[`description.ilike.%${t}%,part_number.ilike.%${t}%,barcode.ilike.%${t}%,alias_text.ilike.%${t}%`]).join(','));
+ else if(term)query=query.or(literalSearchFilter(['description','part_number','barcode','alias_text'],(terms.length?terms:[term]).map(sanitizeSearchTerm).filter(Boolean)));
  const {data,error}=await query.order('description').limit(8);if(error)throw error;
  return {answer:data.length?replyList(fil?'Ito ang nakita sa mga record:':'Here are the saved parts:',data.map(p=>partReply(p,[`Stock: ${units(p.current_stock)} ${partUnit(p,fil)}`,/price/.test(q)?`${fil?'Presyo':'Price'}: **${money(p.selling_price)}**`:null,/where/.test(q)?`${fil?'Nakalagay sa':'Location'}: ${p.location||(fil?'Wala pang nakalagay':'Not saved yet')}`:null]))):(fil?'Walang mahanap na piyesa.':'No matching parts.'),mode:'database',model:null};
 }

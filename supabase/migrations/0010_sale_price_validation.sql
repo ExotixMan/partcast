@@ -1,5 +1,5 @@
--- Run on the existing PartCast project. Preserves all stock, sales and balances.
--- Catalog prices may stay unset while the owner checks them; new sales need a price.
+
+
 begin;
 create or replace function public.check_sale_price() returns trigger
  language plpgsql set search_path=public as $$

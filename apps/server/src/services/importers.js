@@ -324,7 +324,7 @@ function headerMap(worksheet) {
         }
       );
 
-      // Narrative cells can mention several field names without forming a table.
+
       if (!map.quantity || !(map.partNumber || map.description)) continue;
       return {
         row: rowNumber,
@@ -1455,11 +1455,11 @@ export async function importInventoryWorkbook(
     new Map();
 
   try {
-    /*
-      IMPORTANT:
-      The current Inventory snapshot
-      is always processed first.
-    */
+
+
+
+
+
     const orderedCandidates = [
       snapshot,
       ...candidates.filter(
@@ -1622,10 +1622,10 @@ export async function importInventoryWorkbook(
         let product =
           null;
 
-        /*
-          ONLY CURRENT INVENTORY
-          CAN CREATE PRODUCTS
-        */
+
+
+
+
         if (isSnapshot) {
           product =
             await findOrCreateProduct(
@@ -1635,12 +1635,12 @@ export async function importInventoryWorkbook(
             );
         }
 
-        /*
-          PURCHASE HISTORY
-          CAN ONLY MATCH PRODUCTS
-          THAT ALREADY EXIST
-          IN CURRENT INVENTORY
-        */
+
+
+
+
+
+
         else {
           product =
             findExistingProduct(
@@ -1740,11 +1740,11 @@ export async function importInventoryWorkbook(
           continue;
         }
 
-        /*
-          PURCHASE HISTORY
-          MUST HAVE POSITIVE
-          PURCHASE QUANTITY
-        */
+
+
+
+
+
         if (
           quantity <= 0
         ) {
@@ -1973,7 +1973,7 @@ export async function importLegacySalesWorkbook(buffer, fileName, userId, usePro
     ]);
     const partLookup = new Map(products.filter(product => product.part_number && String(product.part_number).trim().length >= 4
       && /\d/.test(String(product.part_number))).map(product=>[String(product.part_number).trim().toUpperCase(),product]));
-    // Compile once for the entire upload, rather than testing every SKU for every invoice.
+
     const codes=[...partLookup.keys()].sort((a,b)=>b.length-a.length)
       .map(code=>code.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
     const partPattern=codes.length ? new RegExp('(?:^|[^A-Z0-9_-])('+codes.join('|')+')(?=$|[^A-Z0-9_-])','gi') : null;
@@ -2015,7 +2015,7 @@ export async function importLegacySalesWorkbook(buffer, fileName, userId, usePro
         read++;
         if (!reference || ['CANCELLED','CANCELED'].includes((customer || '').toUpperCase())) {skipped++;continue;}
         const upperItems = (items || '').toUpperCase();
-        // A multi-part invoice cannot be assigned wholly to its first matching code.
+
         const matched = matchProduct(upperItems);
         const record = {reference_no:reference,sale_date:date,customer_name:customer,
           amount:numberOr(getValue(row,header.map,'amount'),0),raw_items:items,
@@ -2032,7 +2032,7 @@ export async function importLegacySalesWorkbook(buffer, fileName, userId, usePro
       }
     }
     if (!foundTable) throw Object.assign(new Error('No sales table was found. Expected Reference/Ref #, Date, Customer, and Items columns.'),{status:422});
-    // Supabase calls are batched: thousands of per-invoice requests timed out on Render.
+
     for (let index=0;index<pending.length;index+=500) {
       const chunk=pending.slice(index,index+500);
       const saved=await adminDb.from('legacy_sales').insert(chunk);

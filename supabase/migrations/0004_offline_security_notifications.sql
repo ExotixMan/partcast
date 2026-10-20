@@ -1,4 +1,4 @@
--- Offline sync, active-account access and stock alerts. Apply after 0003.
+
 begin;
 
 create or replace function public.apply_inventory_transaction(
@@ -72,7 +72,7 @@ begin
   return v_tx_id;
 end $$;
 
--- Every retry uses the same UUID; the movement and receipt commit together.
+
 create table public.inventory_sync_receipts (
   user_id uuid not null references auth.users(id),
   operation_id uuid not null,
@@ -117,7 +117,7 @@ end $$;
 revoke all on function public.sync_inventory_movement(uuid,jsonb) from public, anon;
 grant execute on function public.sync_inventory_movement(uuid,jsonb) to authenticated;
 
--- Inactive or merely registered users must not read business records directly.
+
 do $$
 declare v_table text; v_policy text;
 begin
@@ -127,7 +127,7 @@ begin
     execute format('create policy active_staff_read on public.%I for select to authenticated using (public.current_app_role() is not null)',v_table);
   end loop;
 end $$;
--- Stock can only change through the atomic function, never direct table writes.
+
 revoke insert, update on public.products from authenticated;
 grant insert (part_number,sub_number,description,brand,unit,location,minimum_stock,safety_stock,unit_cost,selling_price,active) on public.products to authenticated;
 grant update (part_number,sub_number,description,brand,unit,location,minimum_stock,safety_stock,unit_cost,selling_price,active) on public.products to authenticated;
@@ -182,7 +182,7 @@ case when current_stock=0 then 'Out of stock: ' else 'Low stock: ' end || descri
 coalesce(part_number,'No part number') || ' has ' || current_stock || ' ' || coalesce(unit,'units') || ' available. Minimum: ' || minimum_stock || '.'
 from public.products where active and current_stock<=minimum_stock;
 
--- A lease prevents overlapping server instances and scheduled jobs sending together.
+
 create table public.job_leases (name text primary key, token uuid not null, expires_at timestamptz not null);
 alter table public.job_leases enable row level security;
 revoke all on public.job_leases from public, anon, authenticated;

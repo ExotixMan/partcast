@@ -3,7 +3,7 @@ const localHost = hostname => ['localhost', '127.0.0.1', '[::1]', '::1'].include
 export function apiRequestTimeout(path) {
   const endpoint = path.split('?')[0];
   if (['/api/forecast/train', '/api/forecast/demo/jobs'].includes(endpoint)) return 180000;
-  // A cold Python discovery can take 45s, followed by a 30s data check.
+
   if (['/api/forecast/readiness', '/api/forecast/status'].includes(endpoint)) return 90000;
   if (endpoint.startsWith('/api/imports/')) return 120000;
   if (endpoint.startsWith('/api/admin/supplier-email/')) return 60000;

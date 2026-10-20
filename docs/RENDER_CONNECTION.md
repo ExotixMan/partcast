@@ -18,7 +18,7 @@ Open each service in the Render dashboard, choose **Environment**, and check the
 
 In Supabase, open the project matching the URL above, then **Project Settings → API Keys**. Existing JWT keys are under **Legacy anon, service_role API keys**. Use the public/anon key on both services and the service-role key only on the API service. Do not post keys in chat or commit them to GitHub.
 
-Save the settings. Rebuild/redeploy the website after changing any `VITE_` setting because those settings are baked into the JavaScript build. Restart/redeploy the API after updating its environment. The corrected source is on `codex/partcast-offline-forecasting-20261009`; select that branch for both Render services or merge the reviewed changes into the branch Render already deploys. A GitHub push to another branch does not update a service configured to deploy `main`.
+Save the settings. Rebuild/redeploy the website after changing any `VITE_` setting because those settings are baked into the JavaScript build. Restart/redeploy the API after updating its environment. The corrected source is on `production`; select that branch for both Render services or merge the reviewed changes into the branch Render already deploys. A GitHub push to another branch does not update a service configured to deploy `main`.
 
 Check:
 

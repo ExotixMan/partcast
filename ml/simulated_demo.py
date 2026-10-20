@@ -23,7 +23,7 @@ def select_parts(catalog, count, seed):
         pid = record.get("part_number")
         if not isinstance(pid, str) or not pid.strip() or not record.get("description"):
             continue
-        # Exact source identifiers, descriptions, brands and units are retained.
+
         item = {key: record.get(key) or "" for key in ("part_number", "description", "brand", "unit")}
         groups.setdefault(pid, []).append(item)
     candidates = [rows[0] for rows in groups.values() if all(row == rows[0] for row in rows)]
@@ -70,8 +70,8 @@ def generate_series(parts, days, as_of, seed):
 
 
 def evaluate_demo(series, parts, horizon=30, period_forecaster=None):
-    # Full synthetic calendar is known, including zero days. No production
-    # history reconstruction is used to drop trailing zero-demand days.
+
+
     result = evaluate_horizon(series, horizon, max_origins=1, period_forecaster=period_forecaster)
     result["dataset_type"] = DATASET_TYPE
     result["evaluation_scope"] = "Final held-out simulated planning period; fixed XGBoost parameters."
@@ -92,7 +92,7 @@ def write_csv(path, rows, fields):
     with path.open("w", newline="", encoding="utf-8-sig") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
-        # Catalogue text is untrusted spreadsheet input. Protect CSV users.
+
         writer.writerows({k: ("'" + v if isinstance(v, str) and v.lstrip().startswith(("=", "+", "-", "@")) else v)
                           for k, v in row.items()} for row in rows)
 
@@ -106,8 +106,8 @@ def create_demo(catalog_payload, out, as_of, days=730, count=24, seed=20261015, 
                                        period_forecasters={"direct_period_xgboost": forecast_direct_period})
     if evaluation["tested_product_count"] != count or evaluation["window_count"] != count:
         raise ValueError("Not every selected part could be evaluated. No partial demo score will be reported.")
-    # Evaluation completes before a separate delivery model is fitted on all
-    # synthetic history. Holdout labels never enter the evaluated model.
+
+
     features, codes = make_features(series)
     model = make_model()
     cols = feature_columns()

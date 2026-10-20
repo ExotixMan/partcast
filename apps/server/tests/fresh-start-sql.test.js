@@ -1,12 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import JSZip from 'jszip';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
+import { buildSupabaseFreshStart } from '../../../scripts/build-supabase-fresh-start.mjs';
 
 const root = new URL('../../../', import.meta.url);
-const archive = await JSZip.loadAsync(await readFile(new URL('downloads/setup/PartCast_Fresh_Supabase_Setup.zip', root)));
+const temporaryOutput = await mkdtemp(join(tmpdir(), 'partcast-fresh-start-'));
+let archive;
+try {
+  const archivePath = await buildSupabaseFreshStart({ outputDirectory: temporaryOutput });
+  assert.equal(archivePath, join(temporaryOutput, 'PartCast_Fresh_Supabase_Setup.zip'));
+  archive = await JSZip.loadAsync(await readFile(archivePath));
+} finally {
+  await rm(temporaryOutput, { recursive: true, force: true });
+}
 const first = await archive.file('01_schema_and_roles.sql').async('string');
 const second = await archive.file('02_login_and_permissions.sql').async('string');
 const verification = await archive.file('03_verify_installation.sql').async('string');
@@ -28,10 +39,11 @@ async function database() {
   return db;
 }
 
-test('delivered ZIP installs on an empty project and verifies email-code and role restrictions', async () => {
+test('generated ZIP installs on an empty project and verifies email-code and role restrictions', async () => {
   const db = await database();
   try {
     assert.deepEqual(Object.keys(archive.files).sort(), ['01_schema_and_roles.sql','02_login_and_permissions.sql','03_verify_installation.sql','READ_FIRST.md']);
+    assert.match(first, /^begin;\n/);
     assert.equal(second, await readFile(new URL('supabase/paste-ready/02_login_and_permissions.sql', root), 'utf8'));
     await db.exec(first);
     await assert.rejects(db.exec(verification), /Missing protected table: email_login_challenges/);

@@ -1,5 +1,5 @@
--- Low/out-of-stock alerts must remain orderable at the exact alert threshold.
--- Apply to existing stores after 0007. Preserves products, sales and balances.
+
+
 begin;
 create or replace view public.reorder_recommendations with (security_invoker = true) as
 with latest as (

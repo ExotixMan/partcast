@@ -4,8 +4,8 @@ const actualSources = new Set(['actual_sale','imported_training_data']);
 const calendarDay = z.string().date();
 const invalidRange = message => Object.assign(new Error(message),{status:422,safe:true});
 
-// Summarize supplied records only. No calendar filling, rates, future estimates
-// or transaction-count proxies belong in this view.
+
+
 export function summarizeRecordedSales(observations,{from=null,to=null,asOfDate,dataMode='actual'}) {
   calendarDay.parse(asOfDate);
   if(from)calendarDay.parse(from);

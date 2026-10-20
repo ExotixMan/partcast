@@ -1,6 +1,6 @@
--- OPTIONAL: Promote exactly one EXISTING Auth account after Parts 1 and 2.
--- Replace the email below with the account you use for IT administration.
--- On a fresh project with no Auth users, use the application's first-account setup instead.
+
+
+
 begin;
 do $partcast_super_admin$
 declare

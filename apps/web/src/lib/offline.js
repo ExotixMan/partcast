@@ -1,4 +1,4 @@
-// Account-scoped storage. Never store access tokens, passwords or service keys here.
+
 const DB_NAME = 'partcast-offline-v1';
 export const OFFLINE_MAX_AGE = 12 * 60 * 60 * 1000;
 let database;
@@ -88,14 +88,14 @@ export async function clearAccount(userId,{keepQueue=false}={}) {
 export function projectedProducts(products, queue) {
   return products.map(product => {
     const movements = queue.filter(e => e.status === 'pending').flatMap(e => (e.payload.lines || [e.payload]).filter(l=>l.product_id===product.id).map(l=>({payload:{...l,tx_type:e.payload.tx_type}})));
-    // Match PostgreSQL's two-decimal stock quantities without binary subtraction drift.
+
     const delta = movements.reduce((sum,e) => sum + (e.payload.tx_type === 'stock_in' ? 1 : -1) * Math.round(Number(e.payload.quantity) * 100), 0);
     const stock = (Math.round(Number(product.current_stock) * 100) + delta) / 100;
     return { ...product, current_stock: stock, pending: movements.length, stock_status: stock <= 0 ? 'out' : stock <= Number(product.minimum_stock) ? 'low' : 'ok' };
   });
 }
 
-// Stop at the first conflict: later movements may depend on the rejected one.
+
 export async function drainQueue(userId, send) {
   const entries = await queueItems(userId);
   for (const entry of entries) {

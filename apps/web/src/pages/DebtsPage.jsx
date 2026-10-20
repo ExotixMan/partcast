@@ -26,21 +26,26 @@ export default function DebtsPage() {
     [payments, setPayments] = useState([]),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
+    [loadError,setLoadError]=useState(''),
+    [paymentsLoading,setPaymentsLoading]=useState(false),
     [toast, setToast] = useState(null);
   const [form, setForm] = useState({});
   const guard = useRef(false),
-    operation = useRef(null);
+    operation = useRef(null),loadRequest=useRef(0),historyRequest=useRef(0);
   async function load() {
+    const request=++loadRequest.current;
     setLoading(true);
+    setLoadError('');
     try {
-      const r = await api.get('/api/debts');
+      const [r,pending]=await Promise.all([api.get('/api/debts'),queueItems(session.user.id)]);
+      if(request!==loadRequest.current)return;
       setRows(r.data || []);
       setCached(!!r.offline);
-      const pending=await queueItems(session.user.id);setPendingLedger(pending.filter(e=>['debt','payment'].includes(e.payload.kind)));setQueued(pending.filter(e=>e.payload.kind==='batch'&&e.payload.is_credit).length);
+      setPendingLedger(pending.filter(e=>['debt','payment'].includes(e.payload.kind)));setQueued(pending.filter(e=>e.payload.kind==='batch'&&e.payload.is_credit).length);
     } catch (e) {
-      setError(e.message);
+      if(request===loadRequest.current)setLoadError(e.message);
     } finally {
-      setLoading(false);
+      if(request===loadRequest.current)setLoading(false);
     }
   }
   useEffect(() => {
@@ -48,11 +53,14 @@ export default function DebtsPage() {
     window.addEventListener('online', load);
     window.addEventListener('partcast:queue', load);
     return () => {
+      loadRequest.current++;historyRequest.current++;
       window.removeEventListener('online', load);
       window.removeEventListener('partcast:queue', load);
     };
   }, []);
   function open(kind, row) {
+    if(guard.current||operation.current)return;
+    historyRequest.current++;
     setSelected(row || null);
     setModal(kind);
     setError('');
@@ -67,7 +75,22 @@ export default function DebtsPage() {
       amount: ''
     });
     setPayments([]);
-    if (row) api.get(`/api/debts/${row.id}/payments`).then(r => setPayments(r.data || [])).catch(e => setError(e.message));
+    setPaymentsLoading(false);
+    if(row&&kind==='details')loadPayments(row);
+  }
+  async function loadPayments(row){
+    const request=++historyRequest.current;
+    setPaymentsLoading(true);setError('');
+    try{
+      const result=await api.get(`/api/debts/${row.id}/payments`);
+      if(!Array.isArray(result.data))throw new Error('The store returned incomplete information. Please try again.');
+      if(request===historyRequest.current)setPayments(result.data);
+    }catch(error){if(request===historyRequest.current)setError(error.message);}
+    finally{if(request===historyRequest.current)setPaymentsLoading(false);}
+  }
+  function close(){
+    if(busy||operation.current)return;
+    historyRequest.current++;setPaymentsLoading(false);setModal(null);setError('');
   }
   const update = (key, value) => {
     setError('');
@@ -133,6 +156,7 @@ export default function DebtsPage() {
   return <>
  <PageHeader title={t("Customer utang")} subtitle={t("See who owes your store and record partial or full payments.")} actions={<button className="btn-primary" disabled={cached || !navigator.onLine || loading} onClick={() => open('add')}><Plus size={18} />{t("Add existing utang")}</button>} />
  {!modal && error && <p role="alert" className="mb-4 text-red-700">{t(error)}</p>}
+ {loadError&&<div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><p>{t(loadError)}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={load}>{t('Try again')}</button></div>}
  {pendingLedger.length>0&&<p role="status" className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-900">{t("Customer balance changes are waiting to send. Check Review changes and wait for confirmation before recording another payment.")}</p>}
     {(cached || queued > 0) && <p role="status" className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-900">{cached ? t('These are saved balances. Connect to refresh before recording payments. ') : ''}{queued > 0 ? t("{v0} credit sales are waiting to send. Their utang will appear after syncing.", {
         v0: queued
@@ -142,14 +166,12 @@ export default function DebtsPage() {
  <div className="mt-5 grid gap-4 lg:grid-cols-2">{visible.map(r => <article key={r.id} className="rounded-xl border border-slate-200 p-4"><div className="flex flex-wrap justify-between gap-2"><h2 className="font-bold">{r.customer_name}</h2><span className={r.status === 'overdue' ? 'font-semibold text-red-700' : 'text-slate-500'}>{r.status === 'paid' ? t('Fully paid') : r.status === 'overdue' ? t('Past due') : t('Still owing')}</span></div><p className="my-3 text-2xl font-bold">{money(r.balance)}</p><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-slate-500">{t("Original utang")}</dt><dd>{money(r.principal)}</dd></div><div><dt className="text-slate-500">{t("Payments received")}</dt><dd>{money(r.paid_amount)}</dd></div><div><dt className="text-slate-500">{t("Due date")}</dt><dd>{r.due_date || t('No due date')}</dd></div><div><dt className="text-slate-500">{t("Reference")}</dt><dd>{r.reference_no || t('No reference')}</dd></div></dl>{r.phone && <p className="mt-3 text-sm">{r.phone}</p>}{r.notes && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-500">{r.notes}</p>}<div className="mt-4 flex flex-wrap gap-2"><button className="btn-secondary" onClick={() => open('details', r)}>{t("View payments")}</button>{Number(r.balance) > 0 && <button className="btn-primary" disabled={cached || !navigator.onLine || pendingLedger.length>0} onClick={() => open('payment', r)}>{t("Record payment")}</button>}</div></article>)}</div>
  {!visible.length && <p className="py-10 text-center text-slate-500">{loading ? t('Loading balances…') : t('No matching customer balances.')}</p>}
  <p className="mt-5 text-sm text-slate-500">{t("For a new credit sale, use Sell or receive and choose \u201CCustomer will pay later\u201D. Add existing utang only for balances already owed.")}</p></section>
- <Modal open={!!modal} onClose={() => {
-      if (!busy && !operation.current) setModal(null);
-    }} title={modal === 'add' ? t('Add existing customer utang') : modal === 'payment' ? t('Record a customer payment') : t('Payment history')} description={selected ? t("{v0} \xB7 {v1} remaining", {
+ <Modal open={!!modal} onClose={close} title={modal === 'add' ? t('Add existing customer utang') : modal === 'payment' ? t('Record a customer payment') : t('Payment history')} description={selected ? t("{v0} \xB7 {v1} remaining", {
       v0: selected.customer_name,
       v1: money(selected.balance)
-    }) : t('Use this for existing balances. New credit sales are recorded with their stock changes.')} footer={modal !== 'details' ? <><button className="btn-secondary" disabled={busy || !!operation.current} onClick={() => setModal(null)}>{t("Cancel")}</button><button className="btn-primary" form="debt-form" type="submit" disabled={busy}>{busy ? t('Saving…') : operation.current ? t('Retry same save') : modal === 'add' ? t('Save utang') : t('Save payment')}</button></> : null}>
+    }) : t('Use this for existing balances. New credit sales are recorded with their stock changes.')} footer={modal !== 'details' ? <><button className="btn-secondary" disabled={busy || !!operation.current} onClick={close}>{t("Cancel")}</button><button className="btn-primary" form="debt-form" type="submit" disabled={busy}>{busy ? t('Saving…') : operation.current ? t('Retry same save') : modal === 'add' ? t('Save utang') : t('Save payment')}</button></> : <button className="btn-secondary" onClick={close}>{t('Close')}</button>}>
  {error && <p role="alert" className="mb-4 text-red-700">{t(error)}</p>}
- {modal === 'details' ? <div className="space-y-3">{payments.length ? payments.map(p => <div key={p.id} className="rounded-xl bg-slate-50 p-4"><strong>{money(p.amount)}</strong><p className="mt-1 text-sm text-slate-500">{new Date(p.paid_at).toLocaleString()}</p>{p.notes && <p className="mt-2 text-sm">{p.notes}</p>}</div>) : <p className="text-slate-500">{t("No payments recorded yet.")}</p>}</div> : <Form id="debt-form" onSubmit={save}><fieldset disabled={busy || !!operation.current} className="space-y-4">
+ {modal === 'details' ? <div className="space-y-3">{paymentsLoading?<p role="status" className="text-slate-600">{t('Loading payments…')}</p>:error?<button className="btn-secondary" onClick={()=>loadPayments(selected)}>{t('Try again')}</button>:payments.length ? payments.map(p => <div key={p.id} className="rounded-xl bg-slate-50 p-4"><strong>{money(p.amount)}</strong><p className="mt-1 text-sm text-slate-500">{new Date(p.paid_at).toLocaleString()}</p>{p.notes && <p className="mt-2 text-sm">{p.notes}</p>}</div>) : <p className="text-slate-500">{t("No payments recorded yet.")}</p>}</div> : <Form id="debt-form" onSubmit={save}><fieldset disabled={busy || !!operation.current} className="space-y-4">
  {modal === 'add' ? <><label className="block"><span className="label">{t("Customer name *")}</span><input className="input" required minLength={2} maxLength={240} value={form.customer_name || ''} onChange={e => update('customer_name', e.target.value)} /></label><label className="block"><span className="label">{t("Amount still owed (\u20B1) *")}</span><input className="input" type="number" required min="0.01" max="999999999999.99" step="0.01" value={form.principal || ''} onChange={e => update('principal', e.target.value)} /></label><label className="block"><span className="label">{t("Customer phone")}</span><input className="input" type="tel" maxLength={80} value={form.phone || ''} onChange={e => update('phone', e.target.value)} /></label><label className="block"><span className="label">{t("Due date")}</span><input className="input" type="date" value={form.due_date || ''} onChange={e => update('due_date', e.target.value)} /><p className="mt-2 text-sm text-slate-500">{t('An existing balance may already be past due. Enter its original due date.')}</p></label><label className="block"><span className="label">{t("Reference number")}</span><input className="input" maxLength={180} value={form.reference_no || ''} onChange={e => update('reference_no', e.target.value)} /></label></> : <label className="block"><span className="label">{t("Amount received (\u20B1) *")}</span><input className="input" type="number" required min="0.01" max={selected?.balance} step="0.01" value={form.amount || ''} onChange={e => update('amount', e.target.value)} /></label>}
  <label className="block"><span className="label">{t("Note (optional)")}</span><textarea className="input" maxLength={1000} value={form.notes || ''} onChange={e => update('notes', e.target.value)} /></label>
  </fieldset>{operation.current && <p className="mt-3 text-sm text-amber-800">{t("Choose Retry same save to confirm this change without recording it twice.")}</p>}</Form>}

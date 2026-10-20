@@ -14,13 +14,16 @@ PartCast handles inventory, supplier, customer-reference, pricing, and transacti
 - Product stock changes use an atomic PostgreSQL function and cannot reduce stock below zero.
 - Inventory transaction and demand observation histories are append-only for authenticated users.
 - Admin mutations generate an audit record. IP addresses are stored only as HMAC hashes, not raw IP strings.
-- Helmet security headers, strict CORS origins, request-size limits, server-side validation, upload-size limits, and rate limiting are enabled.
+- Helmet headers, explicit CORS origins, request-size/upload limits, server-side validation and rate limiting are enabled. Rate limits run before request parsing. Protected API and login/setup responses use no-store caching. Production rejects known example security secrets.
+- Search uses escaped literal PostgREST operands; the server validates pagination and filter enums. Supabase parameters and typed RPCs carry data separately from SQL.
+- Migration 0012 verifies rounded sale-line amounts and rejects zero-cent or inconsistent sale totals within PostgreSQL, including direct RPC calls. Failed basket operations roll back stock, demand and credit together.
+- The Render static-site configuration declares a Content Security Policy, frame protection, content-type protection and a restricted camera permission. Apply these rules to manually created sites as described in Deployment.
 - Spreadsheet uploads accept `.xlsx`, `.xlsm`, or `.csv` up to 25 MB, with archive/XML expansion checks.
 - Backups and XGBoost model files are in private Supabase Storage buckets.
 - Backup downloads use five-minute signed URLs.
 - Login codes and supplier mail use Gmail's HTTPS API with OAuth; SMTP credentials are not required. Supplier recipients come only from saved supplier records. Selected parts must be active and assigned to that supplier; editable fields and custom columns are validated and HTML-escaped.
 - Automated job endpoints require a separate `X-Cron-Secret`.
-- Raw Excel source files are gitignored so customer data is not accidentally pushed to GitHub. The existing cleaned-inventory download was explicitly approved for this repository; customer sales workbooks remain excluded.
+- Raw uploads and exported data are excluded from the current production tree and delivered in a private archive. Previously committed exports remain in Git history; this cleanup does not purge that history.
 
 ## Deployment hardening checklist
 

@@ -22,8 +22,8 @@ def daily_rate(history, method="croston_sba", alpha=0.1, beta=0.01):
         return 0.0
     if method == "croston_sba":
         if len(events) == 1:
-            # The extract starts at a sale; its first index is not a measured
-            # interarrival. Preserve the exploratory benchmark's exposure fallback.
+
+
             return (1 - alpha / 2) * float(values[events[0]]) / len(values)
         size, interval = float(values[events[0]]), float(events[1] - events[0])
         previous = events[0]

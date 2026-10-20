@@ -4,7 +4,7 @@ Use the SQL Editor in the intended project: **`ragdjkdcrvexqfadlqbf`**, whose AP
 
 These files install the complete PartCast schema on a fresh project, or upgrade a recognized existing PartCast schema. They replace application access policies/functions and preserve Auth accounts, inventory, sales, customer debts/payments, photos, saved encrypted connections and synchronization receipts. They do not reset or delete the database. Unrecognized/partial schemas stop with an error rather than guessing how to change your records.
 
-**For an existing store through 0010, run [0011_restock_workflows.sql](../migrations/0011_restock_workflows.sql)** for atomic main-supplier changes and duplicate-safe email request retries. Stores through 0009 also need [0010_sale_price_validation.sql](../migrations/0010_sale_price_validation.sql); apply any older missing migrations first, in order. These updates preserve inventory, old transactions, accounts and balances. A full installation or data reset is unnecessary. All are already included in Part 2 below. See [Restock and selling instructions](../../docs/STORE_WORKFLOWS.md).
+**For an existing store through 0011, run [0012_sale_financial_integrity.sql](../migrations/0012_sale_financial_integrity.sql).** It checks rounded sale amounts and credit due dates inside the database. Older stores must apply their missing migrations in order first. The updates preserve accounts, inventory, balances and old transactions. Both complete installer files already include the latest migrations. See [Store workflows](../../docs/STORE_WORKFLOWS.md).
 
 ## Run the full scripts in order
 
@@ -16,7 +16,7 @@ Back up existing store records first. Run during a store update: business-table 
 
 If you already have Auth accounts on a fresh schema, Part 1 adds any missing inactive profiles. Use Part 3 to activate the intended IT account. Accounts created manually in Supabase need a password and confirmed email for password login; other staff can then be added through PartCast Staff access. Keep public Auth signup disabled.
 
-Both main scripts can be repeated after a successful installation. If a query fails, fix that error before continuing. A failed Part 2 leaves business access paused; correct it and rerun the **whole Part 2**, rather than deleting tables or bypassing email verification. These files support official PartCast schemas; a custom or incomplete schema needs separate review. For files to install correctly, the hosted API and website must use the matching release on branch `codex/partcast-offline-forecasting-20261009`.
+Both main scripts can be repeated after a successful installation. If a query fails, fix that error before continuing. A failed Part 2 leaves business access paused; correct it and rerun the **whole Part 2**, rather than deleting tables or bypassing email verification. These files support official PartCast schemas; a custom or incomplete schema needs separate review. For files to install correctly, the hosted API and website must use the matching release on branch `production`.
 
 ## APIs and credentials required
 

@@ -16,10 +16,11 @@ import { answerAssistant, assistantMode } from '../services/assistant.js';
 
 import storeRoutes from './store.js';
 import {storeReport} from '../utils/storeReports.js';
-import {amount,positiveAmount,category,barcode,reportDates,dateQuery} from '../utils/storeValidation.js';
+import {amount,positiveAmount,category,barcode,reportDates,dateQuery,validateSaleMovement} from '../utils/storeValidation.js';
 import {neededRestock,normalizeRestock} from '../utils/restock.js';
 import {supplierParts} from '../utils/supplierParts.js';
 import {summarizeRecordedSales} from '../utils/recordedSales.js';
+import {searchText,paginationQuery,invoicePaginationQuery,literalSearchFilter} from '../utils/search.js';
 const storeDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const router = Router();
 router.use(authorizeApi);
@@ -100,16 +101,15 @@ router.get('/dashboard', async (req, res, next) => {
 
 router.get('/products', async (req, res, next) => {
   try {
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize) || 25));
-    const q = String(req.query.q || '').trim().replace(/[^a-zA-Z0-9_\-./ ()]/g, '').slice(0, 80);
-    const status = String(req.query.status || 'all');
+    const {page,pageSize}=paginationQuery.parse(req.query);
+    const q=searchText.parse(req.query.q);
+    const status=z.enum(['all','low','out']).default('all').parse(req.query.status);
     let query = adminDb.from('inventory_status').select('*', { count: 'exact' }).eq('active', true);
-    if (q) query = query.or(`part_number.ilike.%${q}%,description.ilike.%${q}%,brand.ilike.%${q}%,barcode.ilike.%${q}%,alias_text.ilike.%${q}%`);
+    if (q) query = query.or(literalSearchFilter(['part_number','description','brand','barcode','alias_text'],[q]));
     if(req.query.category && req.query.category!=='all') query=query.eq('category',category.parse(req.query.category));
     if (status === 'low') query = query.eq('stock_status', 'low');
     if (status === 'out') query = query.eq('stock_status', 'out');
-    query = query.order('description').range((page - 1) * pageSize, page * pageSize - 1);
+    query = query.order('description').order('id').range((page - 1) * pageSize, page * pageSize - 1);
     const { data, error, count } = await query;
     if (error) throw error;
     res.json({ data, count, page, pageSize });
@@ -202,9 +202,7 @@ router.post('/inventory/movement', rolesWrite, async (req, res, next) => {
       total_amount: amount.nullable().optional(),
       notes: z.string().trim().max(1000).nullable().optional(),
       occurred_at: z.string().datetime().optional()
-    }).superRefine((v,c)=>{
-      if(v.tx_type==='sale'&&!(v.unit_price>0))c.addIssue({code:'custom',path:['unit_price'],message:'Enter a selling price greater than zero for every part.'});
-    }).parse(req.body);
+    }).superRefine(validateSaleMovement).parse(req.body);
     const {client_operation_id,...payload}=body;
     const { data, error } = await userDb(req.user.accessToken).rpc('sync_inventory_movement', {
       p_operation_id: client_operation_id, p_payload: payload
@@ -217,14 +215,13 @@ router.post('/inventory/movement', rolesWrite, async (req, res, next) => {
 
 router.get('/transactions', async (req, res, next) => {
   try {
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize) || 25));
-    const type = String(req.query.type || 'all');
+    const {page,pageSize}=paginationQuery.parse(req.query);
+    const type=z.enum(['all','initial','stock_in','stock_out','sale']).default('all').parse(req.query.type);
     let q = adminDb.from('inventory_transactions')
       .select('*,product:products(part_number,description,brand,unit),supplier:suppliers(name)', { count: 'exact' });
     if (type !== 'all') q = q.eq('tx_type', z.enum(['initial','stock_in','stock_out','sale']).parse(type));
     q=dateQuery(q,reportDates(req.query));
-    const { data, error, count } = await q.order('occurred_at',{ascending:false}).range((page-1)*pageSize, page*pageSize-1);
+    const { data, error, count } = await q.order('occurred_at',{ascending:false}).order('id').range((page-1)*pageSize, page*pageSize-1);
     if (error) throw error;
     res.json({ data, count, page, pageSize });
   } catch (e) { next(e); }
@@ -245,8 +242,8 @@ router.get('/products/:id/suppliers',rolesAdmin,async(req,res,next)=>{
   }catch(error){next(error);}
 });
 
-// Explicitly link an inventory part without replacing its main supplier or
-// overwriting an existing supplier's prices and delivery settings.
+
+
 router.post('/suppliers/:supplierId/parts', rolesAdmin, async(req,res,next)=>{
   try{
     const supplierId=z.string().uuid().parse(req.params.supplierId);
@@ -406,7 +403,7 @@ router.get('/forecast/recorded-sales', rolesAdmin, async (req,res,next) => {
   try {
     const {from,to}=reportDates(req.query);
     const asOfDate=storeDay();
-    // Validate before querying; this route deliberately does not start Python.
+
     summarizeRecordedSales([],{from,to,asOfDate,dataMode:req.dataEnvironment.mode});
     res.json(summarizeRecordedSales(await demandForForecast(req.dataEnvironment),{from,to,asOfDate,dataMode:req.dataEnvironment.mode}));
   } catch(error) {next(error);}
@@ -513,16 +510,12 @@ router.get('/imports', rolesAdmin, async (req,res,next) => {
 router.get('/imports/sales', rolesAdmin, async (req,res,next) => {
   try {
     const {from,to}=reportDates(req.query);
-    const page=z.coerce.number().int().min(1).max(500000).default(1).parse(req.query.page);
-    const pageSize=z.coerce.number().int().min(1).max(50).default(20).parse(req.query.pageSize);
-    const search=z.string().trim().max(120).default('').parse(req.query.q);
-    // Only literal words/reference characters may enter PostgREST's OR grammar.
-    const literal=search.replace(/[^\p{L}\p{N} #/_-]/gu,' ').trim().replace(/_/g,'\\_');
-    if(search&&!/[\p{L}\p{N}]/u.test(literal))throw Object.assign(new Error('Enter letters or numbers to search invoices.'),{status:422});
+    const {page,pageSize}=invoicePaginationQuery.parse(req.query);
+    const search=searchText.parse(req.query.q);
     let query=adminDb.from('legacy_sales').select('id,reference_no,sale_date,amount,raw_items',{count:'exact'});
     if(from)query=query.gte('sale_date',from);
     if(to)query=query.lte('sale_date',to);
-    if(literal)query=query.or(`reference_no.ilike.%${literal}%,raw_items.ilike.%${literal}%`);
+    if(search)query=query.or(literalSearchFilter(['reference_no','raw_items'],[search]));
     const {data,count,error}=await query.order('sale_date',{ascending:false,nullsFirst:false}).order('id').range((page-1)*pageSize,page*pageSize-1);
     if(error)throw error;
     res.json({data:data||[],count:count||0,page,pageSize});

@@ -1,10 +1,10 @@
 # Activate and use the new PartCast features
 
-The source changes are on `codex/partcast-offline-forecasting-20261009`. A GitHub push saves the files; Render must deploy this branch before the website changes. The hosted database and email settings also need the steps below.
+The source changes are on `production`. A GitHub push saves the files; Render must deploy this branch before the website changes. The hosted database and email settings also need the steps below.
 
 ## Full Restock workflow repair — 18 October 2026
 
-For an installation already through 0010, run [0011_restock_workflows.sql](../supabase/migrations/0011_restock_workflows.sql) in Supabase SQL Editor, then deploy **both** Render services and refresh PartCast. It adds an atomic supplier-save function and email request receipts; it preserves all store records and can be rerun. Apply older missing migrations first. The complete installer and fresh-project ZIP already include this migration.
+For an installation already through 0010, apply [0011_restock_workflows.sql](../supabase/migrations/0011_restock_workflows.sql) and then [0012_sale_financial_integrity.sql](../supabase/migrations/0012_sale_financial_integrity.sql) in Supabase SQL Editor, then deploy **both** Render services and refresh PartCast. Stores through 0011 need only 0012. It adds an atomic supplier-save function and email request receipts; it preserves all store records and can be rerun. Apply older missing migrations first. The complete installer and fresh-project ZIP already include this migration.
 
 Restock now keeps loaded records on refresh failure, shows saved contact details offline, and paginates long lists. **Change supplier** loads the saved cost/delivery days and saves the whole change together. Email drafts survive closing/reopening the dialog while this page stays open; **Close** replaces the misleading Keep reviewing action. Enter never submits an email. Inline feedback cannot cover Save/Next buttons. For an interrupted email submission, use **Check sending result** before trying again; the same request ID prevents a duplicate resend. See [Restock and Gmail details](RESTOCK_GMAIL.md) for draft, page and sending-state behavior.
 
@@ -44,7 +44,7 @@ Migration 0005 adds categories, barcodes, alternate names, private part photos, 
 
 ## 2. Required password and Gmail email code
 
-Follow [Required login, roles and forecasting upgrade](LOGIN_ROLES_FORECASTING.md). Apply missing migrations through 0005, then **0006 by itself**, **0007 separately** and **0008** for the latest Restock fix. Stores already running 0001–0007 need only 0008 for this update. Configure Gmail OAuth credentials on the API before deploying this release. Staff must enter a password and then a six-digit code; the old alternative Supabase OTP method is no longer accepted. Gmail delivery uses Google OAuth, and Gemini uses its separate API key. Owners do not see IT settings; only Super Admin can change saved Google connections.
+Follow [Required login, roles and forecasting upgrade](LOGIN_ROLES_FORECASTING.md). Apply only missing migrations in order through 0012, with 0006 committed separately before 0007. Stores through 0011 need only 0012. Configure Gmail OAuth before deploying required email-code login. Owners cannot change IT settings; Super Admin controls saved Google connections.
 
 ## 3. Deploy both Render services
 
@@ -114,6 +114,6 @@ Reports need internet and download directly to the browser's Downloads folder. E
 
 ## Verification and remaining live checks
 
-See [verification](VERIFICATION.md) for the latest suite results and production-build checks. Production dependency audits reported no known vulnerabilities in both packages at the time of testing. Tests use synthetic store/customer records. Database tests execute migrations 0001–0008 in PostgreSQL through PGlite and exercise atomic baskets, credit, idempotent retries, overpayment/precision checks, active-account access, notifications, Restock thresholds and direct-write restrictions. Server tests build and reopen real Excel workbooks and decode real image bytes. Chromium tests exercise responsive screens, offline reload/reconnect, edited mail payloads, photo gallery caching, camera denial/manual entry, bilingual/dark preferences, and mocked password-then-Gmail-code success/denial.
+See [verification](VERIFICATION.md) for the latest suite results and production-build checks. Production dependency audits reported no known vulnerabilities in both packages at the time of testing. Tests use synthetic store/customer records. Database tests execute the versioned migrations through 0012 in PostgreSQL through PGlite and exercise atomic baskets, credit, idempotent retries, overpayment/precision checks, active-account access, notifications, Restock thresholds and direct-write restrictions. Server tests build and reopen real Excel workbooks and decode real image bytes. Chromium tests exercise responsive screens, offline reload/reconnect, edited mail payloads, photo gallery caching, camera denial/manual entry, bilingual/dark preferences, and mocked password-then-Gmail-code success/denial.
 
 These checks do not send real staff/supplier emails, apply changes to hosted Supabase, deploy Render, or establish physical-camera accuracy. Complete those live checks after the activation steps. Existing forecasting data-quality requirements still apply; see [Forecasting data](FORECASTING_DATA.md).

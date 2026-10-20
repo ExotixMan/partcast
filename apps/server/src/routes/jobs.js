@@ -63,15 +63,16 @@ async function trainForecast({ includeProxy=false, horizonDays=30, actorId=null 
   const environment=await getDataEnvironment();
   const observations = await fetchAll(() => {
     const q = adminDb.from('demand_observations').select('product_id,occurred_on,quantity,source').in('source',environment.sources);
-    return q.order('occurred_on');
+    return q.order('occurred_on').order('id');
   });
   if (observations.length < 30) return { skipped:true, reason:'Not enough demand observations.' };
   const runId = crypto.randomUUID();
   const productCount = new Set(observations.map(o=>o.product_id)).size;
-  await adminDb.from('forecast_runs').insert({
+  const {error:runError}=await adminDb.from('forecast_runs').insert({
     id:runId,status:'running',horizon_days:horizonDays,include_proxy:includeProxy,
     training_rows:observations.length,product_count:productCount,started_by:actorId
   });
+  if(runError)throw runError;
   try {
     const {result,modelBuffer}=await runForecastPython({observations,horizonDays});
     const modelPath=`models/${runId}.json`;
@@ -93,7 +94,7 @@ async function trainForecast({ includeProxy=false, horizonDays=30, actorId=null 
 }
 
 async function autoEmailSuppliers() {
-  // Compatibility for existing cron URLs; purchasing stays under staff control.
+
   return {skipped:true,reason:'Supplier emails require staff review. Open Restock to edit and send a request.'};
 }
 
