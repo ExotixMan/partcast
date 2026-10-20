@@ -22,6 +22,6 @@ if not env.exists():
         env.chmod(0o600)
         stream.write(content)
 PY
-(cd apps/server && npm run check && npm test)
+(cd apps/server && npm run check && INTEGRATION_ENCRYPTION_KEY=test-only-encryption-key-32-characters npm test)
 (cd apps/web && npm test && npm run build)
 .venv/bin/python -m unittest discover -s ml -p 'test_*.py'
