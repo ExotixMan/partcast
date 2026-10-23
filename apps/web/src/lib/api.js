@@ -1,6 +1,6 @@
 import {verifiedCacheMatches} from './access.js';
-import {lineCents,validAmount} from './store.js';
-import { readCache, saveCache, queueItems, projectedProducts, enqueueMovement, drainQueue } from './offline.js';
+import {lineCents,validAmount,validQuantity} from './store.js';
+import { readCache, saveCache, updateCachedProduct, queueItems, projectedProducts, enqueueMovement, drainQueue } from './offline.js';
 import { resolveApiConnection, connectionMessage, apiRequestTimeout } from './connection.js';
 
 const connection = resolveApiConnection(import.meta.env.VITE_API_URL, window.location.href, import.meta.env.PROD);
@@ -90,6 +90,9 @@ async function request(path, options = {}) {
   try {
     const result = await networkRequest(path, options);
     if (read && cacheable(path) && userId === currentSession?.user?.id) await saveCache(userId, path, result).catch(() => {});
+    if (!read && /^\/api\/products(?:\/[^/]+)?$/.test(path) && result?.product && userId === currentSession?.user?.id) {
+      await updateCachedProduct(userId, result.product).catch(() => {});
+    }
     return result;
   } catch (error) {
     if (read && !error.status && error.code !== 'configuration' && error.name !== 'AbortError') {
@@ -132,7 +135,8 @@ async function movement(body, batch = false) {
   if(!['stock_in','stock_out','sale'].includes(body.tx_type)||(batch&&body.tx_type==='stock_out'))throw new ApiError('Choose a valid stock movement.',422);
   for(const line of lines){
     const product=products.find(p=>p.id===line.product_id),quantity=Number(line.quantity);
-    if(!product||!validAmount(line.quantity,true))throw new ApiError('Choose a saved part and a quantity with at most 2 decimal places.',422);
+    if(!product)throw new ApiError('Choose a saved part before recording stock.',422);
+    if(!validQuantity(line.quantity,true))throw new ApiError('Enter a whole-number quantity of 1 or more.',422);
     if(body.tx_type!=='stock_in'&&Math.round(quantity*100)>Math.round(Number(product.current_stock)*100))throw new ApiError('There is not enough saved stock for this transaction.',409);
     if(body.tx_type==='sale'&&!validAmount(line.unit_price,true))throw new ApiError('Enter a selling price greater than zero for every part.',422);
     if(batch&&!validAmount(line.unit_price))throw new ApiError('Enter a valid price with at most 2 decimal places.',422);

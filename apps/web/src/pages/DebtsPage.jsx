@@ -1,7 +1,7 @@
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Wallet, Search } from 'lucide-react';
+import { Plus, Wallet, Search, CheckCircle2, Clock, ChevronDown, History } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { money, validAmount } from '../lib/store.js';
 import { queueItems } from '../lib/offline.js';
@@ -17,7 +17,7 @@ export default function DebtsPage() {
   const [pendingLedger,setPendingLedger]=useState([]);
   const [rows, setRows] = useState([]),
     [q, setQ] = useState(''),
-    [filter, setFilter] = useState('unpaid'),
+    [filter, setFilter] = useState('all'),
     [loading, setLoading] = useState(true),
     [cached, setCached] = useState(false),
     [queued, setQueued] = useState(0);
@@ -151,21 +151,57 @@ export default function DebtsPage() {
       setBusy(false);
     }
   }
-  const visible = rows.filter(r => r.customer_name.toLowerCase().includes(q.toLowerCase()) && (filter === 'all' || filter === 'unpaid' && Number(r.balance) > 0 || r.status === filter));
-  const balance = rows.reduce((s, r) => s + Math.round(Number(r.balance) * 100), 0) / 100;
+  const search = q.trim().toLocaleLowerCase();
+  const visible = rows.filter(row => {
+    const matchesName = row.customer_name.toLocaleLowerCase().includes(search);
+    const stillOwing = Number(row.balance) > 0;
+    const matchesStatus = filter === 'all' || filter === 'unpaid' && stillOwing || filter === 'paid' && !stillOwing || filter === 'overdue' && stillOwing && row.status === 'overdue';
+    return matchesName && matchesStatus;
+  });
+  const balance = rows.reduce((sum, row) => sum + Math.round(Number(row.balance) * 100), 0) / 100;
+  const owingCustomers = new Set(rows.filter(row => Number(row.balance) > 0).map(row => row.customer_name.toLocaleLowerCase().trim())).size;
+  const overdueCount = rows.filter(row => Number(row.balance) > 0 && row.status === 'overdue').length;
+  function clearFilters() {
+    setQ('');
+    setFilter('all');
+  }
   return <>
- <PageHeader title={t("Customer utang")} subtitle={t("See who owes your store and record partial or full payments.")} actions={<button className="btn-primary" disabled={cached || !navigator.onLine || loading} onClick={() => open('add')}><Plus size={18} />{t("Add existing utang")}</button>} />
- {!modal && error && <p role="alert" className="mb-4 text-red-700">{t(error)}</p>}
- {loadError&&<div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><p>{t(loadError)}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={load}>{t('Try again')}</button></div>}
- {pendingLedger.length>0&&<p role="status" className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-900">{t("Customer balance changes are waiting to send. Check Review changes and wait for confirmation before recording another payment.")}</p>}
-    {(cached || queued > 0) && <p role="status" className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-900">{cached ? t('These are saved balances. Connect to refresh before recording payments. ') : ''}{queued > 0 ? t("{v0} credit sales are waiting to send. Their utang will appear after syncing.", {
-        v0: queued
-      }) : ''}</p>}
- <section className="mb-5 grid gap-3 sm:grid-cols-3"><div className="panel p-5"><p className="text-sm text-slate-500">{t("Customers still owing")}</p><p className="mt-2 text-2xl font-bold">{new Set(rows.filter(r => Number(r.balance) > 0).map(r => r.customer_name.toLowerCase().trim())).size}</p></div><div className="panel p-5"><p className="text-sm text-slate-500">{t("Total remaining utang")}</p><p className="mt-2 text-2xl font-bold">{money(balance)}</p></div><div className="panel p-5"><p className="text-sm text-slate-500">{t("Past due")}</p><p className="mt-2 text-2xl font-bold text-red-700">{rows.filter(r => r.status === 'overdue').length}</p></div></section>
- <section className="panel p-4 sm:p-5"><div className="grid gap-3 sm:grid-cols-2"><label><span className="label">{t("Find a customer")}</span><input className="input" value={q} maxLength={240} onChange={e => setQ(e.target.value)} placeholder={t("Customer name")} /></label><label><span className="label">{t("Show balances")}</span><select className="input" value={filter} onChange={e => setFilter(e.target.value)}><option value="unpaid">{t("Still owing")}</option><option value="overdue">{t("Past due")}</option><option value="paid">{t("Fully paid")}</option><option value="all">{t("All balances")}</option></select></label></div>
- <div className="mt-5 grid gap-4 lg:grid-cols-2">{visible.map(r => <article key={r.id} className="rounded-xl border border-slate-200 p-4"><div className="flex flex-wrap justify-between gap-2"><h2 className="font-bold">{r.customer_name}</h2><span className={r.status === 'overdue' ? 'font-semibold text-red-700' : 'text-slate-500'}>{r.status === 'paid' ? t('Fully paid') : r.status === 'overdue' ? t('Past due') : t('Still owing')}</span></div><p className="my-3 text-2xl font-bold">{money(r.balance)}</p><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-slate-500">{t("Original utang")}</dt><dd>{money(r.principal)}</dd></div><div><dt className="text-slate-500">{t("Payments received")}</dt><dd>{money(r.paid_amount)}</dd></div><div><dt className="text-slate-500">{t("Due date")}</dt><dd>{r.due_date || t('No due date')}</dd></div><div><dt className="text-slate-500">{t("Reference")}</dt><dd>{r.reference_no || t('No reference')}</dd></div></dl>{r.phone && <p className="mt-3 text-sm">{r.phone}</p>}{r.notes && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-500">{r.notes}</p>}<div className="mt-4 flex flex-wrap gap-2"><button className="btn-secondary" onClick={() => open('details', r)}>{t("View payments")}</button>{Number(r.balance) > 0 && <button className="btn-primary" disabled={cached || !navigator.onLine || pendingLedger.length>0} onClick={() => open('payment', r)}>{t("Record payment")}</button>}</div></article>)}</div>
- {!visible.length && <p className="py-10 text-center text-slate-500">{loading ? t('Loading balances…') : t('No matching customer balances.')}</p>}
- <p className="mt-5 text-sm text-slate-500">{t("For a new credit sale, use Sell or receive and choose \u201CCustomer will pay later\u201D. Add existing utang only for balances already owed.")}</p></section>
+    <PageHeader title={t('Customer utang')} subtitle={t('See balances and payments, including fully paid customers.')} actions={<button className="btn-secondary" disabled={cached || !navigator.onLine || loading} onClick={() => open('add')}><Plus size={18} aria-hidden="true" />{t('Add existing utang')}</button>} />
+    {!modal && error && <p role="alert" className="mb-4 text-red-700">{t(error)}</p>}
+    {loadError && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><p>{t(loadError)}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={load}>{t('Try again')}</button></div>}
+    {pendingLedger.length > 0 && <p role="status" className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-900">{t('Customer balance changes are waiting to send. Check Review changes and wait for confirmation before recording another payment.')}</p>}
+    {(cached || queued > 0) && <p role="status" className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-900">{cached ? t('These are saved balances. Connect to refresh before recording payments. ') : ''}{queued > 0 ? t('{v0} credit sales are waiting to send. Their utang will appear after syncing.', { v0: queued }) : ''}</p>}
+    <section aria-label={t('Customer balances overview')} className="panel mb-5 grid gap-4 p-4 sm:grid-cols-3 sm:p-5">
+      <div className="flex items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Wallet size={21} aria-hidden="true" /></span><div className="min-w-0"><p className="text-sm text-slate-600">{t('Total remaining utang')}</p><p className="break-words text-xl font-bold sm:text-2xl">{money(balance)}</p></div></div>
+      <div className="flex items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><History size={21} aria-hidden="true" /></span><div><p className="text-sm text-slate-600">{t('Customers still owing')}</p><p className="text-xl font-bold sm:text-2xl">{owingCustomers}</p></div></div>
+      <div className="flex items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-800"><Clock size={21} aria-hidden="true" /></span><div><p className="text-sm text-slate-600">{t('Past due')}</p><p className="text-xl font-bold text-red-700 sm:text-2xl">{overdueCount}</p></div></div>
+    </section>
+    <section className="panel p-4 sm:p-5">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,16rem)]">
+        <label className="min-w-0"><span className="label">{t('Find a customer')}</span><span className="relative block"><Search size={19} aria-hidden="true" className="pointer-events-none absolute left-3 top-4 text-slate-500" /><input className="input pl-10" type="search" value={q} maxLength={240} onChange={e => setQ(e.target.value)} placeholder={t('Customer name')} /></span></label>
+        <label><span className="label">{t('Show balances')}</span><select className="input" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">{t('All balances')}</option><option value="unpaid">{t('Still owing')}</option><option value="overdue">{t('Past due')}</option><option value="paid">{t('Fully paid')}</option></select></label>
+      </div>
+      <p className="mt-3 text-sm text-slate-600" role="status">{loading ? t('Loading balances…') : t('{v0} balances found', { v0: visible.length })}</p>
+      <div className="mt-4 grid items-start gap-3 lg:grid-cols-2">
+        {visible.map(row => {
+          const isPaid = Number(row.balance) <= 0;
+          const isOverdue = !isPaid && row.status === 'overdue';
+          const StatusIcon = isPaid ? CheckCircle2 : isOverdue ? Clock : Wallet;
+          const statusLabel = isPaid ? 'Fully paid' : isOverdue ? 'Past due' : 'Still owing';
+          return <article key={row.id} className="min-w-0 rounded-xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2"><h2 className="min-w-0 break-words text-lg font-bold">{row.customer_name}</h2><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-semibold ${isPaid ? 'bg-emerald-50 text-emerald-800' : isOverdue ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800'}`}><StatusIcon size={16} aria-hidden="true" />{t(statusLabel)}</span></div>
+            <p className="mt-3 text-sm text-slate-600">{t('Remaining utang')}</p><p className="break-words text-2xl font-bold">{money(row.balance)}</p>
+            <div className="mt-4 flex flex-wrap gap-2">{!isPaid && <button className="btn-primary flex-1" disabled={cached || !navigator.onLine || pendingLedger.length > 0} onClick={() => open('payment', row)}><Plus size={17} aria-hidden="true" />{t('Record payment')}</button>}<button className="btn-secondary flex-1" onClick={() => open('details', row)}><History size={17} aria-hidden="true" />{t('View payments')}</button></div>
+            <details className="group mt-4 border-t border-slate-100 pt-1">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 font-semibold text-slate-700">{t('Balance details')}<ChevronDown size={18} aria-hidden="true" className="shrink-0 transition-transform group-open:rotate-180" /></summary>
+              <dl className="mt-2 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-slate-600">{t('Original utang')}</dt><dd className="font-semibold">{money(row.principal)}</dd></div><div><dt className="text-slate-600">{t('Payments received')}</dt><dd className="font-semibold">{money(row.paid_amount)}</dd></div><div><dt className="text-slate-600">{t('Due date')}</dt><dd>{row.due_date || t('No due date')}</dd></div><div className="min-w-0"><dt className="text-slate-600">{t('Reference')}</dt><dd className="break-words">{row.reference_no || t('No reference')}</dd></div>{row.phone && <div className="col-span-2"><dt className="text-slate-600">{t('Customer phone')}</dt><dd className="break-words">{row.phone}</dd></div>}{row.notes && <div className="col-span-2"><dt className="text-slate-600">{t('Note (optional)')}</dt><dd className="whitespace-pre-wrap break-words">{row.notes}</dd></div>}</dl>
+            </details>
+          </article>;
+        })}
+      </div>
+      {!visible.length && !loadError && <div className="py-8 text-center"><p className="text-slate-600">{loading ? t('Loading balances…') : t('No matching customer balances.')}</p>{!loading && (search || filter !== 'all') && <button type="button" className="btn-secondary mt-3" onClick={clearFilters}>{t('Clear filters')}</button>}</div>}
+      <details className="group mt-5 border-t border-slate-100 pt-1"><summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 font-semibold text-slate-700">{t('When to add existing utang')}<ChevronDown size={18} aria-hidden="true" className="shrink-0 transition-transform group-open:rotate-180" /></summary><p className="mt-2 text-sm text-slate-600">{t('For a new credit sale, use Sell or receive and choose “Customer will pay later”. Add existing utang only for balances already owed.')}</p></details>
+    </section>
  <Modal open={!!modal} onClose={close} title={modal === 'add' ? t('Add existing customer utang') : modal === 'payment' ? t('Record a customer payment') : t('Payment history')} description={selected ? t("{v0} \xB7 {v1} remaining", {
       v0: selected.customer_name,
       v1: money(selected.balance)

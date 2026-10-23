@@ -12,38 +12,33 @@ import ErrorBoundary from './ErrorBoundary.jsx';
 const daily = [{
   to: '/',
   label: 'Home',
-  hint: 'Start your day',
   icon: House,
   end: true
 }, {
-  to: '/forecast',
-  label: 'Demand planning',
-  hint: 'See what may sell next',
-  icon: ChartNoAxesCombined
-}, {
   to: '/counter',
   label: 'Sell or receive',
-  hint: 'Sales and deliveries in one place',
   icon: ShoppingCart
 }, {
   to: '/inventory',
   label: 'Inventory',
-  hint: 'Part details and stock corrections',
   icon: Boxes
 }, {
-  to: '/reorder',
-  label: 'Restock',
-  hint: 'Check what needs ordering',
-  icon: Truck
-}];
-const tools = [{to:'/sales',label:'Sales',hint:'Find previous sales',icon:ReceiptText}, {
   to: '/debts',
   label: 'Customer utang',
   icon: Wallet
 }, {
+  to: '/reorder',
+  label: 'Restock',
+  icon: Truck
+}];
+const tools = [{to:'/sales',label:'Sales',icon:ReceiptText}, {
   to: '/transactions',
   label: 'Stock history',
   icon: History
+}, {
+  to: '/forecast',
+  label: 'Demand planning',
+  icon: ChartNoAxesCombined
 }, {
   to: '/reports',
   label: 'Reports',
@@ -84,8 +79,7 @@ function NavigationItem({
     isActive
   }) => `group flex min-h-14 items-center gap-3 rounded-xl px-3 py-3 text-base transition ${isActive ? 'border-l-4 border-red-600 bg-red-50 font-bold text-red-800' : 'border-l-4 border-transparent font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-950'}`}>
     <item.icon size={20} strokeWidth={1.8} className="shrink-0" />
-    <span className="min-w-0"><span className="block">{t(item.label)}</span>{item.hint && <span className="mt-0.5 block text-xs font-normal text-slate-600">{t(item.hint)}</span>}</span>
-    <ChevronRight size={15} className="ml-auto shrink-0 opacity-40" aria-hidden="true" />
+    <span className="min-w-0">{t(item.label)}</span>
   </NavLink>;
 }
 function SidebarContent({
@@ -108,8 +102,8 @@ function SidebarContent({
     </div>
     <nav aria-label={mobile ? t('All pages') : t('Main navigation')} className="flex-1 space-y-5 overflow-y-auto px-3 py-5">
       <div className="space-y-1">{dailyLinks.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div>
-      <div hidden={!reviewLinks.length}><p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("Review & plan")}</p><div className="space-y-1">{reviewLinks.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div></div>
-      {allowed.length > 0 && <details open={allowed.some(n => location.pathname.startsWith(n.to)) || undefined} className="group"><summary className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"><Settings size={17} />{t("Manage the store")}<ChevronRight size={16} className="ml-auto transition group-open:rotate-90" /></summary><div className="mt-2 space-y-1">{allowed.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div></details>}
+      {reviewLinks.length > 0 && <details open={reviewLinks.some(n => location.pathname.startsWith(n.to)) || undefined} className="group"><summary className="flex min-h-12 items-center gap-2 rounded-xl px-3 text-base font-semibold text-slate-700 hover:bg-slate-50"><FileDown size={19} aria-hidden="true" />{t("Review & plan")}<ChevronRight size={18} className="ml-auto transition group-open:rotate-90" aria-hidden="true" /></summary><div className="mt-2 space-y-1">{reviewLinks.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div></details>}
+      {allowed.length > 0 && <details open={allowed.some(n => location.pathname.startsWith(n.to)) || undefined} className="group"><summary className="flex min-h-12 items-center gap-2 rounded-xl px-3 text-base font-semibold text-slate-700 hover:bg-slate-50"><Settings size={19} aria-hidden="true" />{t("Manage the store")}<ChevronRight size={18} className="ml-auto transition group-open:rotate-90" aria-hidden="true" /></summary><div className="mt-2 space-y-1">{allowed.map(item => <NavigationItem key={item.to} item={item} close={close} />)}</div></details>}
       <button className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-red-100 bg-red-50/60 px-3 py-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50" onClick={() => {
         close?.();
         help();

@@ -36,6 +36,35 @@ export async function readCache(userId, path) {
   const entry = await transaction('cache', 'readonly', s => s.get(`${userId}:${path}`));
   return entry && Date.now() - entry.savedAt < OFFLINE_MAX_AGE ? entry : null;
 }
+// A confirmed edit changes this part, but does not refresh the age of other saved records.
+export async function updateCachedProduct(userId, product) {
+  if (!product?.id) return;
+  await transaction('cache', 'readwrite', store => {
+    const request = store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const entry = cursor.value;
+      if (entry.userId === userId) {
+        if (entry.path === '/api/offline-snapshot' && Array.isArray(entry.value.products)) {
+          const found = entry.value.products.some(row => row.id === product.id);
+          const products = product.active === false
+            ? entry.value.products.filter(row => row.id !== product.id)
+            : entry.value.products.map(row => row.id === product.id ? { ...row, ...product } : row);
+          if (product.active !== false && !found) products.push(product);
+          cursor.update({ ...entry, value: { ...entry.value, products } });
+        } else if (/^\/api\/products(?:\?|$)/.test(entry.path) || entry.path === `/api/products/${product.id}` || entry.path.startsWith('/api/barcode/')) {
+          // Old filtered pages or barcode matches must not resurrect an edited
+          // or removed part when the complete snapshot expires.
+          cursor.delete();
+        }
+      }
+      cursor.continue();
+    };
+    return request;
+  });
+  changed();
+}
 export async function queueItems(userId) {
   const entries = await transaction('queue', 'readonly', s => s.getAll());
   return entries.filter(e => e.userId === userId).sort((a,b) => a.createdAt - b.createdAt || a.key.localeCompare(b.key));

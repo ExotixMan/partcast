@@ -2,7 +2,7 @@ import HelpDetails from '../components/HelpDetails.jsx';
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowRight, ArrowUpFromLine, CheckCircle2, Info, Package, Pencil, Plus, Search, ShoppingCart, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Info, Package, Pencil, Plus, Search, ShoppingCart, Trash2, X } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {useAuth} from '../context/AuthContext.jsx';
 import {staffRoles} from '../lib/access.js';
@@ -15,7 +15,7 @@ import PageHeader from '../components/PageHeader.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { Link } from 'react-router-dom';
 import { ScanLine } from 'lucide-react';
-import { categories, barcodeValid } from '../lib/store.js';
+import { categories, barcodeValid, validAmount, validQuantity, money } from '../lib/store.js';
 import BarcodeScanner from '../components/BarcodeScanner.jsx';
 import ProductPhotos, { ProductThumbnail } from '../components/ProductPhotos.jsx';
 import PartCatalogLink from '../components/PartCatalogLink.jsx';
@@ -58,13 +58,9 @@ const stockFilters = [{
   value: 'out',
   label: 'Out of stock'
 }];
-const formatQuantity = value => Number(value || 0).toLocaleString(undefined, {
-  maximumFractionDigits: 2
-});
-const validStockNumber = value => {
-  const number = Number(value);
-  return Number.isFinite(number) && number >= 0 && number <= 999999999999.99 && Number(number.toFixed(2)) === number;
-};
+const formatQuantity = value => Number(value || 0).toLocaleString();
+const validStockNumber = value => validQuantity(value);
+const validPrice = value => validAmount(value);
 function Field({
   name,
   label,
@@ -113,12 +109,20 @@ export default function InventoryPage() {
   const [category, setCategory] = useState('all'),
     [scan, setScan] = useState(false),
     [aliasText, setAliasText] = useState(''),
-    [photoPaths, setPhotoPaths] = useState([]);
+    [photoPaths, setPhotoPaths] = useState([]),
+    [extraDetailsOpen, setExtraDetailsOpen] = useState(false),
+    [confirmRemoval, setConfirmRemoval] = useState(false);
   async function scanned(code) {
     setScan(false);
     try {
       const r = await api.get(`/api/barcode/${encodeURIComponent(code)}`);
       if (productModal) {
+        if (r.product && r.product.id !== editingId) {
+          setProductErrors(current => ({...current, barcode: 'This barcode already belongs to another part. Use a different code.'}));
+          setFormError('Please check the highlighted fields before saving.');
+          setExtraDetailsOpen(true);
+          return;
+        }
         updateProduct('barcode', code);
       } else if (r.product) {
         setQ(code);
@@ -129,6 +133,7 @@ export default function InventoryPage() {
           ...p,
           barcode: code
         }));
+        setExtraDetailsOpen(true);
         setFormError('New barcode. Enter this part’s name and details before saving.');
       } else setToast({
         type: 'error',
@@ -196,12 +201,13 @@ export default function InventoryPage() {
         ...p,
         barcode: code
       }));
+      setExtraDetailsOpen(true);
     }
   }, [params]);
   const selected = useMemo(() => rows.find(row => row.id === move.product_id) || selectedPart, [rows, move.product_id, selectedPart]);
   const quantity = Number(move.quantity);
-  const quantityValid = move.quantity !== '' && validStockNumber(move.quantity) && quantity >= 0.01;
-  const stockAfter = selected && quantityValid ? Math.round((Number(selected.current_stock) + (move.tx_type === 'stock_in' ? quantity : -quantity)) * 100) / 100 : null;
+  const quantityValid = validStockNumber(move.quantity) && quantity >= 1;
+  const stockAfter = selected && quantityValid ? Number(selected.current_stock) + (move.tx_type === 'stock_in' ? quantity : -quantity) : null;
   const insufficientStock = stockAfter !== null && stockAfter < 0;
   const fieldProps = (name, errors, hint) => ({
     id: name,
@@ -215,6 +221,8 @@ export default function InventoryPage() {
     });
     setAliasText('');
     setPhotoPaths([]);
+    setExtraDetailsOpen(false);
+    setConfirmRemoval(false);
     setProductErrors({});
     setFormError('');
     setProductModal(true);
@@ -223,6 +231,8 @@ export default function InventoryPage() {
     setEditingId(row.id);
     setAliasText((row.search_aliases || []).join(', '));
     setPhotoPaths(row.photo_paths || []);
+    setExtraDetailsOpen(false);
+    setConfirmRemoval(false);
     setProduct({
       category: row.category || 'parts',
       barcode: row.barcode || '',
@@ -296,8 +306,9 @@ export default function InventoryPage() {
     if (product.description.trim().length < 2) errors.description = 'Enter a part name with at least 2 characters.';else if (product.description.trim().length > 500) errors.description = 'Keep the part name within 500 characters.';
     const numberFields = ['minimum_stock', 'safety_stock', 'unit_cost', 'selling_price', ...(!editingId ? ['current_stock'] : [])];
     for (const key of numberFields) {
-      const required = key === 'minimum_stock' || key === 'current_stock';
-      if (required && product[key] === '' || !validStockNumber(product[key])) errors[key] = 'Enter 0 or a larger number, with up to 2 decimal places.';
+      if (['unit_cost','selling_price'].includes(key)) {
+        if (!validPrice(product[key])) errors[key] = 'Enter 0 or a larger number, with up to 2 decimal places.';
+      } else if (!validStockNumber(product[key])) errors[key] = 'Enter a whole number of 0 or more. Do not use decimals.';
     }
     if (product.barcode && !barcodeValid(product.barcode)) errors.barcode = 'Use a barcode with up to 80 letters or numbers.';
     const aliases = aliasText.split(',').map(a => a.trim()).filter(Boolean);
@@ -350,7 +361,7 @@ export default function InventoryPage() {
     event.preventDefault();
     if (savingRef.current) return;
     const errors = {};
-    if (!quantityValid) errors.quantity = 'Enter a quantity of at least 0.01, with up to 2 decimal places.';else if (insufficientStock) errors.quantity = t('Only {v0} {v1} are available. Enter a smaller quantity.',{v0:formatQuantity(selected.current_stock),v1:selected.unit||t('units')});
+    if (!quantityValid) errors.quantity = 'Enter a whole number of 1 or more. Do not use decimals.';else if (insufficientStock) errors.quantity = t('Only {v0} {v1} are available. Enter a smaller quantity.',{v0:formatQuantity(selected.current_stock),v1:selected.unit||t('units')});
     if (move.notes.trim().length < 2) errors.notes = 'Enter a reason for this stock correction.';
     if (Object.keys(errors).length) {
       showValidation(errors, setMoveErrors);
@@ -376,7 +387,32 @@ export default function InventoryPage() {
       setSaving(false);
     }
   }
+  async function removePart() {
+    if (savingRef.current || !editingId || !confirmRemoval || offline) return;
+    savingRef.current = true;
+    setSaving(true);
+    setFormError('');
+    try {
+      await api.patch(`/api/products/${editingId}`, {active: false});
+      setProductModal(false);
+      setConfirmRemoval(false);
+      setToast({message: 'Part removed from active inventory. Past transactions are kept.'});
+      load();
+    } catch (error) {
+      setFormError(error.message);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
   const partActions = row => canEdit ? <div className="flex flex-wrap gap-2"><button className="btn-secondary" disabled={offline} onClick={() => openEdit(row)}><Pencil size={16} />{t("Edit details")}</button><button className="btn-secondary" onClick={() => openMove(row,'stock_out')}><Package size={16} />{t("Adjust stock")}</button></div> : <p className="text-sm text-slate-500">{t("View only. Ask the owner to change part details.")}</p>;
+  const partDetails = row => <details className="group mt-3 border-t border-slate-100 pt-1">
+    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-slate-600">{t('Part details')}<ChevronDown size={16} className="shrink-0 group-open:rotate-180" aria-hidden="true" /></summary>
+    <dl className="space-y-2 pb-2 text-sm">
+      {[[t('Location'),row.location || t('Not set')],[t('Brand'),row.brand || t('Not set')],[t('Category'),t(categories.find(([key]) => key === row.category)?.[1] || 'Car parts')],[t('Barcode'),row.barcode || t('Not set')],[t('Low-stock alert at'),formatQuantity(row.minimum_stock)],[t('Reserve quantity'),formatQuantity(row.safety_stock)]].map(([label,value]) => <div key={label} className="flex justify-between gap-3"><dt className="text-slate-500">{label}</dt><dd className="min-w-0 break-words text-right font-medium text-slate-700">{value}</dd></div>)}
+      {!!row.search_aliases?.length && <div><dt className="text-slate-500">{t('Other names for this part')}</dt><dd className="break-words text-slate-700">{row.search_aliases.join(', ')}</dd></div>}
+    </dl>
+  </details>;
   return <>
     <PageHeader title={t("Inventory")} subtitle={canEdit ? t("Manage part details and correct stock counts here.") : t("Find part names, prices, photos, and available stock.")} actions={<><Link className="btn-secondary" to="/counter"><ShoppingCart size={18} />{t("Sell or receive")}</Link>{canEdit && <button className="btn-primary" disabled={offline} onClick={openAdd}><Plus size={18} />{t("Add a new part")}</button>}</>} />
     <HelpDetails title="Inventory help" className="mb-3"><p>{t("Recording a sale or receiving a delivery? Use Sell or receive. Inventory is for part details and stock corrections.")}</p></HelpDetails>
@@ -388,7 +424,7 @@ export default function InventoryPage() {
         <label htmlFor="inventory-search" className="mb-2 block text-base font-semibold text-slate-900">{t("Find a part")}</label>
         <div className="flex items-center gap-2"><div className="relative min-w-0 flex-1 max-w-2xl">
           <Search className="pointer-events-none absolute left-4 top-3.5 text-slate-400" size={20} aria-hidden="true" />
-          <input id="inventory-search" className="input min-h-12 pl-12 pr-12" aria-label={t("Search inventory")} placeholder={t("Enter a part name, number, or brand")} value={q} onChange={event => {
+          <input id="inventory-search" className="input min-h-12 pl-12 pr-12" aria-label={t("Search inventory")} placeholder={t("Name, part number, or barcode")} value={q} onChange={event => {
               setQ(event.target.value);
               setPage(1);
             }} />
@@ -420,23 +456,22 @@ export default function InventoryPage() {
       </div> : <>
         <div className="hidden overflow-x-auto xl:block">
           <table className="min-w-full text-left text-sm">
-            <thead className="border-y border-slate-100 bg-slate-50 text-slate-600"><tr><th scope="col" className="px-6 py-4 font-medium">{t("Part details")}</th><th scope="col" className="px-4 py-4 font-medium">{t("Available stock")}</th><th scope="col" className="px-4 py-4 font-medium">{t("Location")}</th><th scope="col" className="w-64 px-6 py-4 font-medium">{t("What would you like to do?")}</th></tr></thead>
+            <thead className="border-y border-slate-100 bg-slate-50 text-slate-600"><tr><th scope="col" className="px-6 py-4 font-medium">{t("Part details")}</th><th scope="col" className="px-4 py-4 font-medium">{t("Available stock")}</th><th scope="col" className="px-4 py-4 font-medium">{t("Selling price per unit")}</th><th scope="col" className="w-64 px-6 py-4 font-medium">{t("What would you like to do?")}</th></tr></thead>
             <tbody className="divide-y divide-slate-100">{rows.map(row => <tr key={row.id} className="align-top hover:bg-slate-50/60">
-              <td className="px-6 py-5"><ProductThumbnail product={row} className="mb-3 h-16 w-16" /><p className="max-w-md text-base font-semibold text-slate-900">{row.description || t('Unnamed part')}</p><p className="mt-1 font-medium">₱{Number(row.selling_price||0).toLocaleString(undefined,{minimumFractionDigits:2})}</p><p className="mt-1 text-sm text-slate-500">{row.part_number || t('No part number')}{row.brand ? ` · ${row.brand}` : ''}</p>{row.pending > 0 && <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-800"><CheckCircle2 size={14} aria-hidden="true" />{row.pending} {row.pending === 1 ? t('change') : t('changes')}{t(" saved on this device")}</p>}</td>
-              <td className="px-4 py-5"><p className="mb-2"><strong className="text-2xl font-bold text-slate-900">{formatQuantity(row.current_stock)}</strong><span className="ml-2 text-slate-500">{row.unit || t('units')}</span></p><StatusBadge status={row.stock_status} /><p className="mt-2 text-xs text-slate-500">{t("Low-stock alert at ")}{formatQuantity(row.minimum_stock)}</p></td>
-              <td className="px-4 py-5 text-slate-600">{row.location || t('Not set')}</td>
+              <td className="px-6 py-4"><div className="flex items-start gap-3"><ProductThumbnail product={row} className="h-14 w-14" /><div className="min-w-0 flex-1"><p className="max-w-md text-base font-semibold text-slate-900">{row.description || t('Unnamed part')}</p><p className="mt-1 break-words text-sm text-slate-500">{row.part_number || t('No part number')}</p></div></div>{partDetails(row)}{row.pending > 0 && <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-800"><CheckCircle2 size={14} aria-hidden="true" />{row.pending} {row.pending === 1 ? t('change') : t('changes')}{t(" saved on this device")}</p>}</td>
+              <td className="px-4 py-4"><p className="mb-2"><strong className="text-2xl font-bold text-slate-900">{formatQuantity(row.current_stock)}</strong><span className="ml-2 text-slate-500">{row.unit || t('units')}</span></p><StatusBadge status={row.stock_status} /></td>
+              <td className="whitespace-nowrap px-4 py-5 font-semibold text-slate-900">{money(row.selling_price)}</td>
               <td className="min-w-60 px-6 py-5">{partActions(row)}</td>
             </tr>)}</tbody>
           </table>
         </div>
         <div className="grid gap-4 px-4 pb-5 sm:grid-cols-2 sm:px-6 xl:hidden">{rows.map(row => <article key={row.id} className="flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-3"><ProductThumbnail product={row} /><StatusBadge status={row.stock_status} /></div>
-          <h3 className="mt-4 break-words text-base font-semibold leading-6 text-slate-900">{row.description || t('Unnamed part')}</h3>
-          <p className="mt-1 font-medium">₱{Number(row.selling_price||0).toLocaleString(undefined,{minimumFractionDigits:2})}</p><p className="mt-1 break-words text-sm text-slate-500">{row.part_number || t('No part number')}{row.brand ? ` · ${row.brand}` : ''}</p>
-          <p className="mt-4 text-sm text-slate-600"><strong className="mr-2 text-3xl font-bold tracking-tight text-slate-900">{formatQuantity(row.current_stock)}</strong>{row.unit || t('units')}{t(" available")}</p>
-          <dl className="mt-4 space-y-1.5 text-sm"><div className="flex justify-between gap-3"><dt className="text-slate-500">{t("Location")}</dt><dd className="text-right font-medium text-slate-700">{row.location || t('Not set')}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">{t("Low-stock alert at")}</dt><dd className="font-medium text-slate-700">{formatQuantity(row.minimum_stock)}</dd></div></dl>
+          <div className="flex items-start gap-3"><ProductThumbnail product={row} className="h-14 w-14" /><div className="min-w-0 flex-1"><h3 className="break-words text-base font-semibold leading-6 text-slate-900">{row.description || t('Unnamed part')}</h3><p className="mt-1 break-words text-sm text-slate-500">{row.part_number || t('No part number')}</p></div></div>
+          <div className="mt-4 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">{t('Available stock')}</p><p><strong className="mr-1 text-2xl font-bold text-slate-900">{formatQuantity(row.current_stock)}</strong><span className="text-sm text-slate-600">{row.unit || t('units')}</span></p></div><div className="text-right"><p className="text-sm text-slate-500">{t('Selling price per unit')}</p><p className="font-semibold text-slate-900">{money(row.selling_price)}</p></div></div>
+          <div className="mt-3"><StatusBadge status={row.stock_status} /></div>
+          {partDetails(row)}
           {row.pending > 0 && <p className="mt-3 flex items-start gap-1.5 text-xs font-medium leading-5 text-amber-800"><CheckCircle2 size={15} className="mt-0.5 shrink-0" aria-hidden="true" />{row.pending} {row.pending === 1 ? t('change') : t('changes')}{t(" saved on this device")}</p>}
-          <div className="mt-auto pt-5">{partActions(row)}</div>
+          <div className="mt-auto pt-3">{partActions(row)}</div>
         </article>)}</div>
       </>}
       <Pagination page={page} pageSize={pageSize} count={count} onPage={setPage} />
@@ -448,24 +483,41 @@ export default function InventoryPage() {
       <Form id="inventory-product-form" onSubmit={saveProduct} noValidate className="space-y-5">
         {formError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">{t(formError)}</p>}
         <Field name="description" label={t("Part name *")} errors={productErrors} hint={t("Use a name staff will recognize, such as Toyota brake pad.")}><input {...fieldProps('description', productErrors, true)} className="input" required minLength={2} maxLength={500} value={product.description} onChange={event => updateProduct('description', event.target.value)} /></Field>
-        <div className="grid gap-5 sm:grid-cols-2"><label><span className="label">{t("Category")}</span><select aria-label={t("Category")} className="input" value={product.category} onChange={e => updateProduct('category', e.target.value)}>{categories.filter(([id]) => id !== 'all').map(([id, label]) => <option value={id} key={id}>{t(label)}</option>)}</select></label><Field name="barcode" label={t("Barcode")} errors={productErrors} hint={t("Use the code on the box, or scan it.")}><div className="flex gap-2"><input id="barcode" className="input" maxLength={80} value={product.barcode} onChange={e => updateProduct('barcode', e.target.value)} /><button type="button" className="btn-secondary" onClick={() => setScan(true)}><ScanLine size={18} /><span className="sr-only">{t("Scan")}</span></button></div></Field>
-          <Field name="part_number" label={t("Part number")} hint={t("Use the number printed on the part or box.")}><input id="part_number" aria-describedby="part_number-message" className="input" maxLength={120} value={product.part_number} onChange={event => updateProduct('part_number', event.target.value)} /><PartCatalogLink partNumber={product.part_number}/></Field>
-          <Field name="location" label={t("Where is it stored?")} hint={t("For example, Shelf A or Drawer 3.")}><input id="location" aria-describedby="location-message" className="input" maxLength={80} value={product.location} onChange={event => updateProduct('location', event.target.value)} /></Field>
-          {!editingId && <Field name="current_stock" label={t("Starting quantity *")} errors={productErrors} hint={t("Enter how many you have now. Use 0 if there is no stock yet.")}><input {...fieldProps('current_stock', productErrors, true)} className="input" type="number" inputMode="decimal" min="0" step="0.01" required value={product.current_stock} onChange={event => updateProduct('current_stock', event.target.value)} /></Field>}
-          <Field name="minimum_stock" label={t("Alert me when stock reaches *")} errors={productErrors} hint={t("You will see a low-stock warning at this quantity.")}><input {...fieldProps('minimum_stock', productErrors, true)} className="input" type="number" inputMode="decimal" min="0" step="0.01" required value={product.minimum_stock} onChange={event => updateProduct('minimum_stock', event.target.value)} /></Field>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <label><span className="label">{t("Category")}</span><select aria-label={t("Category")} className="input" value={product.category} onChange={e => updateProduct('category', e.target.value)}>{categories.filter(([id]) => id !== 'all').map(([id, label]) => <option value={id} key={id}>{t(label)}</option>)}</select></label>
+          <Field name="selling_price" label={t("Selling price per unit")} errors={productErrors}><input {...fieldProps('selling_price',productErrors)} className="input" type="number" inputMode="decimal" min="0" step="0.01" value={product.selling_price} onChange={event => updateProduct('selling_price',event.target.value)} /></Field>
+          {!editingId && <Field name="current_stock" label={t("Starting quantity *")} errors={productErrors} hint={t("Enter how many you have now. Use 0 if there is no stock yet.")}><input {...fieldProps('current_stock', productErrors, true)} className="input" type="number" inputMode="numeric" min="0" max="999999999999" step="1" required value={product.current_stock} onChange={event => updateProduct('current_stock', event.target.value)} /></Field>}
         </div>
-        <details className="rounded-xl border border-slate-200 p-4">
-          <summary className="min-h-7 cursor-pointer text-sm font-semibold text-slate-700">{t("More part details ")}<span className="font-normal text-slate-500">{t("(optional)")}</span></summary>
-          <div className="mt-5 grid gap-5 sm:grid-cols-2">
-            {[['Brand', 'brand', 120], ['Unit (pc, set, or box)', 'unit', 40], ['Other part number', 'sub_number', 120]].map(([label, key, maxLength]) => <Field key={key} name={key} label={t(label)}><input id={key} className="input" maxLength={maxLength} value={product[key]} onChange={event => updateProduct(key, event.target.value)} /></Field>)}
-            {[['Reserve quantity', 'safety_stock'], ['Cost per unit', 'unit_cost'], ['Selling price per unit', 'selling_price']].map(([label, key]) => <Field key={key} name={key} label={t(label)} errors={productErrors} hint={key === 'safety_stock' ? t('Extra stock to keep as a buffer.') : undefined}><input {...fieldProps(key, productErrors, key === 'safety_stock')} className="input" type="number" inputMode="decimal" min="0" step="0.01" value={product[key]} onChange={event => updateProduct(key, event.target.value)} /></Field>)}
+        <details className="group rounded-xl border border-slate-200 p-4">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 font-semibold text-slate-700">{t('Stock alerts')}<ChevronDown size={18} className="shrink-0 group-open:rotate-180" aria-hidden="true" /></summary>
+          <div className="mt-4 grid gap-5 sm:grid-cols-2">
+            <Field name="minimum_stock" label={t("Alert me when stock reaches *")} errors={productErrors} hint={t("You will see a low-stock warning at this quantity.")}><input {...fieldProps('minimum_stock', productErrors, true)} className="input" type="number" inputMode="numeric" min="0" max="999999999999" step="1" required value={product.minimum_stock} onChange={event => updateProduct('minimum_stock', event.target.value)} /></Field>
+            <Field name="safety_stock" label={t("Reserve quantity")} errors={productErrors} hint={t('Extra stock to keep as a buffer.')}><input {...fieldProps('safety_stock',productErrors,true)} className="input" type="number" inputMode="numeric" min="0" max="999999999999" step="1" value={product.safety_stock} onChange={event => updateProduct('safety_stock',event.target.value)} /></Field>
           </div>
         </details>
-        <Field name="aliases" label={t("Other names for this part")} errors={productErrors} hint={t("Separate names with commas. For example: engine oil, langis ng makina.")}><input id="aliases" className="input" maxLength={1600} value={aliasText} onChange={e => setAliasText(e.target.value)} /></Field>
+        <details className="group rounded-xl border border-slate-200 p-4" open={extraDetailsOpen} onToggle={event => setExtraDetailsOpen(event.currentTarget.open)}>
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 font-semibold text-slate-700"><span>{t("More part details ")}<span className="font-normal text-slate-500">{t("(optional)")}</span></span><ChevronDown size={18} className="shrink-0 group-open:rotate-180" aria-hidden="true" /></summary>
+          <div className="mt-4 grid gap-5 sm:grid-cols-2">
+            <Field name="barcode" label={t("Barcode")} errors={productErrors} hint={t("Use the printed code for this part. Each barcode can belong to only one part.")}><div className="flex gap-2"><input {...fieldProps('barcode',productErrors,true)} className="input" maxLength={80} value={product.barcode} onChange={e => updateProduct('barcode', e.target.value)} /><button type="button" className="btn-secondary" onClick={() => setScan(true)}><ScanLine size={18} /><span className="sr-only">{t("Scan")}</span></button></div></Field>
+            <Field name="part_number" label={t("Part number")} hint={t("Use the number printed on the part or box.")}><input id="part_number" aria-describedby="part_number-message" className="input" maxLength={120} value={product.part_number} onChange={event => updateProduct('part_number', event.target.value)} /><PartCatalogLink partNumber={product.part_number}/></Field>
+            <Field name="location" label={t("Where is it stored?")} hint={t("For example, Shelf A or Drawer 3.")}><input id="location" aria-describedby="location-message" className="input" maxLength={80} value={product.location} onChange={event => updateProduct('location', event.target.value)} /></Field>
+            {[['Brand', 'brand', 120], ['Unit (pc, set, or box)', 'unit', 40], ['Other part number', 'sub_number', 120]].map(([label, key, maxLength]) => <Field key={key} name={key} label={t(label)}><input id={key} className="input" maxLength={maxLength} value={product[key]} onChange={event => updateProduct(key, event.target.value)} /></Field>)}
+            <Field name="unit_cost" label={t('Cost per unit')} errors={productErrors}><input {...fieldProps('unit_cost',productErrors)} className="input" type="number" inputMode="decimal" min="0" step="0.01" value={product.unit_cost} onChange={event => updateProduct('unit_cost',event.target.value)} /></Field>
+            <Field name="aliases" className="sm:col-span-2" label={t("Other names for this part")} errors={productErrors} hint={t("Separate names with commas. For example: engine oil, langis ng makina.")}><input {...fieldProps('aliases',productErrors,true)} className="input" maxLength={1600} value={aliasText} onChange={e => setAliasText(e.target.value)} /></Field>
+          </div>
+        </details>
         {editingId ? <ProductPhotos productId={editingId} paths={photoPaths} onChange={paths => {
           setPhotoPaths(paths);
           load();
         }} /> : <p className="text-sm text-slate-500">{t("Save this part first, then choose Edit details to add its photos.")}</p>}
+        {editingId && <details className="rounded-xl border border-slate-200 p-4" onToggle={event => {if (!event.currentTarget.open) setConfirmRemoval(false);}}>
+          <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-semibold text-slate-600"><Trash2 size={17} aria-hidden="true" />{t('Remove from active inventory')}</summary>
+          <p className="mt-3 text-sm text-slate-600">{t('This part will no longer appear in inventory or selling choices. Past transactions and photos are kept.')}</p>
+          {confirmRemoval ? <div role="group" aria-label={t('Confirm removal')} className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3">
+            <p className="font-semibold text-red-800">{t('Remove this part from active inventory?')}</p><p className="mt-1 text-sm text-red-800">{t('Unsaved edits in this form will not be saved.')}</p>
+            <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" disabled={saving} onClick={() => setConfirmRemoval(false)}>{t('Keep this part')}</button><button type="button" className="btn-danger" disabled={saving || offline} onClick={removePart}>{saving?t('Saving…'):t('Confirm removal')}</button></div>
+          </div> : <button type="button" className="btn-danger mt-3" disabled={saving || offline} onClick={() => setConfirmRemoval(true)}><Trash2 size={17} />{t('Remove from active inventory')}</button>}
+        </details>}
         <p className="text-xs text-slate-500">{t("* Required information")}</p>
       </Form>
     </Modal>
@@ -475,7 +527,7 @@ export default function InventoryPage() {
         {formError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800">{t(formError)}</p>}
         <h3 className="font-bold">{selected?.description}</h3>
         <label className="block"><span className="label">{t("What needs correcting?")}</span><select className="input" value={move.tx_type} onChange={e=>updateMove('tx_type',e.target.value)}><option value="stock_out">{t("Remove stock")}</option><option value="stock_in">{t("Add stock")}</option></select></label>
-        <Field name="quantity" label={t("Quantity *")} errors={moveErrors}><input {...fieldProps('quantity',moveErrors)} className="input" type="number" inputMode="decimal" min="0.01" step="0.01" required value={move.quantity} onChange={e=>updateMove('quantity',e.target.value)} /></Field>
+        <Field name="quantity" label={t("Quantity *")} errors={moveErrors}><input {...fieldProps('quantity',moveErrors)} className="input" type="number" inputMode="numeric" min="1" max="999999999999" step="1" required value={move.quantity} onChange={e=>updateMove('quantity',e.target.value)} /></Field>
         <Field name="notes" label={t("Reason for correction *")} errors={moveErrors} hint={t("For example, damaged part or shelf count corrected.")}><textarea {...fieldProps('notes',moveErrors,true)} className="input" minLength={2} maxLength={1000} required value={move.notes} onChange={e=>updateMove('notes',e.target.value)} /></Field>
         <div className={`rounded-xl p-4 ${insufficientStock?'bg-red-50 text-red-800':'bg-slate-50 text-slate-700'}`}><p>{t("Available now: {v0}",{v0:formatQuantity(selected?.current_stock)})}</p><p className="mt-1 font-bold">{t("After correction: {v0}",{v0:stockAfter===null?'—':formatQuantity(stockAfter)})}</p></div>
       </Form>

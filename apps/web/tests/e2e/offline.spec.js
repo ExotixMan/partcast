@@ -148,7 +148,7 @@ test('sale basket keeps typing focus, rejects excessive or imprecise quantities,
  const quantity=page.getByLabel('Quantity',{exact:true}),price=page.getByLabel('Price per unit',{exact:true});
  await quantity.fill('6');await expect(quantity).toBeFocused();await page.getByRole('button',{name:'3. Confirm sale'}).click();
  await expect(page.getByRole('alert')).toContainText('not enough saved stock');expect(backend.requests).toHaveLength(0);
- await quantity.fill('0.005');await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();await expect(page.getByText('Check the quantities and prices before saving.')).toBeVisible();expect(backend.requests).toHaveLength(0);
+ await quantity.fill('0.005');await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();await expect(page.getByText('Enter a whole-number quantity of 1 or more.')).toBeVisible();expect(backend.requests).toHaveLength(0);
  await quantity.fill('2');await price.fill('-1');await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();await expect(price).toHaveAttribute('aria-invalid','true');await expect(page.getByText('Add a selling price for every part to continue.')).toBeVisible();
  await price.fill('500');await expect(price).toBeFocused();await expect(page.getByText('Stock after this sale: 3 pcs')).toBeVisible();
  await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect.poll(()=>backend.requests.length).toBe(1);expect(backend.getStock()).toBe(3);

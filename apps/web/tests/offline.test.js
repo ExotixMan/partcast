@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { saveCache,readCache,enqueueMovement,queueItems,clearAccount,drainQueue,projectedProducts,removeQueued } from '../src/lib/offline.js';
+import { saveCache,readCache,updateCachedProduct,enqueueMovement,queueItems,clearAccount,drainQueue,projectedProducts,removeQueued } from '../src/lib/offline.js';
 import { answerLocally } from '../src/lib/localAssistant.js';
 
 test('account isolation, offline queue and duplicate-safe retries',async()=>{
@@ -71,7 +71,7 @@ test('basket amounts use decimal cent arithmetic instead of binary product round
 });
 test('basket prices and edited credit payments never produce a negative or invented balance',async()=>{
  const {basketAmounts}=await import('../src/lib/store.js');
- const lines=[{quantity:'1',unit_price:'19.90'},{quantity:'0.1',unit_price:'0.15'}];
+ const lines=[{quantity:'1',unit_price:'19.90'},{quantity:'1',unit_price:'0.02'}];
  assert.deepEqual(basketAmounts(lines,{isCredit:true,paidAmount:'19.91'}),{total:19.92,balance:0.01,validPayment:true,overpaid:false,zeroSaleTotal:false});
  const edited=[{quantity:'1',unit_price:'10'}];
  assert.deepEqual(basketAmounts(edited,{isCredit:true,paidAmount:'19.91'}),{total:10,balance:null,validPayment:true,overpaid:true,zeroSaleTotal:false});
@@ -86,14 +86,54 @@ test('basket prices and edited credit payments never produce a negative or inven
  assert.equal(basketAmounts([{quantity:'0.01',unit_price:'0.01'}],{txType:'stock_in'}).zeroSaleTotal,false);
  assert.equal(basketAmounts([{quantity:'0.01',unit_price:'1'}]).zeroSaleTotal,false);
  const mixed=[{quantity:'0.01',unit_price:'0.01'},{quantity:1,unit_price:100}];
- assert.equal(basketAmounts(mixed).total,100);
+ assert.equal(basketAmounts(mixed).total,null);
  assert.equal(basketAmounts(mixed).zeroSaleTotal,true);
  assert.equal(basketAmounts(mixed,{txType:'stock_in'}).zeroSaleTotal,false);
  const paidMixed=[{quantity:'0.01',unit_price:1},{quantity:1,unit_price:100}];
- assert.equal(basketAmounts(paidMixed,{isCredit:true,paidAmount:'100.01'}).balance,0);
+ assert.equal(basketAmounts(paidMixed,{isCredit:true,paidAmount:'100.01'}).balance,null);
  assert.equal(basketAmounts(paidMixed).zeroSaleTotal,false);
  assert.equal(basketAmounts(edited,{isCredit:true,paidAmount:''}).balance,null);
  assert.equal(basketAmounts([{quantity:999999999999,unit_price:999999999999}]).total,null);
+});
+test('new baskets require whole units while money retains centavo precision',async()=>{
+ const {validQuantity,basketAmounts}=await import('../src/lib/store.js');
+ for(const value of [0.01,'0.1',1.5,'2.25','',null,true,-1,Infinity,1e12]){
+  assert.equal(validQuantity(value,true),false,String(value));
+  assert.equal(basketAmounts([{quantity:value,unit_price:100}]).total,null,String(value));
+ }
+ for(const value of [1,'2',999999999999])assert.equal(validQuantity(value,true),true);
+ assert.equal(validQuantity(0),true);assert.equal(validQuantity(0,true),false);
+ assert.equal(basketAmounts([{quantity:3,unit_price:0.1}]).total,0.3);
+ assert.equal(basketAmounts([{quantity:2,unit_price:19.95}],{isCredit:true,paidAmount:10.1}).balance,29.8);
+ assert.equal(basketAmounts([{quantity:2,unit_price:0}],{txType:'stock_in'}).total,0);
+});
+test('confirmed part edits and removal update offline inventory without refreshing unrelated data',async()=>{
+ const user='product-cache-owner',other='product-cache-other';
+ const snapshot={products:[{id:'a',description:'Brake pad',selling_price:100,active:true},{id:'b',description:'Oil filter',current_stock:3}],suppliers:[{id:'supplier'}]};
+ await saveCache(user,'/api/offline-snapshot',snapshot);
+ await saveCache(other,'/api/offline-snapshot',snapshot);
+ await saveCache(user,'/api/products?page=1',{data:snapshot.products,count:2});
+ await saveCache(user,'/api/products/a',{product:snapshot.products[0]});
+ await saveCache(user,'/api/barcode/OLD-CODE',{product:snapshot.products[0]});
+ await saveCache(other,'/api/products?page=1',{data:snapshot.products,count:2});
+ const before=await readCache(user,'/api/offline-snapshot');
+ await updateCachedProduct(user,{id:'a',selling_price:125.5});
+ let cached=await readCache(user,'/api/offline-snapshot');
+ assert.equal(cached.savedAt,before.savedAt);
+ assert.equal(cached.value.products.find(p=>p.id==='a').selling_price,125.5);
+ assert.equal(cached.value.products.find(p=>p.id==='a').description,'Brake pad');
+ assert.deepEqual(cached.value.products.find(p=>p.id==='b'),snapshot.products[1]);
+ assert.equal(await readCache(user,'/api/products?page=1'),null);
+ assert.equal(await readCache(user,'/api/products/a'),null);
+ assert.equal(await readCache(user,'/api/barcode/OLD-CODE'),null);
+ assert.equal((await readCache(other,'/api/products?page=1')).value.data.length,2);
+ await updateCachedProduct(user,{id:'a',active:false});
+ cached=await readCache(user,'/api/offline-snapshot');
+ assert.equal(cached.savedAt,before.savedAt);
+ assert.deepEqual(cached.value.products.map(p=>p.id),['b']);
+ assert.deepEqual(cached.value.suppliers,snapshot.suppliers);
+ assert.equal((await readCache(other,'/api/offline-snapshot')).value.products.length,2);
+ await clearAccount(user);await clearAccount(other);
 });
 test('Tagalog availability questions preserve part numbers and fluid names exclude radiator components',async()=>{
  const {normalizeQuestion,productTerms}=await import('../src/lib/partTerms.js');assert.match(normalizeQuestion('May BP-001 ba tayo?'),/bp-001/);assert.equal(normalizeQuestion('Ilang BP-001?'),'quantity bp-001?');assert.equal(normalizeQuestion('Nasaan BP-001?'),'where bp-001?');assert.ok(!productTerms('Magkano radiator fluid?').includes('radiyador'));

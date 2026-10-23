@@ -26,18 +26,74 @@ async function fixture(context,{extraProducts=[]}={}){
 }
 async function finishResponse(page,response){await (await response).finished();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));}
 
-test('a zero-cent sale cannot save while free delivery and a cash sale with a hidden old due date can',async({page,context})=>{
+test('very low selling prices need review again after basket edits and cannot bypass confirmation',async({page,context})=>{
+ const api=await fixture(context),priceWrites=[];
+ await context.route(`http://localhost:10000/api/products/${partId}`,async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();
+  const changes=route.request().postDataJSON();priceWrites.push(changes);Object.assign(api.product,changes);
+  return route.fulfill({json:{product:api.product},headers});
+ });
+ await page.goto('/counter');
+ await page.getByRole('button',{name:'Add Brake pad to basket'}).click();
+ const basket=page.locator('#store-basket'),price=page.getByLabel('Price per unit',{exact:true}),quantity=page.getByLabel('Quantity',{exact:true});
+ const confirm=page.getByRole('button',{name:'3. Confirm sale'}),review=page.getByLabel('I checked these selling prices.');
+ await price.fill('0.10');
+ await expect(page.getByText('This price is below ₱1. Please check before saving.',{exact:true})).toBeVisible();
+ await expect(confirm).toBeDisabled();
+ await basket.evaluate(form=>form.requestSubmit());
+ await expect(page.getByRole('alert')).toContainText('Check the low selling prices before saving.');
+ expect(api.batches).toHaveLength(0);
+ await basket.getByText('Use as regular price',{exact:true}).click();
+ await basket.getByRole('button',{name:'Save price to inventory',exact:true}).click();
+ expect(priceWrites).toHaveLength(0);
+ await review.check();await expect(confirm).toBeEnabled();
+ await basket.getByRole('button',{name:'Save price to inventory',exact:true}).click();
+ await expect.poll(()=>priceWrites.length).toBe(1);expect(priceWrites[0]).toEqual({selling_price:0.1});
+ await price.fill('0.20');await expect(review).not.toBeChecked();await expect(confirm).toBeDisabled();
+ await review.check();await quantity.fill('0.1');
+ await expect(quantity).toHaveAttribute('aria-invalid','true');await expect(confirm).toBeDisabled();
+ await quantity.fill('2');await expect(review).not.toBeChecked();await review.check();
+ await confirm.click();await expect.poll(()=>api.batches.length).toBe(1);
+ expect(api.batches[0].lines).toEqual([{product_id:partId,quantity:2,unit_price:0.2}]);expect(api.product.current_stock).toBe(3);
+});
+
+test('optional sale details stay closed and whole-unit controls fit phone and desktop',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/counter');
+ await page.getByRole('button',{name:'Add Brake pad to basket'}).click();
+ const basket=page.locator('#store-basket');
+ await expect(basket.getByLabel('Customer name (optional)',{exact:true})).toBeHidden();
+ await expect(basket.getByLabel('Reference number',{exact:true})).toBeHidden();
+ await expect(basket.getByLabel('Quantity',{exact:true})).toHaveAttribute('step','1');
+ await basket.getByText('Customer, reference or note',{exact:true}).click();
+ await expect(basket.getByLabel('Customer name (optional)',{exact:true})).toBeVisible();
+ await basket.getByLabel('Customer name (optional)',{exact:true}).fill('Juan');
+ await basket.getByLabel('Customer will pay later').check();
+ await expect(basket.getByLabel('Customer name *',{exact:true})).toHaveValue('Juan');
+ await basket.getByLabel('Customer will pay later').uncheck();
+ await basket.getByText('Customer, reference or note',{exact:true}).click();
+ for(const width of [320,768,1440]){
+  await page.setViewportSize({width,height:900});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ }
+ await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'/tmp/partcast-counter-simplified-desktop.png',fullPage:true});
+ await page.setViewportSize({width:390,height:844});await page.locator('.counter-basket-shortcut').getByRole('link',{name:'View basket'}).click();
+ await expect(page.locator('.counter-basket-shortcut')).toHaveCount(0);
+ await page.getByRole('button',{name:'3. Confirm sale'}).scrollIntoViewIfNeeded();
+ await page.screenshot({path:'/tmp/partcast-counter-simplified-phone.png',fullPage:false});
+});
+
+test('a fractional sale cannot save while free delivery and a cash sale with a hidden old due date can',async({page,context})=>{
  const api=await fixture(context);await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.getByRole('button',{name:'Add Brake pad to basket'}).click();
- await page.getByLabel('Quantity',{exact:true}).fill('0.01');await page.getByLabel('Price per unit',{exact:true}).fill('0.01');await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();await expect(page.getByRole('alert')).toContainText('Each part in a sale must total at least ₱0.01');expect(api.batches).toHaveLength(0);
+ await page.getByLabel('Quantity',{exact:true}).fill('0.01');await page.getByLabel('Price per unit',{exact:true}).fill('0.01');await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();await expect(page.getByRole('alert').first()).toContainText('Enter a whole-number quantity of 1 or more.');expect(api.batches).toHaveLength(0);
  await page.getByLabel('Quantity',{exact:true}).fill('1');await page.getByLabel('Price per unit',{exact:true}).fill('100');await page.getByLabel('Customer will pay later').check();await page.getByLabel('Customer name *').fill('Juan');await page.getByLabel('Due date (optional)').fill('2020-01-01');await page.getByLabel('Customer will pay later').uncheck();await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect.poll(()=>api.batches.length).toBe(1);expect(api.batches[0].is_credit).toBe(false);expect(api.batches[0].due_date).toBe(null);
  await page.getByRole('button',{name:'Receive delivery',exact:true}).click();await page.getByRole('button',{name:'Add Brake pad to basket'}).click();await page.getByLabel('Cost per unit',{exact:true}).fill('0');await page.getByRole('button',{name:'3. Confirm delivery'}).click();await expect.poll(()=>api.batches.length).toBe(2);expect(api.batches[1].tx_type).toBe('stock_in');expect(api.batches[1].lines[0].unit_price).toBe(0);
 });
 
-test('each sale line needs a cent even in a positive basket and a fully paid sale has no due date',async({page,context})=>{
+test('each sale line needs whole units even in a positive basket and a fully paid sale has no due date',async({page,context})=>{
  const api=await fixture(context,{extraProducts:[{id:'22222222-2222-4222-8222-222222222222',part_number:'OF-002',description:'Oil filter',current_stock:5,minimum_stock:1,selling_price:80,unit_cost:30,unit:'pcs',category:'parts',photo_paths:[]}]});
  await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.getByRole('button',{name:'Add Brake pad to basket'}).click();await page.getByRole('button',{name:'Add Oil filter to basket'}).click();
- await page.getByLabel('Quantity',{exact:true}).nth(0).fill('0.01');await page.getByLabel('Price per unit',{exact:true}).nth(0).fill('0.01');await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();await expect(page.getByRole('alert')).toContainText('Each part in a sale must total at least ₱0.01');expect(api.batches).toHaveLength(0);
- await page.getByLabel('Price per unit',{exact:true}).nth(0).fill('1');await page.getByLabel('Customer will pay later').check();await page.getByLabel('Customer name *').fill('Maria');await page.getByLabel('Due date (optional)').fill('2020-01-01');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByRole('alert')).toContainText('Choose a due date today or later.');expect(api.batches).toHaveLength(0);await page.getByLabel('Amount paid now').fill('80.01');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect.poll(()=>api.batches.length).toBe(1);expect(api.batches[0].lines).toHaveLength(2);expect(api.batches[0].paid_amount).toBe(80.01);expect(api.batches[0].due_date).toBe(null);
+ await page.getByLabel('Quantity',{exact:true}).nth(0).fill('0.01');await page.getByLabel('Price per unit',{exact:true}).nth(0).fill('0.01');await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();await expect(page.getByRole('alert').first()).toContainText('Enter a whole-number quantity of 1 or more.');expect(api.batches).toHaveLength(0);
+ await page.getByLabel('Quantity',{exact:true}).nth(0).fill('1');await page.getByLabel('Price per unit',{exact:true}).nth(0).fill('1');await page.getByLabel('Customer will pay later').check();await page.getByLabel('Customer name *').fill('Maria');await page.getByLabel('Due date (optional)').fill('2020-01-01');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByRole('alert')).toContainText('Choose a due date today or later.');expect(api.batches).toHaveLength(0);await page.getByLabel('Amount paid now').fill('81');await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect.poll(()=>api.batches.length).toBe(1);expect(api.batches[0].lines).toHaveLength(2);expect(api.batches[0].paid_amount).toBe(81);expect(api.batches[0].due_date).toBe(null);
 });
 
 test('a late catalog failure cannot replace a newer successful search',async({page,context})=>{
