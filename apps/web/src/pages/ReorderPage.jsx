@@ -2,7 +2,7 @@ import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { ArrowRight, CheckCircle2, Mail, Package, Plus, RefreshCw, Search, Send, SlidersHorizontal, Truck, UserRound, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -37,8 +37,11 @@ export default function ReorderPage() {
     profile
   } = useAuth();
   const admin = ['super_admin', 'owner', 'admin'].includes(profile?.role);
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const linkedQuery = (params.get('q') || '').trim().slice(0, 200);
   const [tab, setTab] = useState('reorder');
-  const [searchDraft,setSearchDraft]=useState(''),[query,setQuery]=useState(''),[stockFilter,setStockFilter]=useState('all'),[supplierFilter,setSupplierFilter]=useState('all');
+  const [searchDraft,setSearchDraft]=useState(linkedQuery),[query,setQuery]=useState(linkedQuery),[stockFilter,setStockFilter]=useState('all'),[supplierFilter,setSupplierFilter]=useState('all');
   const [supplierSearchDraft,setSupplierSearchDraft]=useState(''),[supplierQuery,setSupplierQuery]=useState('');
   const [filtersOpen,setFiltersOpen]=useState(()=>window.matchMedia('(min-width: 768px)').matches);
   const [rows, setRows] = useState([]);
@@ -152,6 +155,14 @@ export default function ReorderPage() {
     window.addEventListener('offline',disconnected);
     return()=>{loadNumber.current++;emailNumber.current++;assignNumber.current++;clearInterval(timer);window.removeEventListener('partcast:queue',refresh);window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);window.removeEventListener('offline',disconnected);};
   }, []);
+  useEffect(() => {
+    setTab('reorder');
+    setSearchDraft(linkedQuery);
+    setQuery(linkedQuery);
+    setStockFilter('all');
+    setSupplierFilter('all');
+    setPage(1);
+  }, [linkedQuery, location.key]);
   const visibleRows=useMemo(()=>filterRestock(rows,{query,status:stockFilter,supplier:supplierFilter}),[rows,query,stockFilter,supplierFilter]);
   const visibleSuppliers=useMemo(()=>suppliers.filter(s=>matchesSearch([s.name,s.email,s.phone,s.contact_person],supplierQuery)),[suppliers,supplierQuery]);
   useEffect(()=>{

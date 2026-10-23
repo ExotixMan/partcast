@@ -1,9 +1,8 @@
-import HelpDetails from '../components/HelpDetails.jsx';
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, ChevronDown, Info, Package, Pencil, Plus, Search, ShoppingCart, Trash2, X } from 'lucide-react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { AlertTriangle, Boxes, CheckCircle2, ChevronDown, Info, Lock, PackageX, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import {useAuth} from '../context/AuthContext.jsx';
 import {staffRoles} from '../lib/access.js';
 import { api } from '../lib/api.js';
@@ -13,13 +12,13 @@ import EmptyState from '../components/EmptyState.jsx';
 import Pagination from '../components/Pagination.jsx';
 import PageHeader from '../components/PageHeader.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
-import { Link } from 'react-router-dom';
 import { ScanLine } from 'lucide-react';
 import { categories, barcodeValid, validAmount, validQuantity, money } from '../lib/store.js';
 import BarcodeScanner from '../components/BarcodeScanner.jsx';
 import ProductPhotos, { ProductThumbnail } from '../components/ProductPhotos.jsx';
 import PartCatalogLink from '../components/PartCatalogLink.jsx';
 import Toast from '../components/Toast.jsx';
+import './inventory.css';
 const blankProduct = {
   category: 'parts',
   barcode: '',
@@ -50,13 +49,16 @@ const blankMove = {
 };
 const stockFilters = [{
   value: 'all',
-  label: 'All parts'
+  label: 'All parts',
+  icon: Boxes
 }, {
   value: 'low',
-  label: 'Running low'
+  label: 'Running low',
+  icon: AlertTriangle
 }, {
   value: 'out',
-  label: 'Out of stock'
+  label: 'Out of stock',
+  icon: PackageX
 }];
 const formatQuantity = value => Number(value || 0).toLocaleString();
 const validStockNumber = value => validQuantity(value);
@@ -80,6 +82,7 @@ export default function InventoryPage() {
   useLocale();
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const {profile} = useAuth();
   const canEdit = staffRoles.includes(profile?.role);
   const action = params.get('action');
@@ -90,7 +93,8 @@ export default function InventoryPage() {
     [page, setPage] = useState(1),
     [q, setQ] = useState(() => params.get('q') || ''),
     [status, setStatus] = useState(() => stockFilters.some(filter => filter.value === params.get('status')) ? params.get('status') : 'all'),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [loadError, setLoadError] = useState('');
   const [productModal, setProductModal] = useState(false),
     [editingId, setEditingId] = useState(null),
     [moveModal, setMoveModal] = useState(false);
@@ -149,17 +153,16 @@ export default function InventoryPage() {
   const load = async () => {
     const request = ++requestNumber.current;
     setLoading(true);
+    setLoadError('');
     try {
       const result = await api.get(`/api/products?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(q)}&status=${status}&category=${category}`);
+      if (!Array.isArray(result.data) || !Number.isFinite(result.count)) throw new Error('The store returned incomplete information. Please try again.');
       if (request === requestNumber.current) {
         setRows(result.data);
         setCount(result.count || 0);
       }
     } catch (error) {
-      if (request === requestNumber.current) setToast({
-        type: 'error',
-        message: error.message
-      });
+      if (request === requestNumber.current) setLoadError(error.message);
     } finally {
       if (request === requestNumber.current) setLoading(false);
     }
@@ -191,8 +194,9 @@ export default function InventoryPage() {
   useEffect(() => {
     setQ(params.get('q') || '');
     setStatus(stockFilters.some(filter => filter.value === params.get('status')) ? params.get('status') : 'all');
+    if (params.has('q')) setCategory('all');
     setPage(1);
-  }, [params]);
+  }, [params, location.key]);
   useEffect(() => {
     const code = params.get('newBarcode');
     if (canEdit && code && barcodeValid(code)) {
@@ -405,81 +409,77 @@ export default function InventoryPage() {
       setSaving(false);
     }
   }
-  const partActions = row => canEdit ? <div className="flex flex-wrap gap-2"><button className="btn-secondary" disabled={offline} onClick={() => openEdit(row)}><Pencil size={16} />{t("Edit details")}</button><button className="btn-secondary" onClick={() => openMove(row,'stock_out')}><Package size={16} />{t("Adjust stock")}</button></div> : <p className="text-sm text-slate-500">{t("View only. Ask the owner to change part details.")}</p>;
-  const partDetails = row => <details className="group mt-3 border-t border-slate-100 pt-1">
+  const filtered = Boolean(q || status !== 'all' || category !== 'all');
+  const clearFilters = () => {
+    setQ('');
+    setStatus('all');
+    setCategory('all');
+    setPage(1);
+  };
+  const partActions = row => canEdit ? <div className="inventory-part-actions">
+    <button type="button" className="btn-secondary inventory-edit-action" disabled={offline} onClick={() => openEdit(row)}><Pencil size={17} aria-hidden="true" />{t('Edit details')}</button>
+    <button type="button" className="inventory-adjust-action" onClick={() => openMove(row,'stock_out')}><SlidersHorizontal size={17} aria-hidden="true" />{t('Adjust stock')}</button>
+  </div> : <span className="inventory-read-only"><Lock size={15} aria-hidden="true" />{t('View only')}</span>;
+  const partDetails = row => <details className="inventory-part-details group">
     <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-slate-600">{t('Part details')}<ChevronDown size={16} className="shrink-0 group-open:rotate-180" aria-hidden="true" /></summary>
-    <dl className="space-y-2 pb-2 text-sm">
-      {[[t('Location'),row.location || t('Not set')],[t('Brand'),row.brand || t('Not set')],[t('Category'),t(categories.find(([key]) => key === row.category)?.[1] || 'Car parts')],[t('Barcode'),row.barcode || t('Not set')],[t('Low-stock alert at'),formatQuantity(row.minimum_stock)],[t('Reserve quantity'),formatQuantity(row.safety_stock)]].map(([label,value]) => <div key={label} className="flex justify-between gap-3"><dt className="text-slate-500">{label}</dt><dd className="min-w-0 break-words text-right font-medium text-slate-700">{value}</dd></div>)}
-      {!!row.search_aliases?.length && <div><dt className="text-slate-500">{t('Other names for this part')}</dt><dd className="break-words text-slate-700">{row.search_aliases.join(', ')}</dd></div>}
+    <dl className="inventory-detail-grid">
+      {[[t('Location'),row.location || t('Not set')],[t('Brand'),row.brand || t('Not set')],[t('Category'),t(categories.find(([key]) => key === row.category)?.[1] || 'Car parts')],[t('Barcode'),row.barcode || t('Not set')],[t('Low-stock alert at'),formatQuantity(row.minimum_stock)],[t('Reserve quantity'),formatQuantity(row.safety_stock)]].map(([label,value]) => <div key={label}><dt className="text-slate-500">{label}</dt><dd className="min-w-0 break-words font-medium text-slate-700">{value}</dd></div>)}
+      {!!row.search_aliases?.length && <div className="inventory-detail-aliases"><dt className="text-slate-500">{t('Other names for this part')}</dt><dd className="break-words text-slate-700">{row.search_aliases.join(', ')}</dd></div>}
     </dl>
   </details>;
-  return <>
-    <PageHeader title={t("Inventory")} subtitle={canEdit ? t("Manage part details and correct stock counts here.") : t("Find part names, prices, photos, and available stock.")} actions={<><Link className="btn-secondary" to="/counter"><ShoppingCart size={18} />{t("Sell or receive")}</Link>{canEdit && <button className="btn-primary" disabled={offline} onClick={openAdd}><Plus size={18} />{t("Add a new part")}</button>}</>} />
-    <HelpDetails title="Inventory help" className="mb-3"><p>{t("Recording a sale or receiving a delivery? Use Sell or receive. Inventory is for part details and stock corrections.")}</p></HelpDetails>
+  return <div className="inventory-page">
+    <PageHeader title={t('Inventory')} actions={canEdit && <button type="button" className="btn-primary" disabled={offline} onClick={openAdd}><Plus size={18} aria-hidden="true" />{t('Add a new part')}</button>} />
 
-    {offline && <div role="status" className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><Info size={19} className="mt-1 shrink-0" aria-hidden="true" /><p><strong>{t("You can still record stock changes.")}</strong>{t(" They are saved on this device and sent when your connection returns. Adding or editing part details needs a connection.")}</p></div>}
+    {offline && <div role="status" className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><Info size={19} className="mt-1 shrink-0" aria-hidden="true" /><p><strong>{t('You can still record stock changes.')}</strong>{t(' They are saved on this device and sent when your connection returns. Adding or editing part details needs a connection.')}</p></div>}
 
-    <section className="panel overflow-hidden" aria-label={t("Your inventory")}>
-      <div className="border-b border-slate-100 p-4 sm:p-6">
-        <label htmlFor="inventory-search" className="mb-2 block text-base font-semibold text-slate-900">{t("Find a part")}</label>
-        <div className="flex items-center gap-2"><div className="relative min-w-0 flex-1 max-w-2xl">
-          <Search className="pointer-events-none absolute left-4 top-3.5 text-slate-400" size={20} aria-hidden="true" />
-          <input id="inventory-search" className="input min-h-12 pl-12 pr-12" aria-label={t("Search inventory")} placeholder={t("Name, part number, or barcode")} value={q} onChange={event => {
+    <section className="inventory-browser" aria-label={t('Your inventory')} aria-busy={loading}>
+      <div className="inventory-toolbar panel">
+        <label htmlFor="inventory-search" className="label">{t('Search inventory')}</label>
+        <div className="inventory-search-row"><div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-4 top-3.5 text-slate-500" size={20} aria-hidden="true" />
+          <input id="inventory-search" className="input min-h-12 pl-12 pr-12" aria-label={t('Search inventory')} type="text" placeholder={t('Name, part number, or barcode')} value={q} onChange={event => {
               setQ(event.target.value);
               setPage(1);
             }} />
-          {q && <button aria-label={t("Clear search")} className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => {
+          {q && <button type="button" aria-label={t('Clear search')} className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => {
               setQ('');
               setPage(1);
-            }}><X size={18} /></button>}
-        </div>
-        <button className="btn-secondary" onClick={() => setScan(true)}><ScanLine size={18} />{t("Scan")}</button></div><label className="mt-4 block max-w-sm"><span className="label">{t("Category")}</span><select aria-label={t("Category")} className="input" value={category} onChange={e => {
-            setCategory(e.target.value);
+            }}><X size={18} aria-hidden="true" /></button>}
+        </div><button type="button" className="btn-secondary shrink-0" onClick={() => setScan(true)}><ScanLine size={20} aria-hidden="true" />{t('Scan')}</button></div>
+        <div className="inventory-filter-row">
+          <div className="inventory-stock-filters" role="group" aria-label={t('Filter by stock level')}>
+            {stockFilters.map(({value,label,icon:Icon}) => <button type="button" key={value} aria-pressed={status === value} className={status === value ? 'is-selected' : ''} onClick={() => {
+              setStatus(value);
+              setPage(1);
+            }}><Icon size={18} aria-hidden="true" /><span>{t(label)}</span></button>)}
+          </div>
+          <label className="inventory-category"><span className="label">{t('Category')}</span><select aria-label={t('Category')} className="input" value={category} onChange={event => {
+            setCategory(event.target.value);
             setPage(1);
-          }}>{categories.map(([id, label]) => <option key={id} value={id}>{t(label)}</option>)}</select></label>
-        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label={t("Filter by stock level")}>
-          {stockFilters.map(filter => <button key={filter.value} aria-pressed={status === filter.value} className={`min-h-11 rounded-full border px-4 py-2 text-sm font-semibold transition ${status === filter.value ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`} onClick={() => {
-            setStatus(filter.value);
-            setPage(1);
-          }}>{t(filter.label)}</button>)}
+          }}>{categories.map(([id,label]) => <option key={id} value={id}>{t(label)}</option>)}</select></label>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6"><p className="text-sm font-medium text-slate-600" aria-live="polite">{loading ? t('Finding parts…') : `${count.toLocaleString()} ${count === 1 ? 'part' : 'parts'}${q || status !== 'all' ? ' found' : ' in your inventory'}`}</p><span className="hidden text-xs text-slate-500 sm:block">{t("Tap a photo to see the whole part")}</span></div>
+      <div className="inventory-results-heading"><p className="text-sm font-medium text-slate-600" aria-live="polite">{loading ? t('Finding parts…') : loadError && !rows.length ? '—' : count === 1 ? t('1 part found') : t('{v0} parts found',{v0:count.toLocaleString()})}</p>{filtered && <button type="button" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-red-700" onClick={clearFilters}><X size={16} aria-hidden="true" />{t('Clear filters')}</button>}</div>
+      {loadError && <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p className="min-w-0 break-words">{t(loadError)}</p><button type="button" className="btn-secondary" disabled={loading} onClick={load}>{t('Try again')}</button></div>}
 
-      {loading ? <Loading /> : rows.length === 0 ? <div>
-        <EmptyState title={q || status !== 'all' ? t('No parts match your search') : t('Your inventory is ready for its first part')} text={q || status !== 'all' ? t('Try a different name or part number, or show all parts.') : t('Choose “Add a new part” to start keeping track of your stock.')} />
-        {(q || status !== 'all') && <div className="mb-8 flex justify-center"><button className="btn-secondary" onClick={() => {
-            setQ('');
-            setStatus('all');
-            setPage(1);
-          }}>{t("Show all parts")}</button></div>}
-      </div> : <>
-        <div className="hidden overflow-x-auto xl:block">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-y border-slate-100 bg-slate-50 text-slate-600"><tr><th scope="col" className="px-6 py-4 font-medium">{t("Part details")}</th><th scope="col" className="px-4 py-4 font-medium">{t("Available stock")}</th><th scope="col" className="px-4 py-4 font-medium">{t("Selling price per unit")}</th><th scope="col" className="w-64 px-6 py-4 font-medium">{t("What would you like to do?")}</th></tr></thead>
-            <tbody className="divide-y divide-slate-100">{rows.map(row => <tr key={row.id} className="align-top hover:bg-slate-50/60">
-              <td className="px-6 py-4"><div className="flex items-start gap-3"><ProductThumbnail product={row} className="h-14 w-14" /><div className="min-w-0 flex-1"><p className="max-w-md text-base font-semibold text-slate-900">{row.description || t('Unnamed part')}</p><p className="mt-1 break-words text-sm text-slate-500">{row.part_number || t('No part number')}</p></div></div>{partDetails(row)}{row.pending > 0 && <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-800"><CheckCircle2 size={14} aria-hidden="true" />{row.pending} {row.pending === 1 ? t('change') : t('changes')}{t(" saved on this device")}</p>}</td>
-              <td className="px-4 py-4"><p className="mb-2"><strong className="text-2xl font-bold text-slate-900">{formatQuantity(row.current_stock)}</strong><span className="ml-2 text-slate-500">{row.unit || t('units')}</span></p><StatusBadge status={row.stock_status} /></td>
-              <td className="whitespace-nowrap px-4 py-5 font-semibold text-slate-900">{money(row.selling_price)}</td>
-              <td className="min-w-60 px-6 py-5">{partActions(row)}</td>
-            </tr>)}</tbody>
-          </table>
+      {loading ? <Loading /> : rows.length === 0 ? !loadError && <div className="panel">
+        <EmptyState title={t('No parts found')} text="" />
+        {filtered && <div className="mb-6 flex justify-center"><button type="button" className="btn-secondary" onClick={clearFilters}>{t('Show all parts')}</button></div>}
+      </div> : <div className="inventory-results">{rows.map(row => <article key={row.id} className="inventory-part-card">
+        <div className="inventory-part-main">
+          <div className="inventory-part-identity"><ProductThumbnail product={row} className="inventory-part-photo" showLabel={false} fullscreen /><div className="min-w-0 flex-1"><h3 className="break-words text-base font-bold leading-snug text-slate-900">{row.description || t('Unnamed part')}</h3><p className="inventory-part-number">{row.part_number || t('No part number')}</p><StatusBadge status={row.stock_status} /></div></div>
+          <dl className="inventory-part-stats"><div><dt>{t('Available stock')}</dt><dd><strong className="inventory-stock-value">{formatQuantity(row.current_stock)}</strong><span className="inventory-stock-unit">{row.unit || t('units')}</span></dd></div><div><dt>{t('Selling price per unit')}</dt><dd className="inventory-price-value">{money(row.selling_price)}</dd></div></dl>
+          {partActions(row)}
         </div>
-        <div className="grid gap-4 px-4 pb-5 sm:grid-cols-2 sm:px-6 xl:hidden">{rows.map(row => <article key={row.id} className="flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-          <div className="flex items-start gap-3"><ProductThumbnail product={row} className="h-14 w-14" /><div className="min-w-0 flex-1"><h3 className="break-words text-base font-semibold leading-6 text-slate-900">{row.description || t('Unnamed part')}</h3><p className="mt-1 break-words text-sm text-slate-500">{row.part_number || t('No part number')}</p></div></div>
-          <div className="mt-4 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">{t('Available stock')}</p><p><strong className="mr-1 text-2xl font-bold text-slate-900">{formatQuantity(row.current_stock)}</strong><span className="text-sm text-slate-600">{row.unit || t('units')}</span></p></div><div className="text-right"><p className="text-sm text-slate-500">{t('Selling price per unit')}</p><p className="font-semibold text-slate-900">{money(row.selling_price)}</p></div></div>
-          <div className="mt-3"><StatusBadge status={row.stock_status} /></div>
-          {partDetails(row)}
-          {row.pending > 0 && <p className="mt-3 flex items-start gap-1.5 text-xs font-medium leading-5 text-amber-800"><CheckCircle2 size={15} className="mt-0.5 shrink-0" aria-hidden="true" />{row.pending} {row.pending === 1 ? t('change') : t('changes')}{t(" saved on this device")}</p>}
-          <div className="mt-auto pt-3">{partActions(row)}</div>
-        </article>)}</div>
-      </>}
-      <Pagination page={page} pageSize={pageSize} count={count} onPage={setPage} />
+        {row.pending > 0 && <p className="mt-3 flex items-start gap-1.5 text-xs font-medium leading-5 text-amber-800"><CheckCircle2 size={15} className="mt-0.5 shrink-0" aria-hidden="true" />{row.pending} {row.pending === 1 ? t('change') : t('changes')}{t(' saved on this device')}</p>}
+        {partDetails(row)}
+      </article>)}</div>}
+      {(!loadError || rows.length > 0) && <div className="panel mt-4 overflow-hidden"><Pagination page={page} pageSize={pageSize} count={count} onPage={setPage} /></div>}
     </section>
 
     <Modal open={productModal} onClose={() => {
       if (!saving) setProductModal(false);
-    }} title={editingId ? t('Edit part details') : t('Add a new part')} description={editingId ? t('Update part details. Use Adjust stock only to correct a stock count.') : t('Start with the part name and quantity. You can add more details later.')} size="lg" footer={<><button className="btn-secondary" disabled={saving} onClick={() => setProductModal(false)}>{t("Cancel")}</button><button type="submit" form="inventory-product-form" className="btn-primary" disabled={saving}>{saving ? t('Saving…') : editingId ? t('Save changes') : t('Save part')}</button></>}>
+    }} title={editingId ? t('Edit part details') : t('Add a new part')} size="lg" footer={<><button className="btn-secondary" disabled={saving} onClick={() => setProductModal(false)}>{t("Cancel")}</button><button type="submit" form="inventory-product-form" className="btn-primary" disabled={saving}>{saving ? t('Saving…') : editingId ? t('Save changes') : t('Save part')}</button></>}>
       <Form id="inventory-product-form" onSubmit={saveProduct} noValidate className="space-y-5">
         {formError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">{t(formError)}</p>}
         <Field name="description" label={t("Part name *")} errors={productErrors} hint={t("Use a name staff will recognize, such as Toyota brake pad.")}><input {...fieldProps('description', productErrors, true)} className="input" required minLength={2} maxLength={500} value={product.description} onChange={event => updateProduct('description', event.target.value)} /></Field>
@@ -534,5 +534,5 @@ export default function InventoryPage() {
     </Modal>
     <BarcodeScanner open={scan} onClose={() => setScan(false)} onScan={scanned} />
     <Toast toast={toast} onClose={() => setToast(null)} />
-  </>;
+  </div>;
 }

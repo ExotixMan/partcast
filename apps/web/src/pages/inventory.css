@@ -1,0 +1,47 @@
+.inventory-toolbar { padding:1rem; border-radius:1.15rem; }
+.inventory-search-row { display:flex; align-items:center; gap:.6rem; }
+.inventory-filter-row { display:flex; min-width:0; flex-wrap:wrap; align-items:end; justify-content:space-between; gap:1rem; margin-top:1rem; }
+.inventory-stock-filters { display:flex; min-width:0; flex-wrap:wrap; gap:.45rem; }
+.inventory-stock-filters > button { display:flex; min-height:46px; align-items:center; justify-content:center; gap:.45rem; border:1px solid #e2e8f0; border-radius:.75rem; padding:.6rem .85rem; background:#fff; color:#475569; font-size:.9375rem; font-weight:600; line-height:1.35; }
+.inventory-stock-filters > button > svg { flex-shrink:0; }
+.inventory-stock-filters > button.is-selected { border-color:#f87171; background:#fff1f2; color:#991b1b; }
+.inventory-category { display:block; width:100%; max-width:16rem; }
+.inventory-category .label { margin-bottom:.3rem; font-size:.9375rem; }
+.inventory-category .input { padding-top:.65rem; padding-bottom:.65rem; }
+.inventory-results-heading { display:flex; min-height:3.8rem; align-items:center; justify-content:space-between; gap:1rem; }
+.inventory-results { display:grid; gap:.8rem; container-type:inline-size; }
+.inventory-part-card { min-width:0; padding:1rem; border:1px solid #e2e8f0; border-radius:1.15rem; background:#fff; box-shadow:0 2px 12px #0f172a04; }
+.inventory-part-main { display:grid; min-width:0; align-items:start; gap:1rem; }
+.inventory-part-identity { display:flex; min-width:0; align-items:start; gap:.85rem; }
+.inventory-part-identity > button { cursor:zoom-in; }
+.inventory-part-photo { display:flex; width:4.5rem; height:4.5rem; flex-shrink:0; object-fit:contain; }
+.inventory-part-number { margin:.3rem 0 .5rem; color:#64748b; font-size:.9375rem; overflow-wrap:anywhere; }
+.inventory-part-stats { display:grid; min-width:0; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.8rem; padding:.8rem 0; border-top:1px solid #f1f5f9; border-bottom:1px solid #f1f5f9; }
+.inventory-part-stats > div { display:flex; min-width:0; flex-direction:column; justify-content:space-between; gap:.3rem; }
+.inventory-part-stats dt { color:#64748b; font-size:.9375rem; line-height:1.4; }
+.inventory-part-stats dd { min-width:0; overflow-wrap:anywhere; color:#0f172a; }
+.inventory-stock-value { font-size:1.65rem; line-height:1.3; }
+.inventory-stock-unit { margin-left:.35rem; color:#475569; font-size:.9375rem; }
+.inventory-price-value { font-size:1.2rem; font-weight:700; line-height:1.8; }
+.inventory-part-actions { display:grid; min-width:0; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.6rem; align-items:stretch; }
+.inventory-edit-action { border-color:#fecaca; background:#fff1f2; color:#b91c1c; padding:.65rem .6rem; }
+.inventory-adjust-action { display:inline-flex; min-height:48px; min-width:0; align-items:center; justify-content:center; gap:.4rem; border:1px solid #e2e8f0; border-radius:.75rem; padding:.65rem .6rem; color:#475569; font-size:.9375rem; font-weight:600; line-height:1.4; }
+.inventory-part-actions svg { flex-shrink:0; }
+.inventory-part-details { margin-top:.85rem; border-top:1px solid #f1f5f9; padding-top:.15rem; }
+.inventory-detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.9rem 1.2rem; border-radius:.8rem; background:#f8fafc; padding:.85rem; font-size:.9375rem; }
+.inventory-detail-grid > div { min-width:0; }
+.inventory-detail-grid dd { margin-top:.2rem; overflow-wrap:anywhere; }
+.inventory-detail-aliases { grid-column:1 / -1; }
+.inventory-read-only { display:flex; align-items:center; gap:.4rem; width:fit-content; min-height:44px; color:#64748b; font-size:.9375rem; }
+@container (min-width:40rem) { .inventory-part-main { grid-template-columns:minmax(0,1fr) minmax(14rem,.7fr); } .inventory-part-stats { padding:.25rem 0; border:0; } .inventory-part-actions { grid-column:1 / -1; display:flex; justify-content:flex-end; } .inventory-part-actions > button { min-width:10rem; } .inventory-read-only { grid-column:1 / -1; justify-self:end; } .inventory-detail-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@container (min-width:50rem) { .inventory-part-main { grid-template-columns:minmax(0,1fr) minmax(14rem,.7fr) 10rem; } .inventory-part-actions { grid-column:auto; display:grid; grid-template-columns:1fr; } .inventory-part-actions > button { min-width:0; } .inventory-read-only { grid-column:auto; } }
+@media (max-width:639px) { .inventory-filter-row { gap:.8rem; } .inventory-stock-filters { display:grid; width:100%; grid-template-columns:repeat(3,minmax(0,1fr)); } .inventory-stock-filters > button { min-width:0; padding:.65rem .35rem; overflow-wrap:break-word; } .inventory-stock-filters > button > svg { display:none; } .inventory-category { max-width:none; } }
+@media (max-width:389px) { .inventory-toolbar,.inventory-part-card { padding:.8rem; } .inventory-search-row > button { flex-direction:column; gap:0; min-width:3.6rem; padding:.45rem; font-size:.8125rem; } .inventory-part-photo { width:3.5rem; height:3.5rem; } .inventory-part-identity { gap:.65rem; } .inventory-part-actions { grid-template-columns:1fr; } .inventory-part-actions > button { min-height:46px; } .inventory-detail-grid { grid-template-columns:1fr; } .inventory-price-value { font-size:1.1rem; } }
+html[data-theme="dark"] .inventory-page .page-title { color:#f1f5f9; }
+html[data-theme="dark"] :is(.inventory-part-card,.inventory-stock-filters > button) { background:#1f2937; border-color:#475569; color:#e2e8f0; }
+html[data-theme="dark"] .inventory-stock-filters > button.is-selected { background:#40252c; border-color:#f87171; color:#fecaca; }
+html[data-theme="dark"] :is(.inventory-part-stats,.inventory-part-details,.inventory-adjust-action) { border-color:#475569; }
+html[data-theme="dark"] :is(.inventory-part-number,.inventory-part-stats dt,.inventory-stock-unit,.inventory-read-only,.inventory-adjust-action) { color:#b8c5d6; }
+html[data-theme="dark"] .inventory-part-stats dd { color:#f1f5f9; }
+html[data-theme="dark"] .inventory-detail-grid { background:#182231; }
+html[data-theme="dark"] .inventory-edit-action { background:#40252c; border-color:#9f4954; color:#fca5a5; }

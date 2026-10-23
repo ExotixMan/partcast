@@ -1438,5 +1438,12 @@
   "Basket is empty.": "Walang laman ang basket.",
   "No recorded sales for this period.": "Walang naitalang benta sa panahong ito.",
   "{v0} out of stock · {v1} running low": "{v0} ubos na · {v1} paubos na",
-  "No restock recommendations.": "Walang mungkahing dagdag-stock."
+  "No restock recommendations.": "Walang mungkahing dagdag-stock.",
+  "SKU": "SKU",
+  "Threshold": "Antas ng babala",
+  "Copy SKU": "Kopyahin ang SKU",
+  "SKU copied.": "Nakopya ang SKU.",
+  "Could not copy SKU.": "Hindi makopya ang SKU.",
+  "View only": "Tingnan lamang",
+  "No parts found": "Walang nakitang piyesa"
 }

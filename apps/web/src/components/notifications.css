@@ -1,0 +1,14 @@
+.notification-filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+.notification-filter { display:flex; min-width:0; min-height:44px; align-items:center; justify-content:space-between; gap:.4rem; padding:.6rem .7rem; }
+.notification-filter-label { min-width:0; line-height:1.4; overflow-wrap:break-word; }
+.notification-filter-label > svg { display:inline-block; margin-right:.35rem; vertical-align:-.2rem; }
+.notification-card-heading { display:grid; grid-template-columns:2.75rem minmax(0,1fr) 2.75rem; align-items:start; gap:.75rem; }
+.notification-name-line { display:flex; min-width:0; align-items:start; justify-content:space-between; gap:.5rem; }
+.notification-unread-dot { display:inline-block; width:.5rem; height:.5rem; flex-shrink:0; margin-top:.4rem; border-radius:50%; background:#dc2626; }
+.notification-copy-button { display:grid; width:2.75rem; min-width:44px; height:2.75rem; min-height:44px; place-items:center; }
+.notification-stock-meta { display:flex; flex-wrap:wrap; column-gap:1.25rem; row-gap:.5rem; margin-top:1rem; }
+.notification-stock-meta > div { display:flex; min-width:0; flex-wrap:wrap; gap:.35rem; }
+.notification-stock-meta dd { margin:0; overflow-wrap:anywhere; }
+.notification-card-actions { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:1rem; }
+@media (min-width:640px) { .notification-filters { display:flex; flex-wrap:wrap; } .notification-card-main { margin-left:3.5rem; } }
+html[data-theme="dark"] .notification-unread-dot { background:#fca5a5; }

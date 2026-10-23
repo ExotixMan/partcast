@@ -122,7 +122,7 @@ test('selected navigation keeps its highlight without a left stripe in the sideb
   await expect(page.getByRole('dialog', { name: 'All pages', exact: true })).toHaveCount(0);
 });
 
-test('compact alerts prioritize stock problems and keep extra details out of the main view', async ({ page, context }) => {
+test('compact alerts show stock metadata and keep unresolved stock problems after reading', async ({ page, context }) => {
   const store = await fixture(context);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
@@ -140,12 +140,10 @@ test('compact alerts prioritize stock problems and keep extra details out of the
     expect(await filter.locator('svg').count()).toBeGreaterThan(0);
   }
   const out = cards.first();
-  await expect(out.getByText('Low-stock level', { exact: true })).toBeHidden();
-  await expect(out.getByText('Alert date', { exact: true })).toBeHidden();
-  await out.locator('summary').click();
-  await expect(out.getByText('Low-stock level', { exact: true })).toBeVisible();
-  await expect(out.getByText('Alert date', { exact: true })).toBeVisible();
-  await out.locator('summary').click();
+  await expect(out.getByText('Threshold:', { exact: true })).toBeVisible();
+  await expect(out.locator('time')).toBeVisible();
+  await expect(out.locator('time')).toHaveAttribute('datetime', '2026-10-17T03:00:00.000Z');
+  await expect(out.locator('summary')).toHaveCount(0);
   await out.getByRole('button', { name: 'Mark as read', exact: true }).click();
   await expect(out.getByText('Read', { exact: true })).toBeVisible();
   await expect(out.getByText('Out of stock', { exact: true })).toBeVisible();
@@ -195,9 +193,8 @@ test('analytics and icon-led alerts fit a 320px phone in larger Tagalog text and
   expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const firstName = await dialog.getByRole('article').first().getByRole('heading').boundingBox();
-  const footer = await dialog.getByRole('link').locator('..').locator('..').boundingBox();
+  const footer = await dialog.locator('a[href="/reorder"]').locator('..').locator('..').boundingBox();
   expect(firstName.y + firstName.height).toBeLessThanOrEqual(footer.y);
   await page.screenshot({ path: '/tmp/partcast-notifications-clean-phone.png', fullPage: false });
-  await dialog.getByRole('article').first().locator('summary').click();
-  expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await expect(dialog.getByRole('article').first().locator('time')).toBeVisible();
 });

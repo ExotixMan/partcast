@@ -1,11 +1,12 @@
 import {t,useLocale} from '../context/LocaleContext.jsx';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {Bell,BellDot,Boxes,Check,CheckCircle2,ChevronDown,CloudOff,Info,ListFilter,PackageSearch,PackageX,AlertTriangle,RefreshCw,Search,Truck} from 'lucide-react';
+import {Bell,BellDot,Check,CheckCircle2,CloudOff,Copy,ListFilter,PackageSearch,PackageX,AlertTriangle,RefreshCw,Search,Truck} from 'lucide-react';
 import {Link} from 'react-router-dom';
 import {useAuth} from '../context/AuthContext.jsx';
 import {api} from '../lib/api.js';
 import Modal from './Modal.jsx';
 import Loading from './Loading.jsx';
+import './notifications.css';
 
 export default function NotificationCenter(){
   const {language}=useLocale(),{profile}=useAuth();
@@ -13,6 +14,8 @@ export default function NotificationCenter(){
   const [marking,setMarking]=useState(''),[rows,setRows]=useState([]),[open,setOpen]=useState(false);
   const [error,setError]=useState(''),[offline,setOffline]=useState(false),[loading,setLoading]=useState(true);
   const [filter,setFilter]=useState('all'),[query,setQuery]=useState('');
+  const [copying,setCopying]=useState(''),[copyFeedback,setCopyFeedback]=useState(null);
+  const copyPending=useRef(false);
   const locale=language==='fil'?'fil-PH':'en-PH';
   const load=async()=>{
     if(pending.current){refreshPending.current=true;return;}
@@ -29,6 +32,26 @@ export default function NotificationCenter(){
     catch(cause){if(live.current)setError(cause.message);}
     finally{pending.current=false;if(live.current){setMarking('');setLoading(false);if(refreshPending.current){refreshPending.current=false;load();}}}
   }
+  useEffect(()=>{
+    if(!copyFeedback)return;
+    const timer=setTimeout(()=>setCopyFeedback(null),4000);
+    return()=>clearTimeout(timer);
+  },[copyFeedback]);
+  async function copySku(row){
+    const sku=row.product?.part_number;
+    if(!sku||copyPending.current)return;
+    copyPending.current=true;setCopying(row.id);setCopyFeedback(null);
+    try{
+      if(typeof navigator.clipboard?.writeText!=='function')throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(String(sku));
+      if(live.current)setCopyFeedback({id:row.id,failed:false});
+    }catch{
+      if(live.current)setCopyFeedback({id:row.id,failed:true});
+    }finally{
+      copyPending.current=false;
+      if(live.current)setCopying('');
+    }
+  }
   const count=rows.filter(row=>!row.read).length,out=rows.filter(row=>row.kind==='out').length;
   const visible=useMemo(()=>{
     const search=query.trim().toLowerCase();
@@ -36,7 +59,14 @@ export default function NotificationCenter(){
       .sort((a,b)=>Number(b.kind==='out')-Number(a.kind==='out')||Number(a.read)-Number(b.read)||String(b.created_at||'').localeCompare(String(a.created_at||'')));
   },[rows,filter,query]);
   const date=value=>Number.isFinite(Date.parse(value))?new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Manila'}).format(new Date(value)):t('Date unavailable');
-  const quantity=value=>value===null||value===undefined?t('Not recorded'):Number(value).toLocaleString(locale,{maximumFractionDigits:2});
+  const quantity=value=>value===null||value===undefined||!Number.isFinite(Number(value))?t('Not recorded'):Number(value).toLocaleString(locale,{maximumFractionDigits:2});
+  const relativeDate=value=>{
+    const timestamp=Date.parse(value);
+    if(!Number.isFinite(timestamp))return t('Date unavailable');
+    const seconds=(timestamp-Date.now())/1000,elapsed=Math.abs(seconds);
+    const [unit,divisor]=elapsed>=31536000?['year',31536000]:elapsed>=2592000?['month',2592000]:elapsed>=86400?['day',86400]:elapsed>=3600?['hour',3600]:elapsed>=60?['minute',60]:['second',1];
+    return new Intl.RelativeTimeFormat(locale,{numeric:'auto',style:'short'}).format(Math.trunc(seconds/divisor),unit);
+  };
   const filters = [
     {key:'all',label:'All alerts',icon:ListFilter,count:rows.length},
     {key:'out',label:'Out of stock',icon:PackageX,count:out},
@@ -55,10 +85,10 @@ export default function NotificationCenter(){
       {error&&<div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert"><AlertTriangle size={20} className="mt-0.5 shrink-0" aria-hidden="true"/><p>{t(error)}</p></div>}
       {loading&&!rows.length?<Loading label={t('Checking stock alerts…')}/>:<>
         {rows.length>0&&<>
-          <div className="notification-filters mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label={t('Filter stock alerts')}>
-            {filters.map(({key,label,icon:Icon,count:total})=><button key={key} type="button" aria-label={t(label)} aria-pressed={filter===key} className={`flex min-h-20 min-w-0 flex-col gap-2 rounded-xl border p-3 text-left text-sm font-semibold ${filter===key?'border-red-300 bg-red-50 text-red-800':'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`} onClick={()=>setFilter(key)}>
-              <span className="flex w-full items-center justify-between gap-2"><Icon size={22} className="shrink-0" aria-hidden="true"/><span className="text-base font-bold" aria-hidden="true">{total}</span></span>
-              <span className="w-full min-w-0 break-words leading-snug">{t(label)}</span>
+          <div className="notification-filters mb-4" role="group" aria-label={t('Filter stock alerts')}>
+            {filters.map(({key,label,icon:Icon,count:total})=><button key={key} type="button" aria-label={t(label)} aria-pressed={filter===key} className={`notification-filter rounded-xl border text-left text-sm font-semibold ${filter===key?'border-red-300 bg-red-50 text-red-800':'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`} onClick={()=>setFilter(key)}>
+              <span className="notification-filter-label"><Icon size={18} aria-hidden="true"/>{t(label)}</span>
+              <span className="shrink-0 text-sm font-bold" aria-hidden="true">{total}</span>
             </button>)}
           </div>
           <label className="mb-4 block"><span className="label">{t('Find a stock alert')}</span><div className="relative"><Search size={19} className="pointer-events-none absolute left-3 top-4 text-slate-500" aria-hidden="true"/><input className="input pl-10" type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder={t('Part number or name')}/></div></label>
@@ -68,25 +98,33 @@ export default function NotificationCenter(){
           const name=row.product?.description||t(row.title);
           const StatusIcon=row.kind==='out'?PackageX:AlertTriangle;
           const tone=row.kind==='out'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-800';
+          const lookup=row.product?.part_number||row.product?.description||'';
+          const destination=`/${profile?.role==='cashier'?'inventory':'reorder'}${lookup?`?q=${encodeURIComponent(lookup)}`:''}`;
+          const unit=row.product?.unit||t('units');
+          const timestamp=Date.parse(row.created_at);
+          const feedback=copyFeedback?.id===row.id?copyFeedback:null;
           return <article key={row.id} aria-label={`${status}: ${name}`} className="stock-alert-card min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex items-start gap-3">
+            <div className="notification-card-heading">
               <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tone}`}><StatusIcon size={23} aria-hidden="true"/></span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${tone}`}>{status}</span><span className={`inline-flex items-center gap-1 text-xs font-semibold ${row.read?'text-slate-500':'text-red-700'}`}>{row.read?<><Check size={15} aria-hidden="true"/>{t('Read')}</>:<><BellDot size={15} aria-hidden="true"/>{t('New alert')}</>}</span></div>
-                <h3 className="mt-2 break-words text-base font-bold leading-snug text-slate-900">{name}</h3>
-                <p className="mt-1 break-all text-sm text-slate-500">{row.product?.part_number||t('No part number')}</p>
+              <div className="min-w-0">
+                <div className="notification-name-line"><h3 className="min-w-0 break-words text-base font-bold leading-snug text-slate-900">{name}</h3>{row.read?<span className="inline-flex shrink-0 items-center gap-1 text-xs text-slate-500"><Check size={15} aria-hidden="true"/>{t('Read')}</span>:<span className="notification-unread-dot"><span className="sr-only">{t('New alert')}</span></span>}</div>
+                <p className="mt-1 break-all text-sm text-slate-500"><span className="mr-1 font-semibold">{t('SKU')}</span>{row.product?.part_number||t('No part number')}</p>
+                <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${tone}`}>{status}</span>
+              </div>
+              <button type="button" className="notification-copy-button rounded-xl text-slate-600 hover:bg-slate-50 disabled:opacity-40" aria-label={t('Copy SKU')} title={t('Copy SKU')} disabled={!row.product?.part_number||Boolean(copying)} aria-busy={copying===row.id||undefined} onClick={()=>copySku(row)}>{feedback&&!feedback.failed?<Check size={20} aria-hidden="true"/>:<Copy size={20} aria-hidden="true"/>}</button>
+            </div>
+            <div className="notification-card-main">
+              {feedback&&<p role={feedback.failed?'alert':'status'} className={`mt-2 text-sm ${feedback.failed?'text-red-700':'text-emerald-700'}`}>{feedback.failed?t('Could not copy SKU.'):t('SKU copied.')}</p>}
+              {row.product?<dl className="notification-stock-meta text-sm text-slate-600">
+                <div><dt>{t('Stock')}:</dt><dd className="font-semibold text-slate-900">{quantity(row.product.current_stock)} {unit}</dd></div>
+                <div><dt>{t('Threshold')}:</dt><dd className="font-semibold text-slate-900">{quantity(row.product.minimum_stock)} {unit}</dd></div>
+                <div><dt className="sr-only">{t('Alert date')}</dt><dd>{Number.isFinite(timestamp)?<time dateTime={new Date(timestamp).toISOString()} title={date(row.created_at)}>{relativeDate(row.created_at)}</time>:t('Date unavailable')}</dd></div>
+              </dl>:<p className="mt-3 text-sm leading-6 text-slate-700">{t(row.message)}</p>}
+              <div className="notification-card-actions">
+                <Link className="btn-secondary max-w-full px-3 py-2 text-sm" to={destination} onClick={()=>setOpen(false)}>{profile?.role==='cashier'?<PackageSearch size={18} className="shrink-0" aria-hidden="true"/>:<Truck size={18} className="shrink-0" aria-hidden="true"/>}{profile?.role==='cashier'?t('View inventory'):t('Restock')}</Link>
+                {!row.read&&<button type="button" className="btn-secondary max-w-full px-3 py-2 text-sm" disabled={offline||Boolean(marking)} onClick={()=>mark(row)}><CheckCircle2 size={18} className="shrink-0" aria-hidden="true"/>{marking===row.id?t('Saving…'):t('Mark as read')}</button>}
               </div>
             </div>
-            {row.product?<div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2">
-              <div className="flex min-w-0 items-center gap-2"><Boxes size={19} className="shrink-0 text-slate-500" aria-hidden="true"/><p className="min-w-0 text-sm text-slate-600">{t('Available stock')}<strong className="ml-2 break-words text-base text-slate-900">{quantity(row.product.current_stock)} {row.product.unit||t('units')}</strong></p></div>
-              {!row.read&&<button type="button" className="btn-secondary max-w-full px-3 py-2 text-sm" disabled={offline||Boolean(marking)} onClick={()=>mark(row)}><CheckCircle2 size={18} className="shrink-0" aria-hidden="true"/>{marking===row.id?t('Saving…'):t('Mark as read')}</button>}
-            </div>:<><p className="mt-3 text-sm leading-6 text-slate-700">{t(row.message)}</p>{!row.read&&<button type="button" className="btn-secondary mt-3 max-w-full" disabled={offline||Boolean(marking)} onClick={()=>mark(row)}><CheckCircle2 size={18} className="shrink-0" aria-hidden="true"/>{marking===row.id?t('Saving…'):t('Mark as read')}</button>}</>}
-            <details className="group mt-2">
-              <summary className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-600"><Info size={17} className="shrink-0" aria-hidden="true"/><span>{t('Alert details')}</span><ChevronDown size={17} className="ml-auto shrink-0 group-open:rotate-180" aria-hidden="true"/></summary>
-              <div className="mt-1 space-y-3 rounded-xl border border-slate-200 p-3">
-                <dl className="space-y-2 text-sm">{row.product&&<div className="flex flex-wrap justify-between gap-x-4 gap-y-1"><dt className="text-slate-500">{t('Low-stock level')}</dt><dd className="font-semibold text-slate-900">{quantity(row.product.minimum_stock)}</dd></div>}<div className="flex flex-wrap justify-between gap-x-4 gap-y-1"><dt className="text-slate-500">{t('Alert date')}</dt><dd className="text-slate-700">{date(row.created_at)}</dd></div></dl>
-              </div>
-            </details>
           </article>;
         })}</div>:rows.length?<div className="rounded-xl bg-slate-50 p-6 text-center"><Search size={28} className="mx-auto text-slate-400" aria-hidden="true"/><p className="mt-3 font-semibold text-slate-900">{t('No alerts match this view.')}</p><button type="button" className="btn-secondary mt-3" onClick={()=>{setQuery('');setFilter('all');}}>{t('Show all alerts')}</button></div>:!error&&<div className="py-8 text-center"><CheckCircle2 size={36} className="mx-auto text-emerald-600" aria-hidden="true"/><h3 className="mt-3 font-semibold text-slate-900">{t('No stock alerts to show')}</h3></div>}
       </>}

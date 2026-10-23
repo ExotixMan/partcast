@@ -533,11 +533,13 @@ test('password is required before Gmail email code; wrong code cannot open the s
  await page.getByLabel('Email sign-in code').fill('654321');await page.getByRole('button',{name:'Verify code and sign in'}).click();await expect(page.getByRole('heading',{name:'Hello, Store'})).toBeVisible();expect(passwords).toHaveLength(2);expect(calls.at(-1).body).toEqual({code:'654321'});
 });
 
-test('saved part photos open a gallery and remain available offline',async({page,context})=>{
+test('saved part photos maximize and remain available offline',async({page,context})=>{
  const api=await fixture(context);api.products[0].photo_paths=[`${p1}/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webp`,`${p1}/cccccccc-cccc-4ccc-8ccc-cccccccccccc.webp`];
  await page.setViewportSize({width:390,height:844});await page.goto('/inventory');await expect(page.getByText(/Inventory saved/)).toBeVisible();
- await page.getByRole('button',{name:'View photos of Toyota brake pad'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(2);await expect.poll(()=>page.getByRole('dialog').locator('img').evaluateAll(xs=>xs.every(x=>x.complete&&x.naturalWidth>0))).toBe(true);
- await page.getByRole('button',{name:'Close modal'}).click();await page.evaluate(async()=>navigator.serviceWorker.ready);api.disconnect(true);await context.setOffline(true);await page.reload();await page.getByRole('button',{name:'View photos of Toyota brake pad'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(2);await expect.poll(()=>page.getByRole('dialog').locator('img').evaluateAll(xs=>xs.every(x=>x.complete&&x.naturalWidth>0))).toBe(true);
+ await page.getByRole('button',{name:'View photos of Toyota brake pad'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(1);await expect.poll(()=>page.getByRole('dialog').locator('img').evaluateAll(xs=>xs.every(x=>x.complete&&x.naturalWidth>0))).toBe(true);
+ await page.getByRole('button',{name:'Next photo',exact:true}).click();await expect(page.getByText('Photo 2 of 2',{exact:true})).toBeVisible();await expect.poll(()=>page.getByRole('dialog').locator('img').evaluateAll(xs=>xs.every(x=>x.complete&&x.naturalWidth>0))).toBe(true);
+ await page.getByRole('button',{name:'Close modal'}).click();await page.evaluate(async()=>navigator.serviceWorker.ready);api.disconnect(true);await context.setOffline(true);await page.reload();await page.getByRole('button',{name:'View photos of Toyota brake pad'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(1);await expect.poll(()=>page.getByRole('dialog').locator('img').evaluateAll(xs=>xs.every(x=>x.complete&&x.naturalWidth>0))).toBe(true);
+ await page.getByRole('button',{name:'Next photo',exact:true}).click();await expect(page.getByText('Photo 2 of 2',{exact:true})).toBeVisible();await expect.poll(()=>page.getByRole('dialog').locator('img').evaluateAll(xs=>xs.every(x=>x.complete&&x.naturalWidth>0))).toBe(true);
 });
 test('camera denial explains how to use manual barcode entry',async({page,context})=>{
  await context.addInitScript(()=>{Object.defineProperty(navigator.mediaDevices,'getUserMedia',{value:async()=>{throw new DOMException('Denied','NotAllowedError');}});});
