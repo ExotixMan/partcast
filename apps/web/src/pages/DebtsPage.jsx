@@ -166,7 +166,7 @@ export default function DebtsPage() {
     setFilter('all');
   }
   return <>
-    <PageHeader title={t('Customer utang')} subtitle={t('See balances and payments, including fully paid customers.')} actions={<button className="btn-secondary" disabled={cached || !navigator.onLine || loading} onClick={() => open('add')}><Plus size={18} aria-hidden="true" />{t('Add existing utang')}</button>} />
+    <PageHeader title={t('Customer utang')} actions={<button className="btn-secondary" disabled={cached || !navigator.onLine || loading} onClick={() => open('add')}><Plus size={18} aria-hidden="true" />{t('Add existing utang')}</button>} />
     {!modal && error && <p role="alert" className="mb-4 text-red-700">{t(error)}</p>}
     {loadError && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><p>{t(loadError)}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={load}>{t('Try again')}</button></div>}
     {pendingLedger.length > 0 && <p role="status" className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-900">{t('Customer balance changes are waiting to send. Check Review changes and wait for confirmation before recording another payment.')}</p>}

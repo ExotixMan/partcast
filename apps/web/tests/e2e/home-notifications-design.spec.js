@@ -92,7 +92,7 @@ test('Home explains an empty sales period while keeping analytics first and task
   await fixture(context, { emptySales: true });
   await page.goto('/');
   const overview = page.getByRole('region', { name: 'Store overview', exact: true });
-  await expect(overview.getByText('No recorded sales for this period. Record sales as they happen to build your store history.', { exact: true })).toBeVisible();
+  await expect(overview.getByText('No recorded sales for this period.', { exact: true })).toBeVisible();
   await expect(overview.getByRole('img', { name: 'Sales revenue over the last 30 days', exact: true })).toHaveCount(0);
   expect(await overview.evaluate(element => Boolean(element.closest('details')))).toBe(false);
   const actions = page.getByRole('region', { name: 'What would you like to do?', exact: true });

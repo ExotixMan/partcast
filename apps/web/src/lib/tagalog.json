@@ -1434,5 +1434,9 @@
   "Alert date": "Petsa ng abiso",
   "Store overview": "Buod ng tindahan",
   "Your store at a glance.": "Mabilis na tingin sa kalagayan ng tindahan.",
-  "You can still choose a task below. Use Refresh overview to try again.": "Maaari ka pa ring pumili ng gagawin sa ibaba. Gamitin ang I-refresh ang buod para subukan ulit."
+  "You can still choose a task below. Use Refresh overview to try again.": "Maaari ka pa ring pumili ng gagawin sa ibaba. Gamitin ang I-refresh ang buod para subukan ulit.",
+  "Basket is empty.": "Walang laman ang basket.",
+  "No recorded sales for this period.": "Walang naitalang benta sa panahong ito.",
+  "{v0} out of stock · {v1} running low": "{v0} ubos na · {v1} paubos na",
+  "No restock recommendations.": "Walang mungkahing dagdag-stock."
 }

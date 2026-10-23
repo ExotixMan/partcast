@@ -85,11 +85,10 @@ export default function NotificationCenter(){
               <summary className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-600"><Info size={17} className="shrink-0" aria-hidden="true"/><span>{t('Alert details')}</span><ChevronDown size={17} className="ml-auto shrink-0 group-open:rotate-180" aria-hidden="true"/></summary>
               <div className="mt-1 space-y-3 rounded-xl border border-slate-200 p-3">
                 <dl className="space-y-2 text-sm">{row.product&&<div className="flex flex-wrap justify-between gap-x-4 gap-y-1"><dt className="text-slate-500">{t('Low-stock level')}</dt><dd className="font-semibold text-slate-900">{quantity(row.product.minimum_stock)}</dd></div>}<div className="flex flex-wrap justify-between gap-x-4 gap-y-1"><dt className="text-slate-500">{t('Alert date')}</dt><dd className="text-slate-700">{date(row.created_at)}</dd></div></dl>
-                <p className="text-sm leading-6 text-slate-600">{t('Marking an alert as read clears its new badge. The stock issue remains until the stock is corrected or replenished.')}</p>
               </div>
             </details>
           </article>;
-        })}</div>:rows.length?<div className="rounded-xl bg-slate-50 p-6 text-center"><Search size={28} className="mx-auto text-slate-400" aria-hidden="true"/><p className="mt-3 font-semibold text-slate-900">{t('No alerts match this view.')}</p><button type="button" className="btn-secondary mt-3" onClick={()=>{setQuery('');setFilter('all');}}>{t('Show all alerts')}</button></div>:!error&&<div className="py-8 text-center"><CheckCircle2 size={36} className="mx-auto text-emerald-600" aria-hidden="true"/><h3 className="mt-3 font-semibold text-slate-900">{t('No stock alerts to show')}</h3><p className="mt-2 text-sm text-slate-600">{t('Low-stock and out-of-stock alerts appear here.')}</p></div>}
+        })}</div>:rows.length?<div className="rounded-xl bg-slate-50 p-6 text-center"><Search size={28} className="mx-auto text-slate-400" aria-hidden="true"/><p className="mt-3 font-semibold text-slate-900">{t('No alerts match this view.')}</p><button type="button" className="btn-secondary mt-3" onClick={()=>{setQuery('');setFilter('all');}}>{t('Show all alerts')}</button></div>:!error&&<div className="py-8 text-center"><CheckCircle2 size={36} className="mx-auto text-emerald-600" aria-hidden="true"/><h3 className="mt-3 font-semibold text-slate-900">{t('No stock alerts to show')}</h3></div>}
       </>}
     </Modal>
   </>;
