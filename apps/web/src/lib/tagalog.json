@@ -1429,5 +1429,10 @@
   "Tap a card to add it. Tap its photo to enlarge it.": "I-tap ang card para idagdag sa basket. I-tap ang larawan para palakihin.",
   "Previous photo": "Nakaraang larawan",
   "Next photo": "Susunod na larawan",
-  "Photo {v0} of {v1}": "Larawan {v0} sa {v1}"
+  "Photo {v0} of {v1}": "Larawan {v0} sa {v1}",
+  "Alert details": "Detalye ng abiso",
+  "Alert date": "Petsa ng abiso",
+  "Store overview": "Buod ng tindahan",
+  "Your store at a glance.": "Mabilis na tingin sa kalagayan ng tindahan.",
+  "You can still choose a task below. Use Refresh overview to try again.": "Maaari ka pa ring pumili ng gagawin sa ibaba. Gamitin ang I-refresh ang buod para subukan ulit."
 }

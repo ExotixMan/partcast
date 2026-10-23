@@ -77,8 +77,8 @@ function NavigationItem({
   useLocale();
   return <NavLink to={item.to} end={item.end} onClick={close} className={({
     isActive
-  }) => `group flex min-h-14 items-center gap-3 rounded-xl px-3 py-3 text-base transition ${isActive ? 'border-l-4 border-red-600 bg-red-50 font-bold text-red-800' : 'border-l-4 border-transparent font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-950'}`}>
-    <item.icon size={20} strokeWidth={1.8} className="shrink-0" />
+  }) => `group flex min-h-14 items-center gap-3 rounded-xl px-3 py-3 text-base transition ${isActive ? 'bg-red-50 font-bold text-red-800' : 'font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-950'}`}>
+    <item.icon size={20} strokeWidth={1.8} className="shrink-0" aria-hidden="true" />
     <span className="min-w-0">{t(item.label)}</span>
   </NavLink>;
 }
