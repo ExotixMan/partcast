@@ -1,4 +1,4 @@
-import { CarFront, Check, Droplets, Fuel, PackageOpen, Plus, Wrench } from 'lucide-react';
+import { CarFront, Check, Droplets, Fuel, PackageOpen, Wrench } from 'lucide-react';
 import { t, useLocale } from '../context/LocaleContext.jsx';
 import { categories, money, validAmount } from '../lib/store.js';
 import { ProductThumbnail } from './ProductPhotos.jsx';
@@ -16,7 +16,7 @@ export default function CounterProductCard({ product, mode, quantity, disabled, 
   return <article className={`counter-product-card ${quantity !== undefined ? 'is-in-basket' : ''}`}>
     <div className="counter-product-visual">
       {product.photo_paths?.length
-        ? <ProductThumbnail product={product} className="counter-product-image" />
+        ? <ProductThumbnail product={product} className="counter-product-image" showLabel={false} fullscreen />
         : <div className="counter-product-placeholder" aria-label={t('No saved photo')}>
           <Icon size={52} strokeWidth={1.25} aria-hidden="true" />
           <span>{t(categoryLabel)}</span>
@@ -33,12 +33,9 @@ export default function CounterProductCard({ product, mode, quantity, disabled, 
           v0: Number(product.current_stock).toLocaleString('en-PH'), v1: product.unit || t('units')
         })}
       </p>
-      <div className="counter-product-price">
+      <button type="button" className="counter-product-price counter-card-action" onClick={() => onAdd(product)} disabled={disabled || soldOut} aria-label={t('Add {v0} to basket', { v0: product.description })}>
         {mode === 'stock_in' && <span>{t('Cost per unit')}</span>}
         <strong className={needsPrice ? 'text-amber-800' : ''}>{needsPrice ? t('Price needed') : money(mode === 'sale' ? product.selling_price : product.unit_cost)}</strong>
-      </div>
-      <button type="button" className="btn-primary counter-add-button" onClick={() => onAdd(product)} disabled={disabled || soldOut} aria-label={t('Add {v0} to basket', { v0: product.description })}>
-        <Plus size={18} className="shrink-0" aria-hidden="true" />{t('Add')}
       </button>
     </div>
   </article>;

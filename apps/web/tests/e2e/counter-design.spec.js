@@ -120,7 +120,7 @@ test('category tiles reset pagination and combine with name or barcode search', 
   await expect(catalog.getByRole('article')).toHaveCount(25);
 });
 
-test('part photos open their complete gallery and the cards preserve sale and delivery baskets', async ({ page, context }) => {
+test('part photos maximize without adding stock and the cards preserve sale and delivery baskets', async ({ page, context }) => {
   const store = await storeFixture(context);
   store.products[1].current_stock = 0;
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -131,13 +131,30 @@ test('part photos open their complete gallery and the cards preserve sale and de
   const emptyPart = catalog.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Engine oil', exact: true }) });
   await expect(emptyPart.getByText('Out of stock', { exact: true })).toBeVisible();
   await expect(emptyPart.getByRole('button', { name: 'Add Engine oil to basket', exact: true })).toBeDisabled();
-  await product.getByRole('button', { name: 'View photos of Toyota brake pad', exact: true }).click();
+  await expect(catalog.getByText('Add', { exact: true })).toHaveCount(0);
+  await expect(catalog.getByText('View photos', { exact: true })).toHaveCount(0);
+  const trigger = product.getByRole('button', { name: 'View photos of Toyota brake pad', exact: true });
+  await trigger.click();
   const gallery = page.getByRole('dialog', { name: 'Toyota brake pad', exact: true });
-  await expect(gallery.getByRole('img')).toHaveCount(2);
+  await expect(gallery.getByRole('img')).toHaveCount(1);
   await expect.poll(() => gallery.getByRole('img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0))).toBe(true);
   expect(await gallery.getByRole('img').evaluateAll(images => images.every(image => getComputedStyle(image).objectFit === 'contain'))).toBe(true);
+  const expandedBox = await gallery.getByRole('img').boundingBox();
+  expect(expandedBox.width).toBeGreaterThan(1200);
+  expect(expandedBox.height).toBeGreaterThan(600);
+  await expect(page.locator('#store-basket').getByLabel('Quantity', { exact: true })).toHaveCount(0);
+  await expect(gallery.getByRole('button', { name: 'Previous photo', exact: true })).toBeDisabled();
+  await gallery.getByRole('button', { name: 'Next photo', exact: true }).click();
+  await expect(gallery.getByText('Photo 2 of 2', { exact: true })).toBeVisible();
+  await expect(gallery.getByRole('button', { name: 'Next photo', exact: true })).toBeDisabled();
+  await expect.poll(() => gallery.getByRole('img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0))).toBe(true);
   expect(store.photos).toContain(`/api/photos/${brakeId}/back.webp`);
+  await page.keyboard.press('ArrowLeft');
+  await expect(gallery.getByText('Photo 1 of 2', { exact: true })).toBeVisible();
+  await page.screenshot({ path: '/tmp/partcast-counter-maximized-photo.png', fullPage: false });
   await gallery.getByRole('button', { name: 'Close modal', exact: true }).click();
+  await expect(trigger).toBeFocused();
+  await expect(page.locator('#store-basket').getByLabel('Quantity', { exact: true })).toHaveCount(0);
   const photoBox = await product.getByRole('img').boundingBox();
   expect(photoBox.height).toBeGreaterThan(96);
   expect(photoBox.width).toBeGreaterThan(96);
@@ -168,6 +185,67 @@ test('part photos open their complete gallery and the cards preserve sale and de
   expect(store.batches[1]).toMatchObject({ tx_type: 'stock_in', is_credit: false,
     lines: [{ product_id: brakeId, quantity: 3, unit_price: 0 }] });
   expect(store.products[0].current_stock).toBe(6);
+});
+
+test('card surfaces and keyboard add once while photo controls leave the basket unchanged', async ({ page, context }) => {
+  await storeFixture(context);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/counter');
+  const catalog = page.getByRole('region', { name: 'Choose parts', exact: true });
+  const card = catalog.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Toyota brake pad', exact: true }) });
+  const basket = page.locator('#store-basket');
+  await card.scrollIntoViewIfNeeded();
+  const title = await card.getByRole('heading').boundingBox();
+  await page.mouse.click(title.x + title.width / 2, title.y + title.height / 2);
+  await expect(basket.getByLabel('Quantity', { exact: true })).toHaveValue('1');
+  const bounds = await card.boundingBox();
+  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height - 4);
+  await expect(basket.getByLabel('Quantity', { exact: true })).toHaveValue('2');
+  const action = card.getByRole('button', { name: 'Add Toyota brake pad to basket', exact: true });
+  await action.focus();
+  await page.keyboard.press('Enter');
+  await expect(basket.getByLabel('Quantity', { exact: true })).toHaveValue('3');
+  await page.keyboard.press('Space');
+  await expect(basket.getByLabel('Quantity', { exact: true })).toHaveValue('4');
+  await card.getByRole('button', { name: 'View photos of Toyota brake pad', exact: true }).click();
+  const viewer = page.getByRole('dialog', { name: 'Toyota brake pad', exact: true });
+  await viewer.getByRole('button', { name: 'Next photo', exact: true }).click();
+  await viewer.getByRole('button', { name: 'Previous photo', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(viewer).toHaveCount(0);
+  await expect(basket.getByLabel('Quantity', { exact: true })).toHaveValue('4');
+  await expect(basket.getByText('View photos', { exact: true })).toHaveCount(0);
+  await basket.getByRole('button', { name: 'View photos of Toyota brake pad', exact: true }).click();
+  await expect(viewer).toBeVisible();
+  await viewer.getByRole('button', { name: 'Close modal', exact: true }).click();
+  await expect(basket.getByLabel('Quantity', { exact: true })).toHaveValue('4');
+  const placeholder = catalog.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Engine oil', exact: true }) });
+  await placeholder.scrollIntoViewIfNeeded();
+  const placeholderBox = await placeholder.locator('.counter-product-placeholder').boundingBox();
+  await page.mouse.click(placeholderBox.x + placeholderBox.width / 2, placeholderBox.y + placeholderBox.height / 2);
+  await expect(basket.getByLabel('Quantity', { exact: true })).toHaveCount(2);
+  await expect(basket.getByLabel('Quantity', { exact: true }).nth(1)).toHaveValue('1');
+});
+
+test('maximized photos keep their controls visible with a long name on a short screen', async ({ page, context }) => {
+  const store = await storeFixture(context, { large: true });
+  const longName = 'Toyota brake pad and fitting accessories for a commercial vehicle '.repeat(7).trim();
+  store.products[0].description = longName;
+  await page.setViewportSize({ width: 640, height: 360 });
+  await page.goto('/counter');
+  await page.getByRole('button', { name: `View photos of ${longName}`, exact: true }).click();
+  const viewer = page.getByRole('dialog', { name: longName, exact: true });
+  await expect(viewer.getByRole('heading', { name: longName, exact: true })).toBeVisible();
+  await expect(viewer.getByRole('img')).toBeVisible();
+  expect((await viewer.getByRole('img').boundingBox()).height).toBeGreaterThan(100);
+  await expect(viewer.getByRole('button', { name: 'Close modal', exact: true })).toBeInViewport();
+  await expect(viewer.getByRole('button', { name: 'Next photo', exact: true })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await viewer.getByRole('button', { name: 'Next photo', exact: true }).click();
+  await expect(viewer.getByText('Photo 2 of 2', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(viewer).toHaveCount(0);
+  await expect(page.locator('#store-basket').getByLabel('Quantity', { exact: true })).toHaveCount(0);
 });
 
 for (const width of [320, 390]) {
@@ -202,6 +280,20 @@ for (const width of [320, 390]) {
     }
     await expect(page.getByRole('button', { name: 'Idagdag ang Toyota brake pad sa basket', exact: true })).toBeVisible();
     await page.screenshot({ path: `/tmp/partcast-counter-design-${width}-tagalog-dark.png`, fullPage: false });
+    const photoTrigger = page.getByRole('button', { name: 'Tingnan ang mga larawan ng Toyota brake pad', exact: true });
+    await photoTrigger.click();
+    const viewer = page.getByRole('dialog', { name: 'Toyota brake pad', exact: true });
+    await expect(viewer.getByRole('img')).toBeVisible();
+    const photoBounds = await viewer.getByRole('img').boundingBox();
+    expect(photoBounds.width).toBeGreaterThan(width * .9);
+    expect(photoBounds.height).toBeGreaterThan(500);
+    expect(await fits()).toBe(true);
+    await viewer.getByRole('button', { name: 'Susunod na larawan', exact: true }).click();
+    await expect(viewer.getByText('Larawan 2 sa 2', { exact: true })).toBeVisible();
+    await page.screenshot({ path: `/tmp/partcast-counter-design-${width}-photo.png`, fullPage: false });
+    await page.keyboard.press('Escape');
+    await expect(photoTrigger).toBeFocused();
+    await expect(page.locator('#store-basket').getByLabel('Dami', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Idagdag ang Toyota brake pad sa basket', exact: true }).click();
     const shortcut = page.locator('.counter-basket-shortcut');
     await expect(shortcut).toBeVisible();

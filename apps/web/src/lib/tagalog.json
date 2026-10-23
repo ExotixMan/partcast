@@ -1425,5 +1425,9 @@
   "1 part found": "1 piyesa ang nakita",
   "Browse categories": "Pumili ng kategorya",
   "Stock goes out": "Mababawasan ang stock",
-  "Stock comes in": "Madadagdagan ang stock"
+  "Stock comes in": "Madadagdagan ang stock",
+  "Tap a card to add it. Tap its photo to enlarge it.": "I-tap ang card para idagdag sa basket. I-tap ang larawan para palakihin.",
+  "Previous photo": "Nakaraang larawan",
+  "Next photo": "Susunod na larawan",
+  "Photo {v0} of {v1}": "Larawan {v0} sa {v1}"
 }

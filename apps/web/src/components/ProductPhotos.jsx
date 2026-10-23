@@ -1,7 +1,7 @@
 import Modal from './Modal.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useState } from 'react';
-import { Camera, Package, X } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, Package, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 export function ProductImage({
   path,
@@ -79,9 +79,44 @@ export default function ProductPhotos({
  </section>;
 }
 
-export function ProductThumbnail({product,className='h-16 w-16'}){
- const [open,setOpen]=useState(false);useLocale();
- if(!product.photo_paths?.length)return <ProductImage description={product.description} className={className}/>;
- return <><button type="button" className="max-w-full shrink-0" aria-label={t('View photos of {v0}',{v0:product.description})} onClick={()=>setOpen(true)}><ProductImage path={product.photo_paths[0]} description={product.description} className={className}/><span className="mt-1 block break-words text-xs font-semibold text-red-700">{t("View photos")}</span></button>
- <Modal open={open} onClose={()=>setOpen(false)} title={product.description} description={t('Part photos. Only photos previously viewed on this device are available offline.')} size="lg"><div className="grid gap-4 sm:grid-cols-2">{product.photo_paths.map(path=><ProductImage key={path} path={path} description={product.description} className="aspect-square w-full"/>)}</div></Modal></>;
+export function ProductThumbnail({ product, className = 'h-16 w-16', showLabel = true, fullscreen = false }) {
+  const [open, setOpen] = useState(false), [photoIndex, setPhotoIndex] = useState(0);
+  useLocale();
+  const paths = product.photo_paths || [];
+  const index = Math.min(photoIndex, Math.max(0, paths.length - 1));
+  useEffect(() => {
+    if (!open || !fullscreen || paths.length < 2) return;
+    const navigate = event => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setPhotoIndex(current => Math.max(0, current - 1));
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setPhotoIndex(current => Math.min(paths.length - 1, current + 1));
+      }
+    };
+    document.addEventListener('keydown', navigate);
+    return () => document.removeEventListener('keydown', navigate);
+  }, [open, fullscreen, paths.length]);
+  if (!paths.length) return <ProductImage description={product.description} className={className} />;
+  return <>
+    <button type="button" className="max-w-full shrink-0" aria-label={t('View photos of {v0}', { v0: product.description })} onClick={event => {
+      event.stopPropagation();
+      setPhotoIndex(0);
+      setOpen(true);
+    }}>
+      <ProductImage path={paths[0]} description={product.description} className={className} />
+      {showLabel && <span className="mt-1 block break-words text-xs font-semibold text-red-700">{t('View photos')}</span>}
+    </button>
+    <Modal open={open} onClose={() => setOpen(false)} title={product.description} description={fullscreen ? undefined : t('Part photos. Only photos previously viewed on this device are available offline.')} size={fullscreen ? 'photo' : 'lg'}>
+      {fullscreen ? <div className="flex h-full min-h-0 flex-col gap-2">
+        <div className="min-h-0 flex-1"><ProductImage path={paths[index]} description={product.description} className="h-full w-full" /></div>
+        {paths.length > 1 && <div className="flex shrink-0 items-center justify-between gap-2 pb-[env(safe-area-inset-bottom)]">
+          <button type="button" className="btn-secondary shrink-0 px-3" aria-label={t('Previous photo')} disabled={index === 0} onClick={() => setPhotoIndex(current => Math.max(0, current - 1))}><ChevronLeft size={24} aria-hidden="true" /></button>
+          <p className="min-w-0 text-center text-sm font-semibold text-slate-700" aria-live="polite">{t('Photo {v0} of {v1}', { v0: index + 1, v1: paths.length })}</p>
+          <button type="button" className="btn-secondary shrink-0 px-3" aria-label={t('Next photo')} disabled={index === paths.length - 1} onClick={() => setPhotoIndex(current => Math.min(paths.length - 1, current + 1))}><ChevronRight size={24} aria-hidden="true" /></button>
+        </div>}
+      </div> : <div className="grid gap-4 sm:grid-cols-2">{paths.map(path => <ProductImage key={path} path={path} description={product.description} className="aspect-square w-full" />)}</div>}
+    </Modal>
+  </>;
 }

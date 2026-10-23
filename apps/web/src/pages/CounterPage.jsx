@@ -284,6 +284,7 @@ export default function CounterPage() {
  <div className="counter-results-heading"><h3>{t('Parts')}</h3><p aria-live="polite">{loading ? t('Finding parts…') : count===1 ? t('1 part found') : t("{v0} parts found", {
             v0: count
           })}</p></div>
+ <p className="mb-3 text-sm text-slate-600">{t('Tap a card to add it. Tap its photo to enlarge it.')}</p>
  <div className="counter-parts-grid">{rows.map(p => {
    const inBasket=cart.find(l=>l.product_id===p.id);
    return <CounterProductCard key={p.id} product={p} mode={mode} quantity={inBasket?.quantity} disabled={locked} onAdd={add} />;
@@ -293,7 +294,7 @@ export default function CounterPage() {
  <Form id="store-basket" tabIndex={-1} className="counter-checkout scroll-mt-24 p-4" onSubmit={submit} noValidate><div className="counter-checkout-heading"><h2><ShoppingCart size={22} aria-hidden="true" />{t('2. Check your basket')}</h2><span className="badge bg-white text-slate-700">{basketLabel}</span></div>
  <fieldset disabled={locked} className="space-y-4">
  {!cart.length && <div className="counter-basket-empty"><span aria-hidden="true"><ShoppingCart size={30} strokeWidth={1.5} /></span><p>{t('Tap a part to add it here.')}</p></div>}
- {cart.map(l => <article key={l.product_id} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start gap-2"><ProductThumbnail product={l.product} className="h-12 w-12" /><h3 className="min-w-0 flex-1 break-words font-semibold">{t(l.product.description)}</h3><button type="button" className="min-h-11 min-w-11 text-red-700" aria-label={t("Remove {v0} from basket", {
+ {cart.map(l => <article key={l.product_id} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start gap-2"><ProductThumbnail product={l.product} className="h-12 w-12" showLabel={false} fullscreen /><h3 className="min-w-0 flex-1 break-words font-semibold">{t(l.product.description)}</h3><button type="button" className="min-h-11 min-w-11 text-red-700" aria-label={t("Remove {v0} from basket", {
                 v0: t(l.product.description)
               })} onClick={() => setCart(c => c.filter(x => x.product_id !== l.product_id))}><Trash2 size={18} /></button></div>
  <div className="mt-3 grid grid-cols-2 items-end gap-2"><label className="min-w-0"><span className="label">{t("Quantity")}</span><input className="input" type="number" required min="1" max="999999999999" step="1" inputMode="numeric" value={l.quantity} aria-invalid={!validQuantity(l.quantity,true)||undefined} aria-describedby={!validQuantity(l.quantity,true)?`quantity-help-${l.product_id}`:undefined} onChange={e => update(l.product_id, 'quantity', e.target.value)} /></label><label className="min-w-0"><span className="label">{mode === 'sale' ? t('Price per unit') : t('Cost per unit')}</span><input className="input" type="number" required min={mode==='sale'?'0.01':'0'} max="999999999999.99" step="0.01" inputMode="decimal" value={l.unit_price} placeholder={mode==='sale'?t('Enter price'):undefined} aria-invalid={!validAmount(l.unit_price,mode==='sale')||undefined} aria-describedby={!validAmount(l.unit_price,mode==='sale')?`price-help-${l.product_id}`:undefined} onChange={e => update(l.product_id, 'unit_price', e.target.value)} /></label></div>
