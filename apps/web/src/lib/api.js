@@ -1,5 +1,5 @@
 import {verifiedCacheMatches} from './access.js';
-import {lineCents,validAmount,validQuantity} from './store.js';
+import {lineCents,validAmount,validQuantity,MAX_DELIVERY_QUANTITY} from './store.js';
 import { readCache, saveCache, updateCachedProduct, queueItems, projectedProducts, enqueueMovement, drainQueue } from './offline.js';
 import { resolveApiConnection, connectionMessage, apiRequestTimeout } from './connection.js';
 
@@ -138,6 +138,7 @@ async function movement(body, batch = false) {
     const product=products.find(p=>p.id===line.product_id),quantity=Number(line.quantity);
     if(!product)throw new ApiError('Choose a saved part before recording stock.',422);
     if(!validQuantity(line.quantity,true))throw new ApiError('Enter a whole-number quantity of 1 or more.',422);
+    if(batch&&body.tx_type==='stock_in'&&quantity>MAX_DELIVERY_QUANTITY)throw new ApiError('Receive a maximum of 2 units per item.',422);
     if(body.tx_type!=='stock_in'&&Math.round(quantity*100)>Math.round(Number(product.current_stock)*100))throw new ApiError('There is not enough saved stock for this transaction.',409);
     if(body.tx_type==='sale'&&!validAmount(line.unit_price,true))throw new ApiError('Enter a selling price greater than zero for every part.',422);
     if(batch&&!validAmount(line.unit_price))throw new ApiError('Enter a valid price with at most 2 decimal places.',422);

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ChevronDown, ScanLine, Search, Trash2, ShoppingCart, PackageCheck, Wrench } from 'lucide-react';
 import { api, prepareOffline } from '../lib/api.js';
-import { money, validAmount, validQuantity, availableUnits, today, lineCents, basketAmounts } from '../lib/store.js';
+import { money, validAmount, validQuantity, availableUnits, MAX_DELIVERY_QUANTITY, today, lineCents, basketAmounts } from '../lib/store.js';
 import {staffRoles} from '../lib/access.js';
 import { ProductThumbnail } from '../components/ProductPhotos.jsx';
 import BarcodeScanner from '../components/BarcodeScanner.jsx';
@@ -14,6 +14,7 @@ import Pagination from '../components/Pagination.jsx';
 import Toast from '../components/Toast.jsx';
 import CounterCategories from '../components/CounterCategories.jsx';
 import CounterProductCard from '../components/CounterProductCard.jsx';
+import DeliveryReviewModal from '../components/DeliveryReviewModal.jsx';
 import './counter.css';
 export default function CounterPage() {
   useLocale();
@@ -36,7 +37,8 @@ export default function CounterPage() {
     [toast, setToast] = useState(null),
     [priceSaving, setPriceSaving] = useState(''),
     [reviewedPrices, setReviewedPrices] = useState(''),
-    [basketVisible, setBasketVisible] = useState(false);
+    [basketVisible, setBasketVisible] = useState(false),
+    [deliveryReviewOpen,setDeliveryReviewOpen]=useState(false);
   const [credit, setCredit] = useState(false),
     [customer, setCustomer] = useState(''),
     [phone, setPhone] = useState(''),
@@ -103,19 +105,29 @@ export default function CounterPage() {
   const needsPriceReview = lowPrices.length>0 && reviewedPrices!==priceReviewKey;
   useEffect(()=>setReviewedPrices(''),[priceReviewKey]);
   const paymentIssue = credit && (!validPayment || overpaid);
-  const locked = busy || !!operation.current || !!priceSaving;
+  const deliveryLines=mode==='stock_in'?cart:[];
+  const deliveryQuantityIssue=mode==='stock_in'&&!operation.current&&cart.some(line=>Number(line.quantity)>MAX_DELIVERY_QUANTITY);
+  const deliveryReviewKey=JSON.stringify([mode,cart.map(line=>[line.product_id,line.quantity,line.unit_price,line.product.current_stock]),supplier,reference,note]);
+  const locked = busy || !!operation.current || !!priceSaving || deliveryReviewOpen;
+  function editDelivery(){
+    setDeliveryReviewOpen(false);
+    const id=deliveryLines[0]?.product_id;
+    requestAnimationFrame(()=>document.getElementById(`counter-quantity-${id}`)?.focus());
+  }
   function stockMessage(part){
     return t('Only {v0} {v1} are available. Enter a smaller quantity.',{v0:availableUnits(part).toLocaleString('en-PH'),v1:part.unit||t('units')});
   }
+  const quantityLimit=part=>mode==='sale'?availableUnits(part):MAX_DELIVERY_QUANTITY;
+  const quantityMessage=part=>mode==='sale'?stockMessage(part):t('Receive a maximum of 2 units per item.');
   function add(part) {
     if (locked) return;
     setError('');
     const existing=cart.find(line=>line.product_id===part.id);
-    if(mode==='sale'&&(validQuantity(existing?.quantity)?Number(existing.quantity):0)+1>availableUnits(part))setError(stockMessage(part));
+    if((validQuantity(existing?.quantity)?Number(existing.quantity):0)+1>quantityLimit(part))setError(quantityMessage(part));
     setCart(current => {
       const found = current.find(l => l.product_id === part.id);
       const quantity=(validQuantity(found?.quantity)?Number(found.quantity):0)+1;
-      if(mode==='sale'&&quantity>availableUnits(part))return found?current.map(line=>line.product_id===part.id?{...line,product:{...line.product,...part}}:line):current;
+      if(quantity>quantityLimit(part))return found?current.map(line=>line.product_id===part.id?{...line,product:{...line.product,...part}}:line):current;
       if (found) return current.map(l => l.product_id === part.id ? {
         ...l,
         product:{...l.product,...part},
@@ -137,8 +149,8 @@ export default function CounterPage() {
     if(locked)return;
     setError('');
     const line=cart.find(item=>item.product_id===id);
-    if(key==='quantity'&&mode==='sale'&&line&&Number(value)>availableUnits(line.product)){
-      setError(stockMessage(line.product));
+    if(key==='quantity'&&line&&Number(value)>quantityLimit(line.product)){
+      setError(quantityMessage(line.product));
       return;
     }
     setCart(current => current.map(l => l.product_id === id ? {
@@ -195,8 +207,8 @@ export default function CounterPage() {
       setError(e.message);
     }
   }
-  async function submit(e) {
-    e.preventDefault();
+  async function submit(e,approvedDeliveryKey='') {
+    e?.preventDefault();
     if (guard.current) return;
     setError('');
     if (!cart.length) {
@@ -208,8 +220,8 @@ export default function CounterPage() {
         setError('Enter a whole-number quantity of 1 or more.');
         return;
       }
-      if(mode==='sale'&&!operation.current&&Number(l.quantity)>availableUnits(l.product)){
-        setError(stockMessage(l.product));
+      if(!operation.current&&Number(l.quantity)>quantityLimit(l.product)){
+        setError(quantityMessage(l.product));
         return;
       }
       if (!validAmount(l.unit_price,mode==='sale')) {
@@ -234,6 +246,11 @@ export default function CounterPage() {
       setError('Choose a due date today or later.');
       return;
     }
+    if(!operation.current&&deliveryLines.length&&approvedDeliveryKey!==deliveryReviewKey){
+      setDeliveryReviewOpen(true);
+      return;
+    }
+    setDeliveryReviewOpen(false);
     guard.current = true;
     setBusy(true);
     const payload = {
@@ -319,12 +336,12 @@ export default function CounterPage() {
  {cart.map(l => <article key={l.product_id} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start gap-2"><ProductThumbnail product={l.product} className="h-12 w-12" showLabel={false} fullscreen /><h3 className="min-w-0 flex-1 break-words font-semibold">{t(l.product.description)}</h3><button type="button" className="min-h-11 min-w-11 text-red-700" aria-label={t("Remove {v0} from basket", {
                 v0: t(l.product.description)
               })} onClick={() => setCart(c => c.filter(x => x.product_id !== l.product_id))}><Trash2 size={18} /></button></div>
- <div className="mt-3 grid grid-cols-2 items-end gap-2"><label className="min-w-0"><span className="label">{t("Quantity")}</span><input className="input" type="number" required min="1" max={mode==='sale'?availableUnits(l.product):999999999999} step="1" inputMode="numeric" value={l.quantity} aria-invalid={!validQuantity(l.quantity,true)||mode==='sale'&&Number(l.quantity)>availableUnits(l.product)||undefined} aria-describedby={!validQuantity(l.quantity,true)?`quantity-help-${l.product_id}`:mode==='sale'&&Number(l.quantity)>availableUnits(l.product)?`stock-help-${l.product_id}`:undefined} onChange={e => update(l.product_id, 'quantity', e.target.value)} /></label><label className="min-w-0"><span className="label">{mode === 'sale' ? t('Price per unit') : t('Cost per unit')}</span><input className="input" type="number" required min={mode==='sale'?'0.01':'0'} max="999999999999.99" step="0.01" inputMode="decimal" value={l.unit_price} placeholder={mode==='sale'?t('Enter price'):undefined} aria-invalid={!validAmount(l.unit_price,mode==='sale')||undefined} aria-describedby={!validAmount(l.unit_price,mode==='sale')?`price-help-${l.product_id}`:undefined} onChange={e => update(l.product_id, 'unit_price', e.target.value)} /></label></div>
+ <div className="mt-3 grid grid-cols-2 items-end gap-2"><label className="min-w-0"><span className="label">{t("Quantity")}</span><input id={`counter-quantity-${l.product_id}`} className="input" type="number" required min="1" max={quantityLimit(l.product)} step="1" inputMode="numeric" value={l.quantity} aria-invalid={!validQuantity(l.quantity,true)||Number(l.quantity)>quantityLimit(l.product)||undefined} aria-describedby={!validQuantity(l.quantity,true)?`quantity-help-${l.product_id}`:Number(l.quantity)>quantityLimit(l.product)?`stock-help-${l.product_id}`:undefined} onChange={e => update(l.product_id, 'quantity', e.target.value)} /></label><label className="min-w-0"><span className="label">{mode === 'sale' ? t('Price per unit') : t('Cost per unit')}</span><input className="input" type="number" required min={mode==='sale'?'0.01':'0'} max="999999999999.99" step="0.01" inputMode="decimal" value={l.unit_price} placeholder={mode==='sale'?t('Enter price'):undefined} aria-invalid={!validAmount(l.unit_price,mode==='sale')||undefined} aria-describedby={!validAmount(l.unit_price,mode==='sale')?`price-help-${l.product_id}`:undefined} onChange={e => update(l.product_id, 'unit_price', e.target.value)} /></label></div>
  {!validQuantity(l.quantity,true)&&<p id={`quantity-help-${l.product_id}`} role="alert" className="mt-2 text-sm font-semibold text-red-700">{t('Enter a whole-number quantity of 1 or more.')}</p>}
  {mode==='stock_in'&&!validAmount(l.unit_price)&&<p id={`price-help-${l.product_id}`} className="mt-2 text-sm font-semibold text-red-700">{t('Enter a cost of 0 or more, with up to 2 decimal places.')}</p>}
  {mode==='sale'&&!validAmount(l.unit_price,true)&&<p id={`price-help-${l.product_id}`} className="mt-2 text-sm font-semibold text-amber-800">{canAddPart?t('Enter the selling price before confirming this sale.'):t('Ask the owner for the selling price, then enter it here.')}</p>}
  {mode==='sale'&&canAddPart&&validAmount(l.unit_price,true)&&Number(l.unit_price)!==Number(l.product.selling_price)&&<details className="group mt-2"><summary className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-700">{t('Use as regular price')}<ChevronDown size={16} aria-hidden="true" className="ml-auto shrink-0 group-open:rotate-180" /></summary><button type="button" className="btn-secondary w-full text-sm" onClick={()=>savePrice(l)}>{priceSaving===l.product_id?t('Saving price…'):t('Save price to inventory')}</button></details>}
- <div className="mt-3 flex flex-wrap items-end justify-between gap-2 border-t border-slate-100 pt-2">{mode==='sale'&&(validQuantity(l.quantity,true)&&Number(l.quantity)>availableUnits(l.product)?<p id={`stock-help-${l.product_id}`} role="alert" className="text-sm font-semibold text-red-700">{stockMessage(l.product)}</p>:<p className="text-sm text-slate-600">{t('Stock after this sale: {v0} {v1}',{v0:validQuantity(l.quantity,true)?Math.round((Number(l.product.current_stock)-Number(l.quantity))*100)/100:'—',v1:l.product.unit||t('units')})}</p>)}<p className="ml-auto font-semibold">{validQuantity(l.quantity,true)&&validAmount(l.unit_price,mode==='sale')?money(lineCents(l.quantity,l.unit_price)/100):'—'}</p></div></article>)}
+ <div className="mt-3 flex flex-wrap items-end justify-between gap-2 border-t border-slate-100 pt-2">{mode==='sale'&&(validQuantity(l.quantity,true)&&Number(l.quantity)>availableUnits(l.product)?<p id={`stock-help-${l.product_id}`} role="alert" className="text-sm font-semibold text-red-700">{stockMessage(l.product)}</p>:<p className="text-sm text-slate-600">{t('Stock after this sale: {v0} {v1}',{v0:validQuantity(l.quantity,true)?Math.round((Number(l.product.current_stock)-Number(l.quantity))*100)/100:'—',v1:l.product.unit||t('units')})}</p>)}{mode==='stock_in'&&<p id={`stock-help-${l.product_id}`} className="text-sm text-slate-600">{t('Maximum 2 per item')}</p>}<p className="ml-auto font-semibold">{validQuantity(l.quantity,true)&&validAmount(l.unit_price,mode==='sale')?money(lineCents(l.quantity,l.unit_price)/100):'—'}</p></div></article>)}
  {cart.length > 0 && <button type="button" className="btn-secondary w-full" onClick={() => setCart([])}>{t("Clear basket")}</button>}
  {mode === 'sale' && <><label className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" className="h-5 w-5" checked={credit} onChange={e => setCredit(e.target.checked)} /><span className="font-semibold">{t("Customer will pay later (utang)")}</span></label>{credit && <div className="space-y-4 rounded-xl bg-slate-50 p-3"><label className="block"><span className="label">{t('Customer name *')}</span><input className="input" maxLength={240} minLength={2} required value={customer} onChange={e => setCustomer(e.target.value)} /></label><label className="block"><span className="label">{t("Amount paid now (\u20B1)")}</span><input className="input" type="number" inputMode="decimal" required min="0" max={total===null?undefined:total} step="0.01" value={paid} aria-invalid={paymentIssue||undefined} aria-describedby={paymentIssue?'store-payment-error':undefined} onChange={e => setPaid(e.target.value)} /></label>
  {paymentIssue&&<p id="store-payment-error" role="alert" className="text-sm font-semibold text-red-700">{overpaid?t('Amount paid is higher than the updated total. Check the payment or the prices.'):t('Enter an amount paid of 0 or more, with up to 2 decimal places.')}</p>}
@@ -336,9 +353,10 @@ export default function CounterPage() {
  <div className="my-5 flex flex-wrap justify-between gap-2 border-t border-slate-200 pt-4 text-xl font-bold"><span>{t("Total")}</span><span>{formattedTotal}</span></div>
  {cart.length>0&&total===null&&!incompleteQuantity&&<p className="mb-3 text-sm font-semibold text-amber-800">{incompletePrice?t('Add a selling price for every part to continue.'):t('Check the quantities and prices before saving.')}</p>}
  {zeroSaleTotal&&!incompleteQuantity&&<p role="alert" className="mb-3 text-sm font-semibold text-red-700">{t('Each part in a sale must total at least ₱0.01. Check the quantities and prices.')}</p>}
- <button className="btn-primary w-full" disabled={busy || !!priceSaving || !cart.length || total===null || zeroSaleTotal || insufficientStock || paymentIssue || needsPriceReview}>{busy ? t('Saving…') : mode === 'sale' ? t('3. Confirm sale') : t('3. Confirm delivery')}</button>{!navigator.onLine&&<p className="mt-3 text-sm text-slate-500">{t('This basket saves on this device and sends automatically when internet returns.')}</p>}
+ <button className="btn-primary w-full" disabled={busy || !!priceSaving || !cart.length || total===null || zeroSaleTotal || insufficientStock || deliveryQuantityIssue || paymentIssue || needsPriceReview}>{busy ? t('Saving…') : mode === 'sale' ? t('3. Confirm sale') : t('3. Confirm delivery')}</button>{!navigator.onLine&&<p className="mt-3 text-sm text-slate-500">{t('This basket saves on this device and sends automatically when internet returns.')}</p>}
  </Form></div>
  {cart.length>0&&!basketVisible&&<><div className="h-24 xl:hidden" aria-hidden="true" /><div className="counter-basket-shortcut fixed inset-x-0 z-20 flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 lg:left-64 xl:hidden"><div className="min-w-0"><p className="text-sm text-slate-600">{basketLabel}</p><p className="break-words font-bold">{formattedTotal}</p></div><a className="btn-primary shrink-0" href="#store-basket">{t('View basket')}</a></div></>}
+ <DeliveryReviewModal open={deliveryReviewOpen} lines={deliveryLines} total={total} onEdit={editDelivery} onConfirm={()=>submit(undefined,deliveryReviewKey)} busy={busy}/>
  <BarcodeScanner open={scan} onClose={() => setScan(false)} onScan={lookup} /><Toast toast={toast} onClose={() => setToast(null)} />
  </div>;
 }

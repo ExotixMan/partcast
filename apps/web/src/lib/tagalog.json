@@ -1484,5 +1484,16 @@
   "The Apps Script could not accept this request. Update the deployed script to the current PartCast version.": "Hindi tinanggap ng Apps Script ang kahilingan. I-update ang naka-deploy na script sa kasalukuyang bersyon ng PartCast.",
   "Gmail delivery could not be confirmed. Check the sending result before creating another request.": "Hindi makumpirma ang pagpapadala sa Gmail. Suriin ang resulta bago gumawa ng panibagong kahilingan.",
   "The Apps Script could not be reached. Check its deployment URL and access setting.": "Hindi makontak ang Apps Script. Suriin ang deployment URL at setting ng access nito.",
-  "Apps Script access is valid. Complete a password and email-code sign-in to confirm delivery.": "Tama ang access sa Apps Script. Mag-sign in gamit ang password at email code para makumpirmang natatanggap ang email."
+  "Apps Script access is valid. Complete a password and email-code sign-in to confirm delivery.": "Tama ang access sa Apps Script. Mag-sign in gamit ang password at email code para makumpirmang natatanggap ang email.",
+  "Go back and edit": "Bumalik at baguhin",
+  "Yes, receive these items": "Oo, tanggapin ang mga ito",
+  "Check these against the delivery receipt.": "Itugma ang mga ito sa resibo ng delivery.",
+  "Quantity to receive": "Dami na tatanggapin",
+  "Stock after delivery": "Stock pagkatapos ng delivery",
+  "Total for all items": "Kabuuang halaga ng lahat ng piyesa",
+  "Confirm delivery": "Kumpirmahin ang delivery",
+  "Have you received these items? Check the quantities before saving.": "Natanggap mo ba ang mga piyesang ito? Suriin ang dami bago i-save.",
+  "Receive a maximum of 2 units per item.": "Hanggang 2 unit lamang bawat piyesa ang maaaring tanggapin.",
+  "Maximum 2 per item": "Hanggang 2 bawat piyesa",
+  "Total units": "Kabuuang unit"
 }

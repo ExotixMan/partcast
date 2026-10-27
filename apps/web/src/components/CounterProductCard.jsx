@@ -1,6 +1,6 @@
 import { CarFront, Check, Droplets, Fuel, PackageOpen, Wrench } from 'lucide-react';
 import { t, useLocale } from '../context/LocaleContext.jsx';
-import { categories, money, validAmount, availableUnits } from '../lib/store.js';
+import { categories, money, validAmount, availableUnits, MAX_DELIVERY_QUANTITY } from '../lib/store.js';
 import { ProductThumbnail } from './ProductPhotos.jsx';
 
 const categoryIcons = { parts: Wrench, lubricants: Droplets, fuel: Fuel, accessories: CarFront, other: PackageOpen };
@@ -9,8 +9,8 @@ export default function CounterProductCard({ product, mode, quantity, disabled, 
   useLocale();
   const needsPrice = mode === 'sale' && !validAmount(product.selling_price, true);
   const outOfStock = Number(product.current_stock) <= 0;
-  const stockLimit = availableUnits(product);
-  const soldOut = mode === 'sale' && (stockLimit < 1 || Number(quantity) >= stockLimit);
+  const quantityLimit = mode==='sale'?availableUnits(product):MAX_DELIVERY_QUANTITY;
+  const atLimit = quantityLimit < 1 || Number(quantity) >= quantityLimit;
   const Icon = categoryIcons[product.category] || PackageOpen;
   const categoryLabel = categories.find(([id]) => id === product.category)?.[1] || 'Other';
 
@@ -34,7 +34,7 @@ export default function CounterProductCard({ product, mode, quantity, disabled, 
           v0: Number(product.current_stock).toLocaleString('en-PH'), v1: product.unit || t('units')
         })}
       </p>
-      <button type="button" className="counter-product-price counter-card-action" onClick={() => onAdd(product)} disabled={disabled || soldOut} aria-label={t('Add {v0} to basket', { v0: product.description })}>
+      <button type="button" className="counter-product-price counter-card-action" onClick={() => onAdd(product)} disabled={disabled || atLimit} aria-label={t('Add {v0} to basket', { v0: product.description })}>
         {mode === 'stock_in' && <span>{t('Cost per unit')}</span>}
         <strong className={needsPrice ? 'text-amber-800' : ''}>{needsPrice ? t('Price needed') : money(mode === 'sale' ? product.selling_price : product.unit_cost)}</strong>
       </button>
