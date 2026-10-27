@@ -199,6 +199,6 @@ export default function LoginPage() {
       </section>
     </div>
 
-    <footer className="px-5 pb-6 text-center text-sm text-slate-600">{t('Internet is needed to sign in.')}</footer>
+    <footer className="px-5 pb-6 text-center text-sm text-slate-600"><p>{t('Internet is needed to sign in.')}</p><nav aria-label={t('Legal information')} className="mt-2 flex flex-wrap justify-center gap-x-5"><a className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4" href="/privacy.html">{t('Privacy Policy')}</a><a className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4" href="/terms.html">{t('Terms of Service')}</a></nav></footer>
   </div>;
 }
