@@ -13,7 +13,11 @@ router.post('/otp/request',rateLimit({windowMs:15*60*1000,limit:15,keyGenerator:
   const code=String(crypto.randomInt(0,1000000)).padStart(6,'0'),codeHash=hash(req,code);
   const {error}=await adminDb.rpc('issue_email_challenge',{p_user:req.user.id,p_session:req.user.session_id,p_hash:codeHash});
   if(error){if(error.code==='P0001')return res.status(429).json({error:'Wait 60 seconds before requesting another code.'});throw error;}
-  try{await sendLoginCode(req.user.email,code);}catch(e){await adminDb.from('email_login_challenges').delete().eq('session_id',req.user.session_id).eq('code_hash',codeHash);throw e;}
+  try{await sendLoginCode(req.user.email,code);}catch(e){
+   await adminDb.from('email_login_challenges').delete().eq('session_id',req.user.session_id).eq('code_hash',codeHash);
+   if(e.deliveryUncertain)throw Object.assign(new Error('The sign-in email could not be confirmed. Request a new code and use the most recent email.'),{status:503,safe:true,code:/^GMAIL_[A-Z_]+$/.test(e.code||'')?e.code:'GMAIL_SIGNIN_EMAIL_UNCONFIRMED',details:e.safe?e.details:undefined});
+   throw e;
+  }
   res.json({sent:true,expiresIn:600,resendAfter:60});
  }catch(e){next(e);}
 });

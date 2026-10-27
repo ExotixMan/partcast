@@ -40,7 +40,7 @@ test('SMTP sends login codes and escaped supplier mail over authenticated TLS wi
  try{
   await sendLoginCode('staff@example.test','123456');
   await sendSupplierEmail({supplier:{name:'Supplier',email:'supplier@example.test'},subject:'Parts request',message:'Please confirm <script>bad</script>',items:[{part_number:'BP-001',description:'Brake pad & bolts',current_stock:0,quantity:2,unit:'pc'}]});
-  assert.equal(f.deliveries.length,2);assert.equal(f.checks,0);assert.equal(f.closed,2);
+  assert.equal(f.deliveries.length,2);assert.equal(f.checks,2);assert.equal(f.closed,2);
   assert.equal(f.deliveries[0].to,'staff@example.test');assert.match(f.deliveries[0].text,/123456/);
   assert.deepEqual(f.deliveries[0].envelope,{from:'sender@example.test',to:['staff@example.test']});
   assert.equal(f.deliveries[1].to,'supplier@example.test');assert.match(f.deliveries[1].html,/&lt;script&gt;/);assert(!f.deliveries[1].html.includes('<script>'));
@@ -49,7 +49,7 @@ test('SMTP sends login codes and escaped supplier mail over authenticated TLS wi
    assert.deepEqual(value.auth,{user:'sender@example.test',pass:password});assert.equal(value.tls.rejectUnauthorized,true);assert.equal(value.tls.minVersion,'TLSv1.2');
    assert.equal(value.disableFileAccess,true);assert.equal(value.disableUrlAccess,true);assert.equal(value.logger,false);assert.equal(value.debug,false);
   }
-  assert.match(await checkGmailConnection(),/SMTP sign-in is valid/);assert.equal(f.checks,1);assert.equal(f.deliveries.length,2);
+  assert.match(await checkGmailConnection(),/SMTP sign-in is valid/);assert.equal(f.checks,3);assert.equal(f.deliveries.length,2);
  }finally{f.restore();}
 });
 test('SMTP settings verify before saving, encrypt the App Password and preserve a saved blank secret',async()=>{
@@ -131,6 +131,19 @@ test('a missing SMTP acceptance is uncertain and never reported as sent',async()
  finally{f.restore();}
 });
 
+test('an SMTP preflight timeout is a definite connection failure and never attempts email submission',async()=>{
+ const f=fixture();
+ try{
+  f.failVerify(Object.assign(new Error('private '+password),{code:'ETIMEDOUT',command:'CONN'}));
+  await assert.rejects(sendLoginCode('staff@example.test','123456'),error=>{
+   assert.equal(error.code,'GMAIL_SMTP_UNAVAILABLE');assert.equal(error.deliveryUncertain,false);
+   assert.equal(error.details.stage,'smtp_connection');assert.equal(error.details.smtp_error_code,'ETIMEDOUT');assert.equal(error.details.smtp_command,'CONN');
+   assert(!JSON.stringify({message:error.message,details:error.details}).includes(password));return true;
+  });
+  assert.equal(f.checks,1);assert.equal(f.deliveries.length,0);assert.equal(f.closed,1);
+ }finally{f.restore();}
+});
+
 test('SMTP connection checks are Super Admin only and failed authentication leaves no usable login challenge',async()=>{
  const {default:express}=await import('express');
  const {default:admin}=await import('../src/routes/admin.js');
@@ -153,10 +166,14 @@ test('SMTP connection checks are Super Admin only and failed authentication leav
   async function post(path){return nativeFetch(base+path,{method:'POST',headers,body:'{}'});}
   assert.equal((await post('/admin/integrations/gmail/test')).status,403);assert.equal(f.checks,0);
   role='super_admin';assert.equal((await post('/admin/integrations/gmail/test')).status,200);assert.equal(f.checks,1);assert.equal(f.deliveries.length,0);
-  f.failSend(Object.assign(new Error('private '+password),{code:'EAUTH',command:'AUTH PLAIN',responseCode:535}));
+  f.failVerify(Object.assign(new Error('private '+password),{code:'EAUTH',command:'AUTH PLAIN',responseCode:535}));
   let response=await post('/auth/otp/request'),body=await response.json();assert.equal(response.status,503);assert.equal(body.code,'GMAIL_SMTP_AUTH_FAILED');assert.equal(issued,1);assert.equal(deleted,1);
+  assert.equal((await nativeFetch(base+'/private',{headers})).status,428);assert(!JSON.stringify({logs,body}).includes(password));assert.equal(f.deliveries.length,0);
+  f.failVerify(null);f.failSend(Object.assign(new Error('private '+password),{code:'ETIMEDOUT',command:'DATA'}));
+  response=await post('/auth/otp/request');body=await response.json();assert.equal(response.status,503);assert.equal(body.code,'GMAIL_SMTP_UNCONFIRMED');
+  assert.match(body.error,/sign-in email/);assert.match(body.error,/new code/);assert(!body.error.includes('Gmail Sent'));assert.equal(deleted,2);assert.equal(issued,2);
   assert.equal((await nativeFetch(base+'/private',{headers})).status,428);assert(!JSON.stringify({logs,body}).includes(password));
-  f.failSend(null);response=await post('/auth/otp/request');assert.equal(response.status,200);assert.equal((await response.json()).sent,true);assert.equal(issued,2);assert.equal(deleted,1);
+  f.failSend(null);response=await post('/auth/otp/request');assert.equal(response.status,200);assert.equal((await response.json()).sent,true);assert.equal(issued,3);assert.equal(deleted,2);
   assert.equal((await nativeFetch(base+'/private',{headers})).status,428);
  }finally{await new Promise(resolve=>server.close(resolve));adminDb.from=previous.from;adminDb.rpc=previous.rpc;adminDb.auth.getUser=previous.auth;console.error=previous.log;f.restore();}
 });

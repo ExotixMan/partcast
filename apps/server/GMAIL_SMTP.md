@@ -41,6 +41,10 @@ This removes saved Gmail connection credentials so the API can use its environme
 
 Authentication and explicit SMTP rejections are reported as definite failures. Lost or incomplete responses after message submission are uncertain: check Gmail Sent or the supplier-request result before trying another request. Existing supplier request IDs and receipts continue to prevent duplicate sends when the result is uncertain.
 
+Each send first checks SMTP connectivity and authentication without submitting mail. A failure at that stage reports a connection/authentication error, rather than claiming that delivery may have occurred. Failures during the subsequent submission remain conservative because the server might have accepted the message. Controlled logs include the SMTP error code and command category, without the original provider response or credentials.
+
+If an OTP email cannot be confirmed, the pending challenge is cleared and the login screen asks for a fresh code from the most recent email. OTP requests allow 45 seconds for connection checks and sending; this does not change code verification or permit sign-in without a valid email code.
+
 The SMTP connection uses implicit TLS on port 465 with certificate verification, bounded connection/read timeouts and a fixed Gmail host. Credentials and message data are not written into SMTP debug logs. Unexpected provider responses are replaced by controlled errors.
 
 The frontend waits for the API's `smtp_supported` flag before allowing SMTP selection during a rolling deployment. `/health` exposes a valid Render commit identifier when available, allowing the deployed API revision to be checked without exposing connection credentials.

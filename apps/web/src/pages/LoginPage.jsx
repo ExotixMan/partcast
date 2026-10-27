@@ -1,12 +1,19 @@
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Check, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { storeConfigured, storeConnectionIssue } from '../lib/supabase.js';
 import { publicApi, apiConnectionIssue } from '../lib/api.js';
 import Preferences from '../components/Preferences.jsx';
 import { connectionMessage } from '../lib/connection.js';
+function emailErrorReference(error){
+  if(!/^GMAIL_[A-Z_]{1,64}$/.test(error?.code||''))return '';
+  const detail=error.diagnostics||{};
+  const network=['EAUTH','ETIMEDOUT','ECONNREFUSED','ECONNRESET','ESOCKET','EDNS','ENOTFOUND','ETLS','EENVELOPE','EMESSAGE','ECONNECTION','EPROTOCOL'].includes(detail.smtp_error_code)?detail.smtp_error_code:'';
+  const command=['AUTH','CONN','EHLO','HELO','STARTTLS','MAIL FROM','RCPT TO','DATA'].includes(detail.smtp_command)?detail.smtp_command:'';
+  return [error.code,network,command].filter(Boolean).join(' · ');
+}
 function PasswordField({
   id,
   label = 'Password',
@@ -51,6 +58,7 @@ export default function LoginPage() {
   async function sendOtp() {
     if (loading || resendSeconds > 0) return;
     setError('');
+    setErrorReference('');
     const email = session?.user?.email || login.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
       setError('Enter a valid email address.');
@@ -68,6 +76,7 @@ export default function LoginPage() {
       setNow(Date.now());
     } catch (e) {
       setError(e.message);
+      setErrorReference(emailErrorReference(e));
     } finally {
       setLoading(false);
     }
@@ -75,6 +84,7 @@ export default function LoginPage() {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [errorReference,setErrorReference]=useState('');
   const [serverError, setServerError] = useState('');
   const [checkingServer, setCheckingServer] = useState(false);
   const [login, setLogin] = useState({
@@ -105,6 +115,7 @@ export default function LoginPage() {
   async function submitLogin(e) {
     e.preventDefault();
     if (loading) return;
+    setErrorReference('');
     if (otpMode && !/^[0-9]{6}$/.test(otp)) {
       setError('Enter the 6 digit code from your email.');
       return;
@@ -131,6 +142,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setErrorReference('');
     try {
       await publicApi('/setup/bootstrap', {
         method: 'POST',
@@ -168,7 +180,7 @@ export default function LoginPage() {
 
         {!storeConfigured && <p role="alert" className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t(storeConnectionIssue)}</p>}
         {serverError && <div role="alert" className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><p>{t(serverError)}</p><button type="button" className="btn-secondary mt-3 w-full border-amber-200 bg-white text-amber-900" disabled={checkingServer} onClick={checkServer}>{checkingServer ? t('Checking connection…') : t('Check connection again')}</button></div>}
-        {error && <div role="alert" className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-base leading-7 text-red-800">{t(error)}</div>}
+        {error && <div role="alert" className="mt-6 rounded-md border border-red-200 bg-red-50 p-4 text-base leading-7 text-red-800"><p>{t(error)}</p>{errorReference&&<details className="group mt-2"><summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-semibold">{t('Error details')}<ChevronDown size={16} className="shrink-0 group-open:rotate-180" aria-hidden="true"/></summary><p className="mt-1 break-words font-mono text-sm">{t('Reference')}: {errorReference}</p></details>}</div>}
 
         {needsSetup ? <Form onSubmit={submitSetup} className="mt-6 space-y-5" aria-busy={loading}>
           <PasswordField id="setup-secret" label={t('Setup secret')} value={setup.setupSecret} onChange={e => setSetup({...setup,setupSecret:e.target.value})} autoComplete="off" hint={t('This is the private setup code provided by the person who set up PartCast.')} />

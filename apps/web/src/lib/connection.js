@@ -2,6 +2,7 @@ const localHost = hostname => ['localhost', '127.0.0.1', '[::1]', '::1'].include
 
 export function apiRequestTimeout(path) {
   const endpoint = path.split('?')[0];
+  if(endpoint==='/auth/otp/request')return 45000;
   if (['/api/forecast/train', '/api/forecast/demo/jobs'].includes(endpoint)) return 180000;
 
   if (['/api/forecast/readiness', '/api/forecast/status'].includes(endpoint)) return 90000;

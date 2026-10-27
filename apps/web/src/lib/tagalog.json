@@ -1467,5 +1467,8 @@
   "Gmail refused this email request. Check the recipient and the sending account’s limits.": "Hindi tinanggap ng Gmail ang pagpapadalang ito. Suriin ang tatanggap at ang limitasyon ng account na magpapadala.",
   "The server could not connect to Gmail SMTP. Render Free blocks SMTP; use hosting that allows port 465.": "Hindi makakonekta ang server sa Gmail SMTP. Bina-block ng Render Free ang SMTP; gumamit ng hosting na nagpapahintulot sa port 465.",
   "Enter the sending Gmail address and its 16-character Google App Password.": "Ilagay ang Gmail address ng magpapadala at ang 16-character na Google App Password nito.",
-  "This field: Enter the 16-character Google App Password.": "Google App Password: Ilagay ang 16-character na Google App Password."
+  "This field: Enter the 16-character Google App Password.": "Google App Password: Ilagay ang 16-character na Google App Password.",
+  "The sign-in email could not be confirmed. Request a new code and use the most recent email.": "Hindi makumpirma ang email para sa pag-sign in. Humingi ng bagong code at gamitin ang pinakabagong email.",
+  "Error details": "Detalye ng error",
+  "The server could not connect to Gmail SMTP. Check SMTP access on the API host.": "Hindi makakonekta ang server sa Gmail SMTP. Suriin kung pinapayagan ng API host ang SMTP."
 }

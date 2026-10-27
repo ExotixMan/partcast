@@ -7,6 +7,19 @@ const {clearIntegrationCache,encryptIntegration}=await import('../src/utils/inte
 const {gmailAccessToken}=await import('../src/utils/gmail.js');
 const {errorHandler}=await import('../src/middleware/error.js');
 
+test('public Gmail diagnostics and their log details exclude unexpected provider fields and values',()=>{
+ const marker='PRIVATE_PROVIDER_RESPONSE',logs=[];let body;const previous=console.error;
+ const failure=Object.assign(new Error('SMTP connection failed.'),{status:503,safe:true,code:'GMAIL_SMTP_UNAVAILABLE',details:{
+  provider:'gmail',stage:marker,settings_source:'api_environment',smtp_error_code:'ETIMEDOUT',smtp_command:'AUTH '+marker,smtp_response_code:535,http_status:999,google_error:marker,password:marker
+ }});
+ const response={headersSent:false,status(){return this;},json(value){body=value;return this;}};
+ try{
+  console.error=(...args)=>logs.push(args);errorHandler(failure,{},response,()=>{});
+  assert.deepEqual(body.diagnostics,{provider:'gmail',settings_source:'api_environment',smtp_error_code:'ETIMEDOUT',smtp_response_code:535});
+  assert(!JSON.stringify({body,logs}).includes(marker));
+ }finally{console.error=previous;}
+});
+
 test('Google token failures identify the recovery action and active settings without exposing upstream data',async t=>{
  const original={from:adminDb.from,fetch:globalThis.fetch,refresh:config.GMAIL_REFRESH_TOKEN};
  let saved=false;

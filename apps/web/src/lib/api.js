@@ -43,6 +43,7 @@ async function networkRequest(path, options = {}) {
     const body = json ? await res.json().catch(() => ({})) : {};
     const error = new ApiError(body.error || `Request failed (${res.status})`, res.status);
     error.code = body.code;
+    error.diagnostics = body.diagnostics;
     error.readiness = body.readiness;
     if (res.status === 428) window.dispatchEvent(new Event('partcast:verify-email'));
     throw error;

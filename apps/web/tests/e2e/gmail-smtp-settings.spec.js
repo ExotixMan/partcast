@@ -22,7 +22,7 @@ async function fixture(context,{supported=true,failSave=false,language='en',larg
   else if(url.pathname==='/api/admin/integrations')body={data:rows,forecasting:{ready:true,message:'The forecasting engine is ready.'}};
   else if(url.pathname==='/api/admin/integrations/gmail'&&request.method()==='PATCH'){
    const patch=request.postDataJSON();writes.push(patch);
-   if(blocked)return route.fulfill({status:503,headers,json:{error:'The server could not connect to Gmail SMTP. Render Free blocks SMTP; use hosting that allows port 465.',code:'GMAIL_SMTP_UNAVAILABLE'}});
+   if(blocked)return route.fulfill({status:503,headers,json:{error:'The server could not connect to Gmail SMTP. Check SMTP access on the API host.',code:'GMAIL_SMTP_UNAVAILABLE'}});
    rows[0]={...rows[0],delivery_method:patch.delivery_method,sender_email:patch.sender_email,fields:{...rows[0].fields,app_password:rows[0].fields.app_password||Boolean(patch.app_password)}};
    body={data:rows[0]};
   }else if(url.pathname==='/api/admin/integrations/gmail/test'){

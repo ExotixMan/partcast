@@ -1,6 +1,21 @@
 import { ZodError } from 'zod';
 import {validationMessage} from '../utils/validationMessage.js';
 
+function gmailDiagnostics(error){
+  if(!error?.safe||!/^GMAIL_[A-Z_]+$/.test(error.code||'')||error.details?.provider!=='gmail')return;
+  const detail=error.details,result={provider:'gmail'};
+  const allowed={
+    stage:['oauth_token','gmail_api_send','smtp_auth','smtp_connection','smtp_send'],
+    settings_source:['api_environment','saved_partcast_settings','submitted_partcast_settings'],
+    smtp_error_code:['EAUTH','ETIMEDOUT','ECONNREFUSED','ECONNRESET','ESOCKET','EDNS','ENOTFOUND','ETLS','EENVELOPE','EMESSAGE','ECONNECTION','EPROTOCOL'],
+    smtp_command:['AUTH','CONN','EHLO','HELO','STARTTLS','MAIL FROM','RCPT TO','DATA'],
+    google_error:['invalid_client','invalid_grant','unauthorized_client','access_denied','invalid_scope','invalid_request','unsupported_grant_type']
+  };
+  for(const [key,values] of Object.entries(allowed))if(values.includes(detail[key]))result[key]=detail[key];
+  for(const key of ['smtp_response_code','http_status'])if(Number.isInteger(detail[key])&&detail[key]>=100&&detail[key]<=599)result[key]=detail[key];
+  return result;
+}
+
 export function notFound(req, res) {
   res.status(404).json({ error: 'Endpoint not found.' });
 }
@@ -28,11 +43,12 @@ export function errorHandler(err, req, res, next) {
 
   const status =
     Number(err?.status) || 500;
+  const diagnostics=gmailDiagnostics(err);
 
   if(status>=500)console.error('PARTCAST ERROR:', {
     message: err?.message,
     code: err?.code,
-    details: err?.details,
+    details: err?.safe&&/^GMAIL_[A-Z_]+$/.test(err?.code||'')?diagnostics:err?.details,
     hint: err?.hint,
     stack: err?.stack
   });
@@ -48,6 +64,7 @@ export function errorHandler(err, req, res, next) {
 
   res.status(status).json({
     error: message,
+    ...(diagnostics?{diagnostics}:{}),
     ...(err?.safe&&/^(GMAIL_|SUPPLIER_EMAIL_)[A-Z_]+$/.test(err?.code||'')?{code:err.code}:{})
 });
 }
