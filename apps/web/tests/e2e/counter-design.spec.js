@@ -69,6 +69,8 @@ async function storeFixture(context, { paginated = false, language = 'en', large
         && (query.category === 'all' || product.category === query.category));
       const start = (query.page - 1) * query.pageSize;
       body = { data: filtered.slice(start, start + query.pageSize), count: filtered.length };
+    } else if (url.pathname.startsWith('/api/barcode/')) {
+      body = {product: products.find(product => product.barcode === decodeURIComponent(url.pathname.split('/').at(-1))) || null};
     } else if (url.pathname.startsWith('/api/photos/')) {
       photos.push(url.pathname);
       await route.fulfill({ headers, contentType: 'image/png', body: photo });
@@ -246,6 +248,53 @@ test('maximized photos keep their controls visible with a long name on a short s
   await page.keyboard.press('Escape');
   await expect(viewer).toHaveCount(0);
   await expect(page.locator('#store-basket').getByLabel('Quantity', { exact: true })).toHaveCount(0);
+});
+
+test('one unit in stock allows only one basket unit through rapid card taps, typing and barcode scans',async({page,context})=>{
+  const store=await storeFixture(context);store.products[0].current_stock=1;
+  await page.goto('/counter');
+  const add=page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true});
+  await expect(add).toBeEnabled();await add.evaluate(button=>{for(let index=0;index<20;index++)button.click();});
+  const quantity=page.locator('#store-basket').getByLabel('Quantity',{exact:true});
+  await expect(quantity).toHaveValue('1');await expect(quantity).toHaveAttribute('max','1');await expect(add).toBeDisabled();
+  await quantity.fill('2');await expect(quantity).toHaveValue('1');await expect(page.getByRole('alert')).toContainText('Only 1 pcs are available.');
+  for(let index=0;index<2;index++){
+    await page.getByRole('button',{name:'Scan',exact:true}).click();await page.getByLabel('Barcode number',{exact:true}).fill('123456789012');await page.getByRole('button',{name:'Find this barcode',exact:true}).click();await expect(quantity).toHaveValue('1');
+  }
+  const catalog=page.getByRole('region',{name:'Choose parts',exact:true});await catalog.getByRole('button',{name:'View photos of Toyota brake pad',exact:true}).click();await expect(page.getByRole('dialog',{name:'Toyota brake pad',exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(quantity).toHaveValue('1');
+  await page.getByRole('button',{name:'Remove Toyota brake pad from basket',exact:true}).click();await expect(add).toBeEnabled();
+  await add.click();await page.getByRole('button',{name:'3. Confirm sale',exact:true}).click();await expect.poll(()=>store.batches.length).toBe(1);expect(store.batches[0].lines).toEqual([{product_id:brakeId,quantity:1,unit_price:500}]);expect(store.products[0].current_stock).toBe(0);await expect(add).toBeDisabled();
+});
+
+test('new stock information blocks an oversized sale while preserving edited prices and allowing a correction',async({page,context})=>{
+  const store=await storeFixture(context);store.products[0].current_stock=3;
+  await page.goto('/counter');const add=page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true});await add.click();await add.click();
+  const quantity=page.getByLabel('Quantity',{exact:true}),price=page.getByLabel('Price per unit',{exact:true}),confirm=page.getByRole('button',{name:'3. Confirm sale',exact:true});
+  await price.fill('125.25');store.products[0].current_stock=1;await page.evaluate(()=>window.dispatchEvent(new Event('partcast:queue')));
+  await expect(quantity).toHaveAttribute('max','1');await expect(quantity).toHaveValue('2');await expect(quantity).toHaveAttribute('aria-invalid','true');await expect(price).toHaveValue('125.25');await expect(confirm).toBeDisabled();await expect(page.locator('#store-basket').getByRole('alert')).toContainText('Only 1 pcs are available.');
+  await page.locator('#store-basket').evaluate(form=>form.requestSubmit());expect(store.batches).toHaveLength(0);
+  await quantity.fill('1');await expect(quantity).not.toHaveAttribute('aria-invalid');await expect(confirm).toBeEnabled();await expect(add).toBeDisabled();await confirm.click();await expect.poll(()=>store.batches.length).toBe(1);expect(store.batches[0].lines[0]).toMatchObject({quantity:1,unit_price:125.25});
+});
+
+test('receiving can exceed current stock while selling rejects a zero-stock barcode',async({page,context})=>{
+  const store=await storeFixture(context);store.products[0].current_stock=0;
+  await page.goto('/counter');
+  await page.getByRole('button',{name:'Scan',exact:true}).click();await page.getByLabel('Barcode number',{exact:true}).fill('123456789012');await page.getByRole('button',{name:'Find this barcode',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Only 0 pcs are available.');await expect(page.getByLabel('Quantity',{exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Receive delivery',exact:true}).click();await page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true}).click();await page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true}).click();
+  const quantity=page.getByLabel('Quantity',{exact:true});await expect(quantity).toHaveValue('2');await expect(quantity).toHaveAttribute('max','999999999999');await quantity.fill('20');await page.getByRole('button',{name:'3. Confirm delivery',exact:true}).click();await expect.poll(()=>store.batches.length).toBe(1);expect(store.batches[0].tx_type).toBe('stock_in');expect(store.batches[0].lines[0].quantity).toBe(20);expect(store.products[0].current_stock).toBe(20);
+});
+
+test('a lost sale acknowledgement can retry its frozen operation after stock has already decreased',async({page,context})=>{
+  const store=await storeFixture(context);store.products[0].current_stock=1;const attempts=[];
+  await context.route('http://localhost:10000/api/offline-snapshot',route=>route.fulfill({status:503,headers:{'access-control-allow-origin':'*'},json:{error:'Inventory snapshot unavailable.'}}));
+  await context.route('http://localhost:10000/api/inventory/batch',async route=>{
+    if(route.request().method()==='OPTIONS')return route.fallback();
+    attempts.push(route.request().postDataJSON());
+    if(attempts.length===1){store.products[0].current_stock=0;return route.fulfill({status:503,headers:{'access-control-allow-origin':'*'},json:{error:'The response could not be confirmed.'}});}
+    return route.fulfill({headers:{'access-control-allow-origin':'*'},json:{batchId:'original-receipt',total:500}});
+  });
+  await page.goto('/counter');await page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true}).click();const confirm=page.getByRole('button',{name:'3. Confirm sale',exact:true});await confirm.click();await expect(page.getByText('This save is waiting for confirmation. Choose Confirm again to retry the same basket.',{exact:true})).toBeVisible();
+  await page.evaluate(()=>window.dispatchEvent(new Event('partcast:queue')));await expect(page.getByRole('region',{name:'Choose parts',exact:true}).getByRole('article').filter({has:page.getByRole('heading',{name:'Toyota brake pad',exact:true})})).toContainText('Out of stock');await expect(page.getByLabel('Quantity',{exact:true})).toBeDisabled();await expect(confirm).toBeEnabled();await confirm.click();await expect.poll(()=>attempts.length).toBe(2);expect(attempts[1]).toEqual(attempts[0]);expect(store.products[0].current_stock).toBe(0);await expect(page.getByLabel('Quantity',{exact:true})).toHaveCount(0);
 });
 
 for (const width of [320, 390]) {

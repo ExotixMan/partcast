@@ -1,6 +1,6 @@
 import { CarFront, Check, Droplets, Fuel, PackageOpen, Wrench } from 'lucide-react';
 import { t, useLocale } from '../context/LocaleContext.jsx';
-import { categories, money, validAmount } from '../lib/store.js';
+import { categories, money, validAmount, availableUnits } from '../lib/store.js';
 import { ProductThumbnail } from './ProductPhotos.jsx';
 
 const categoryIcons = { parts: Wrench, lubricants: Droplets, fuel: Fuel, accessories: CarFront, other: PackageOpen };
@@ -9,7 +9,8 @@ export default function CounterProductCard({ product, mode, quantity, disabled, 
   useLocale();
   const needsPrice = mode === 'sale' && !validAmount(product.selling_price, true);
   const outOfStock = Number(product.current_stock) <= 0;
-  const soldOut = mode === 'sale' && outOfStock;
+  const stockLimit = availableUnits(product);
+  const soldOut = mode === 'sale' && (stockLimit < 1 || Number(quantity) >= stockLimit);
   const Icon = categoryIcons[product.category] || PackageOpen;
   const categoryLabel = categories.find(([id]) => id === product.category)?.[1] || 'Other';
 

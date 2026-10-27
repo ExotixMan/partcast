@@ -83,7 +83,7 @@ async function localRead(path) {
 async function request(path, options = {}) {
   const userId = currentSession?.user?.id;
   const read = !options.method || options.method === 'GET';
-  if (read && path.startsWith('/api/products?') && userId && (await queueItems(userId)).length) return localRead(path);
+  if (read && (path.startsWith('/api/products?')||path.startsWith('/api/barcode/')) && userId && (await queueItems(userId)).length) return localRead(path);
   if (!navigator.onLine) {
     if (read) return localRead(path);
     throw new ApiError('This action needs an internet connection.', 0);
