@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import {z} from 'zod';
 import {getIntegrationWithSource,integrationReady} from './integrations.js';
+import {gmailDeliveryMethod} from './gmail-config.js';
+import {sendGmailSmtp,verifyGmailSmtp} from './gmail-smtp.js';
 let tokenCache;
 const oauthMessages={
  invalid_client:['GMAIL_OAUTH_INVALID_CLIENT','Google rejected the Gmail client ID or client secret. Ask the Super Admin to check the matching Google OAuth credentials.'],
@@ -28,7 +30,7 @@ function connectionError([code,message],source,{httpStatus=null,googleError=null
 }
 export async function gmailAccessToken(){
  const {value:v,source}=await getIntegrationWithSource('gmail');
- if(!integrationReady('gmail',v))throw connectionError(['GMAIL_NOT_CONFIGURED','Email needs the Gmail connection. Ask the Super Admin to configure it.'],source);
+ if(gmailDeliveryMethod(v)!=='oauth'||!integrationReady('gmail',v))throw connectionError(['GMAIL_NOT_CONFIGURED','Email needs the Gmail connection. Ask the Super Admin to configure it.'],source);
  const signature=crypto.createHash('sha256').update(JSON.stringify([v.client_id,v.client_secret,v.refresh_token])).digest('hex');
  if(tokenCache?.signature===signature&&tokenCache.expires>Date.now())return {token:tokenCache.token,sender:v.sender_email};
  let response;
@@ -52,6 +54,9 @@ export async function gmailAccessToken(){
 export async function sendGmailMessage({to,subject,text,html}){
  const email=z.string().trim().email().max(254).refine(v=>!/[\r\n]/.test(v)).parse(to);
  const title=z.string().trim().min(2).max(180).refine(v=>!/[\r\n]/.test(v),'Use a single line for the subject.').parse(subject);
+ const {value,source}=await getIntegrationWithSource('gmail');
+ if(!integrationReady('gmail',value))throw connectionError(['GMAIL_NOT_CONFIGURED','Email needs the Gmail connection. Ask the Super Admin to configure it.'],source);
+ if(gmailDeliveryMethod(value)==='smtp')return sendGmailSmtp(value,{to:email,subject:title,text:z.string().optional().parse(text),html:z.string().optional().parse(html)},source);
  const {token,sender}=await gmailAccessToken();
  const headers=[`From: ${sender}`,`To: ${email}`,`Subject: =?UTF-8?B?${Buffer.from(title).toString('base64')}?=`,'MIME-Version: 1.0'];
  let mime;
@@ -67,4 +72,14 @@ export async function sendGmailMessage({to,subject,text,html}){
 }
 export async function sendLoginCode(email,code){
  return sendGmailMessage({to:email,subject:'Your PartCast sign-in code',text:`Your PartCast sign-in code is ${code}.\nIt expires in 10 minutes. Enter it after your password.\nIf you did not request this code, ignore this email.`});
+}
+export async function checkGmailConnection(){
+ const {value,source}=await getIntegrationWithSource('gmail');
+ if(!integrationReady('gmail',value))throw connectionError(['GMAIL_NOT_CONFIGURED','Email needs the Gmail connection. Ask the Super Admin to configure it.'],source);
+ if(gmailDeliveryMethod(value)==='smtp'){
+  await verifyGmailSmtp(value,source);
+  return 'Gmail SMTP sign-in is valid. Complete a password and email-code sign-in to confirm delivery.';
+ }
+ await gmailAccessToken();
+ return 'Google access is valid. Complete a password and email-code sign-in to confirm delivery.';
 }

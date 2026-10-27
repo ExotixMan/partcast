@@ -1,5 +1,5 @@
 import {integrationStatuses,saveIntegration,getIntegration,integrationReady} from '../utils/integrations.js';
-import {gmailAccessToken} from '../utils/gmail.js';
+import {checkGmailConnection} from '../utils/gmail.js';
 import {forecastingStatus} from '../utils/ml.js';
 import {supplierEmailSchema} from '../utils/storeValidation.js';
 import {supplierRequests,prepareSupplierRequest} from '../services/supplierRequests.js';
@@ -82,7 +82,7 @@ router.patch('/integrations/:provider',requireRole('super_admin'),async(req,res,
 }catch(e){next(e);}});
 router.post('/integrations/:provider/test',requireRole('super_admin'),async(req,res,next)=>{try{
  const provider=z.enum(['gmail','gemini']).parse(req.params.provider);
- if(provider==='gmail'){await gmailAccessToken();return res.json({ok:true,message:'Google access is valid. Complete a password and email-code sign-in to confirm delivery.'});}
+ if(provider==='gmail')return res.json({ok:true,message:await checkGmailConnection()});
  const v=await getIntegration('gemini');if(!v.enabled||!v.api_key)throw Object.assign(new Error('Complete and enable the Gemini connection first.'),{status:422});
  const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(v.model)}`,{headers:{'x-goog-api-key':v.api_key},signal:AbortSignal.timeout(15000)});
  if(!response.ok)throw Object.assign(new Error('Gemini could not be reached with these settings. Check the API key, model and Google project access.'),{status:422});

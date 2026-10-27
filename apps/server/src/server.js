@@ -15,7 +15,7 @@ applyHttpSecurity(app,{frontendOrigins:config.frontendOrigins});
 app.use(express.json({limit:'2mb'}));
 app.use(express.urlencoded({extended:false,limit:'1mb'}));
 
-app.get('/health',(req,res)=>res.json({ok:true,service:'partcast-api',time:new Date().toISOString()}));
+app.get('/health',(req,res)=>res.json({ok:true,service:'partcast-api',time:new Date().toISOString(),revision:process.env.RENDER_GIT_COMMIT?.match(/^[a-f0-9]{40}$/i)?.[0]||null}));
 app.use('/setup',setupRoutes);
 app.use('/auth',loginRoutes);
 app.use('/api/admin',authenticate,adminRoutes);

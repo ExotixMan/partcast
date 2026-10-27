@@ -22,7 +22,7 @@ test('Google can read the ownership tag and public app homepage without scripts 
   await expect(page.locator('meta[name="google-site-verification"]')).toHaveAttribute('content', tags[0][1]);
   await expect(page.getByRole('heading', { name: 'How PartCast uses Google', exact: true })).toBeVisible();
   await expect(page.getByText(/Gmail send permission/)).toBeVisible();
-  await expect(page.getByText(/does not let PartCast read/)).toBeVisible();
+  await expect(page.getByText(/PartCast does not read the account’s inbox or contacts/)).toBeVisible();
   await expect(page.getByRole('link', { name: 'npgautoparts@gmail.com', exact: true }).first()).toHaveAttribute('href', 'mailto:npgautoparts@gmail.com');
   await expect(page.getByRole('navigation', { name: 'Public pages' }).getByRole('link', { name: 'Privacy Policy', exact: true })).toHaveAttribute('href', '/privacy.html');
   await page.getByRole('navigation', { name: 'Public pages' }).getByRole('link', { name: 'Terms of Service', exact: true }).click();
