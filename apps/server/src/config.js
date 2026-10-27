@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { z } from 'zod';
 import { supabaseKeyIssue, frontendOrigins, secretConfigurationIssue } from './utils/connection-config.js';
-import {googleAppPasswordSchema} from './utils/gmail-config.js';
+import {googleAppPasswordSchema,appsScriptUrlSchema,appsScriptSecretSchema} from './utils/gmail-config.js';
 
 const schema = z.object({
   NODE_ENV: z.string().default('development'),
@@ -17,8 +17,10 @@ const schema = z.object({
   GMAIL_CLIENT_ID: z.string().default(''),
   GMAIL_CLIENT_SECRET: z.string().default(''),
   GMAIL_REFRESH_TOKEN: z.string().default(''),
-  GMAIL_DELIVERY_METHOD: z.enum(['oauth','smtp']).default('oauth'),
+  GMAIL_DELIVERY_METHOD: z.enum(['oauth','smtp','apps_script']).default('oauth'),
   GMAIL_APP_PASSWORD: googleAppPasswordSchema.default(''),
+  GMAIL_APPS_SCRIPT_URL: appsScriptUrlSchema.default(''),
+  GMAIL_APPS_SCRIPT_SECRET: appsScriptSecretSchema.default(''),
   GMAIL_SENDER_EMAIL: z.string().email().optional().or(z.literal('')).default(''),
   INTEGRATION_ENCRYPTION_KEY: z.string().min(32).optional(),
   GEMINI_API_KEY: z.string().optional().default(''),

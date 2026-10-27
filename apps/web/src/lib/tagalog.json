@@ -1470,5 +1470,19 @@
   "This field: Enter the 16-character Google App Password.": "Google App Password: Ilagay ang 16-character na Google App Password.",
   "The sign-in email could not be confirmed. Request a new code and use the most recent email.": "Hindi makumpirma ang email para sa pag-sign in. Humingi ng bagong code at gamitin ang pinakabagong email.",
   "Error details": "Detalye ng error",
-  "The server could not connect to Gmail SMTP. Check SMTP access on the API host.": "Hindi makakonekta ang server sa Gmail SMTP. Suriin kung pinapayagan ng API host ang SMTP."
+  "The server could not connect to Gmail SMTP. Check SMTP access on the API host.": "Hindi makakonekta ang server sa Gmail SMTP. Suriin kung pinapayagan ng API host ang SMTP.",
+  "Gmail via Apps Script": "Gmail gamit ang Apps Script",
+  "Apps Script web app URL": "URL ng Apps Script web app",
+  "Apps Script signing key": "Signing key ng Apps Script",
+  "Open Apps Script setup": "Buksan ang pag-setup ng Apps Script",
+  "Deploy the PartCast script under your sending Google account, then enter its web app URL and matching signing key. Google email quotas apply.": "I-deploy ang PartCast script gamit ang Google account na magpapadala. Ilagay ang web app URL at katugmang signing key. May limitasyon ang Google sa email.",
+  "The Apps Script signing key was not accepted. Check the matching key in Render and Script properties.": "Hindi tinanggap ang signing key ng Apps Script. Tiyaking magkatugma ang key sa Render at Script properties.",
+  "Complete the Apps Script web app URL, signing key and sending Gmail address.": "Kumpletuhin ang Apps Script web app URL, signing key, at Gmail address ng magpapadala.",
+  "The Apps Script must run as the sending Gmail account. Redeploy it with Execute as set to Me.": "Kailangang tumakbo ang Apps Script gamit ang Gmail account na magpapadala. I-deploy muli at piliin ang Me sa Execute as.",
+  "The Google account has reached its Apps Script email limit. Try again after its quota resets.": "Naabot ng Google account ang limitasyon sa Apps Script email. Subukan muli kapag nag-reset ang quota.",
+  "The Apps Script email service is busy. Try again shortly.": "Abala ang serbisyo ng email sa Apps Script. Subukan muli pagkaraan ng ilang sandali.",
+  "The Apps Script could not accept this request. Update the deployed script to the current PartCast version.": "Hindi tinanggap ng Apps Script ang kahilingan. I-update ang naka-deploy na script sa kasalukuyang bersyon ng PartCast.",
+  "Gmail delivery could not be confirmed. Check the sending result before creating another request.": "Hindi makumpirma ang pagpapadala sa Gmail. Suriin ang resulta bago gumawa ng panibagong kahilingan.",
+  "The Apps Script could not be reached. Check its deployment URL and access setting.": "Hindi makontak ang Apps Script. Suriin ang deployment URL at setting ng access nito.",
+  "Apps Script access is valid. Complete a password and email-code sign-in to confirm delivery.": "Tama ang access sa Apps Script. Mag-sign in gamit ang password at email code para makumpirmang natatanggap ang email."
 }

@@ -5,7 +5,7 @@ function gmailDiagnostics(error){
   if(!error?.safe||!/^GMAIL_[A-Z_]+$/.test(error.code||'')||error.details?.provider!=='gmail')return;
   const detail=error.details,result={provider:'gmail'};
   const allowed={
-    stage:['oauth_token','gmail_api_send','smtp_auth','smtp_connection','smtp_send'],
+    stage:['oauth_token','gmail_api_send','smtp_auth','smtp_connection','smtp_send','apps_script_check','apps_script_send'],
     settings_source:['api_environment','saved_partcast_settings','submitted_partcast_settings'],
     smtp_error_code:['EAUTH','ETIMEDOUT','ECONNREFUSED','ECONNRESET','ESOCKET','EDNS','ENOTFOUND','ETLS','EENVELOPE','EMESSAGE','ECONNECTION','EPROTOCOL'],
     smtp_command:['AUTH','CONN','EHLO','HELO','STARTTLS','MAIL FROM','RCPT TO','DATA'],

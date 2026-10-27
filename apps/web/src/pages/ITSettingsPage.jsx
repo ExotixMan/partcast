@@ -9,11 +9,13 @@ import Loading from '../components/Loading.jsx';
 const fields={
  oauth:[['sender_email','Gmail sender address',254],['client_id','Google client ID',500],['client_secret','Google client secret',1000],['refresh_token','Google refresh token',4096]],
  smtp:[['sender_email','Gmail sender address',254],['app_password','Google App Password',128]],
+ apps_script:[['sender_email','Gmail sender address',254],['script_url','Apps Script web app URL',1000],['script_secret','Apps Script signing key',128]],
  gemini:[['api_key','Gemini API key',500],['model','Gemini model',100]]
 };
 const initialDraft=row=>row.provider==='gmail'
- ?{enabled:row.enabled,delivery_method:row.delivery_method==='smtp'?'smtp':'oauth',sender_email:row.sender_email||''}
+ ?{enabled:row.enabled,delivery_method:['smtp','apps_script'].includes(row.delivery_method)?row.delivery_method:'oauth',sender_email:row.sender_email||''}
  :{enabled:row.enabled,model:row.model||'gemini-2.5-flash'};
+const deliveryLabel=method=>method==='smtp'?'Gmail SMTP (App Password)':method==='apps_script'?'Gmail via Apps Script':'Gmail API (OAuth)';
 
 export default function ITSettingsPage(){
  useLocale();
@@ -30,6 +32,7 @@ export default function ITSettingsPage(){
   event.preventDefault();if(busy)return;
   const provider=row.provider,value=draft[provider],method=value.delivery_method||'oauth';
   if(provider==='gmail'&&method==='smtp'&&!row.smtp_supported)return;
+  if(provider==='gmail'&&method==='apps_script'&&!row.apps_script_supported)return;
   setBusy(provider);setError('');setMessage('');
   try{
    const keys=fields[provider==='gmail'?method:'gemini'].map(([key])=>key);
@@ -63,14 +66,14 @@ export default function ITSettingsPage(){
      <div><h2 className="text-lg font-bold">{gmail?t('Gmail login codes'):t('Gemini chatbot')}</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">{gmail?t('Sign-in codes and reviewed supplier emails.'):t('Answer questions after local help and saved store data have been checked.')}</p>
       <p className={`mt-2 text-sm font-semibold ${row.ready?'text-emerald-700':'text-amber-800'}`}>{row.ready?t('Connection configured'):t('Setup needed')}</p>
-      {gmail&&row.ready&&<p className="mt-1 text-sm text-slate-600">{t('Saved connection')}: {row.delivery_method==='smtp'?t('Gmail SMTP (App Password)'):t('Gmail API (OAuth)')}</p>}
+      {gmail&&row.ready&&<p className="mt-1 text-sm text-slate-600">{t('Saved connection')}: {t(deliveryLabel(row.delivery_method))}</p>}
      </div>
      <fieldset disabled={Boolean(busy)} className="min-w-0 space-y-4">
       {gmail?<label className="block"><span className="label">{t('Email connection')}</span><select aria-label={t('Email connection')} className="input" value={method} onChange={event=>{
        setMessage('');setError('');
        const next=event.target.value;
        setDraft(current=>({...current,[provider]:{enabled:current[provider].enabled,sender_email:current[provider].sender_email,delivery_method:next}}));
-      }}><option value="oauth">{t('Gmail API (OAuth)')}</option><option value="smtp" disabled={!row.smtp_supported}>{t('Gmail SMTP (App Password)')}</option></select></label>
+      }}><option value="oauth">{t('Gmail API (OAuth)')}</option><option value="smtp" disabled={!row.smtp_supported}>{t('Gmail SMTP (App Password)')}</option><option value="apps_script" disabled={!row.apps_script_supported}>{t('Gmail via Apps Script')}</option></select></label>
       :<label className="flex min-h-12 items-center gap-3"><input className="h-5 w-5" type="checkbox" checked={value.enabled??true} onChange={event=>update(provider,'enabled',event.target.checked)}/><span className="font-medium">{t('Enable connection')}</span></label>}
       {gmail&&method==='smtp'&&<div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-900" role="note"><AlertTriangle size={19} className="mt-1 shrink-0" aria-hidden="true"/><p>{t('SMTP requires hosting that allows port 465. Render Free blocks SMTP.')}</p></div>}
       {gmail&&!row.smtp_supported&&<p className="text-sm text-amber-800">{t('SMTP setup requires the updated API.')}</p>}
@@ -78,11 +81,12 @@ export default function ITSettingsPage(){
        const secret=!['sender_email','model'].includes(key);
        return <label key={key} className="block"><span className="label">{t(label)}</span><input className="input" type={secret?'password':key==='sender_email'?'email':'text'} autoComplete="off" spellCheck={false} maxLength={max} value={value[key]||''} required={Boolean(value.enabled&&(!secret||!row.fields?.[key]))} placeholder={secret&&row.fields?.[key]?t('Saved — leave blank to keep'):''} pattern={key==='model'?'gemini-[a-zA-Z0-9.-]+':undefined} onChange={event=>update(provider,key,event.target.value)}/></label>;
       })}
-      <div className="flex flex-wrap gap-2"><button className="btn-primary" type="submit"><Save size={17} className="shrink-0" aria-hidden="true"/>{busy===provider?(gmail&&method==='smtp'?t('Checking connection…'):t('Saving…')):gmail&&method==='smtp'?t('Check and save connection'):t('Save connection')}</button><button className="btn-secondary" type="button" disabled={!row.ready||dirty} onClick={()=>test(provider)}>{t('Check saved connection')}</button></div>
+      <div className="flex flex-wrap gap-2"><button className="btn-primary" type="submit"><Save size={17} className="shrink-0" aria-hidden="true"/>{busy===provider?(gmail&&method!=='oauth'?t('Checking connection…'):t('Saving…')):gmail&&method!=='oauth'?t('Check and save connection'):t('Save connection')}</button><button className="btn-secondary" type="button" disabled={!row.ready||dirty} onClick={()=>test(provider)}>{t('Check saved connection')}</button></div>
       {dirty&&<p className="text-sm leading-6 text-slate-600">{t('Save changes before checking the saved connection.')}</p>}
      </fieldset>
      {gmail&&<details className="rounded-xl bg-slate-50 p-4 text-sm leading-6"><summary className="min-h-11 cursor-pointer font-semibold">{t('Google setup guide')}</summary>
-      {method==='smtp'?<><p className="mt-3">{t('Enable Google 2-Step Verification for the sending account, create a Google App Password, and enter that 16-character password here. The connection is checked before saving.')}</p><a className="mt-3 inline-flex min-h-11 items-center gap-2 font-semibold text-red-700 underline" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer"><Mail size={18} className="shrink-0" aria-hidden="true"/>{t('Create Google App Password')}</a></>
+      {method==='apps_script'?<><p className="mt-3">{t('Deploy the PartCast script under your sending Google account, then enter its web app URL and matching signing key. Google email quotas apply.')}</p><a className="mt-3 inline-flex min-h-11 items-center gap-2 font-semibold text-red-700 underline" href="/email-setup/" target="_blank" rel="noreferrer"><Mail size={18} className="shrink-0" aria-hidden="true"/>{t('Open Apps Script setup')}</a></>
+      :method==='smtp'?<><p className="mt-3">{t('Enable Google 2-Step Verification for the sending account, create a Google App Password, and enter that 16-character password here. The connection is checked before saving.')}</p><a className="mt-3 inline-flex min-h-11 items-center gap-2 font-semibold text-red-700 underline" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer"><Mail size={18} className="shrink-0" aria-hidden="true"/>{t('Create Google App Password')}</a></>
       :<><p className="mt-3">{t('Enable Gmail API in Google Cloud. Create an OAuth client and authorize the sender with the gmail.send scope and offline access. Store the client ID, client secret, refresh token, and sender address. Staff login uses a password followed by a six-digit code; Google account sign-in is not required.')}</p><a className="mt-3 inline-block font-semibold text-red-700 underline" href="https://developers.google.com/workspace/gmail/api/auth/scopes" target="_blank" rel="noreferrer">{t('Open Google documentation')}</a></>}
      </details>}
     </Form>;

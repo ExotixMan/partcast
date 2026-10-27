@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>PartCast | Apps Script email setup</title>
+  <link rel="icon" type="image/svg+xml" href="/brand/partcast-mark.svg">
+  <link rel="stylesheet" href="/legal.css">
+  <link rel="stylesheet" href="/email-setup/setup.css">
+  <script src="/email-setup/setup.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to setup</a>
+  <header class="site-header"><div class="header-inner"><a class="brand" href="/about.html" aria-label="PartCast home"><img src="/brand/partcast-mark.svg" width="36" height="36" alt="">Part<span>Cast.</span></a><nav class="site-nav" aria-label="Public pages"><a href="/login">Staff sign in</a><a href="/privacy.html">Privacy Policy</a></nav></div></header>
+  <main class="about-page" id="main">
+    <p class="eyebrow">Super Admin setup</p>
+    <h1>Gmail through Apps Script</h1>
+    <p>Send PartCast sign-in codes and reviewed supplier emails through your own Google script. This uses HTTPS on Render Free, with no custom domain or IP allowlist.</p>
+    <p>Your Google account must authorize the script. A public Google app branding review is separate from this owner authorization. Google account restrictions can still prevent deployment or authorization.</p>
+    <p>A standard personal Google account typically has an Apps Script limit of <strong>100 email recipients per day</strong>, shared by sign-in codes and supplier emails. Your account’s actual allowance may differ. See <a href="https://developers.google.com/apps-script/guides/services/quotas" target="_blank" rel="noreferrer">Google’s current quotas</a>.</p>
+    <section aria-labelledby="script-title">
+      <h2 id="script-title">1. Create your script</h2>
+      <p>Sign in to <a href="https://script.google.com/home/start" target="_blank" rel="noreferrer">Google Apps Script</a> as <strong>npgautoparts@gmail.com</strong>. Create a new project named <strong>PartCast Email</strong>. Replace everything in <code>Code.gs</code> with this script, then save.</p>
+      <div class="actions"><button type="button" id="copy-script">Copy script</button><a class="setup-button" href="/email-setup/Code.gs" download="Code.gs">Download Code.gs</a></div>
+      <p class="feedback" id="script-status" role="status"></p>
+      <details><summary>View script</summary><pre id="script-source">Use Copy script or Download Code.gs to get the complete script.</pre></details>
+    </section>
+    <section aria-labelledby="key-title">
+      <h2 id="key-title">2. Create a signing key</h2>
+      <p>This private key lets PartCast authenticate each request. It is generated on this device and is not saved by this page. Use the same key in Google and Render.</p>
+      <div class="actions"><button type="button" id="generate-key">Generate signing key</button><button type="button" id="copy-key" disabled>Copy signing key</button></div>
+      <label for="signing-key">Signing key</label><input id="signing-key" type="password" readonly autocomplete="off" spellcheck="false" placeholder="Generate a key first">
+      <p class="feedback" id="key-status" role="status"></p>
+      <p>In the script editor, open <strong>Project Settings → Script properties → Add script property</strong>:</p>
+      <pre>Property: PARTCAST_MAIL_SECRET
+Value: paste your generated signing key</pre>
+      <p>Save the property. Keep the key privately; it is not your Gmail password.</p>
+    </section>
+    <section aria-labelledby="deploy-title">
+      <h2 id="deploy-title">3. Authorize and deploy</h2>
+      <p>Return to the editor. Select <code>authorizePartCast</code> beside Run, then choose <strong>Run → Review permissions</strong>. Authorize your own project to send email from the signed-in account.</p>
+      <p>If Google shows an unverified-app warning for the project you just created, check the project/account, then use its Advanced option to continue to your own script. If Google blocks authorization entirely, this setup cannot proceed for that account; report the exact error without sharing credentials.</p>
+      <p>Select <strong>Deploy → New deployment → Web app</strong>:</p>
+      <ul><li><strong>Execute as:</strong> Me (<code>npgautoparts@gmail.com</code>)</li><li><strong>Who has access:</strong> Anyone</li></ul>
+      <p>Choose Deploy and copy the web app URL ending in <code>/exec</code>. Use the deployed URL, not the editor or test URL. The script rejects requests without the matching signature.</p>
+    </section>
+    <section aria-labelledby="render-title">
+      <h2 id="render-title">4. Configure Render</h2>
+      <p>Open the API service serving <code>partcast.onrender.com</code>. Under <strong>Environment</strong>, set these server variables:</p>
+      <pre>GMAIL_DELIVERY_METHOD=apps_script
+GMAIL_SENDER_EMAIL=npgautoparts@gmail.com
+GMAIL_APPS_SCRIPT_URL=your deployed /exec URL
+GMAIL_APPS_SCRIPT_SECRET=your generated signing key</pre>
+      <p>Save and redeploy the API. Wait for <strong>Live</strong>. Keep existing security/encryption keys unchanged.</p>
+    </section>
+    <section aria-labelledby="override-title">
+      <h2 id="override-title">5. Clear the previous email override</h2>
+      <p>After the new environment values are set, open your existing Supabase project’s SQL Editor and run:</p>
+      <pre>delete from public.integration_settings
+where provider = 'gmail';</pre>
+      <p>This removes the saved Gmail connection so the API uses Render’s values. It preserves staff accounts, store records and Gemini settings. No SQL migration is needed.</p>
+    </section>
+    <section aria-labelledby="test-title">
+      <h2 id="test-title">6. Check delivery</h2>
+      <p>Wait 20 seconds, open <a href="/login">PartCast sign in</a>, and request one code. Use the most recent code. If it fails, expand Error details and share only the Reference line.</p>
+      <p>Once signed in as Super Admin, IT settings also supports Gmail via Apps Script. Its connection check sends no email; a completed sign-in confirms that your code arrived.</p>
+      <p>To update this script later, use <strong>Deploy → Manage deployments → Edit → New version → Deploy</strong>. To disconnect it, archive its deployment and remove its Google account authorization. Google MailApp delivery does not promise that a Gmail Sent copy will exist; check the recipient or PartCast’s supplier sending result.</p>
+    </section>
+  </main>
+  <footer class="site-footer"><p>NPG Auto Parts · PartCast</p><a href="/terms.html">Terms of Service</a></footer>
+</body>
+</html>

@@ -3,6 +3,7 @@ import {z} from 'zod';
 import {getIntegrationWithSource,integrationReady} from './integrations.js';
 import {gmailDeliveryMethod} from './gmail-config.js';
 import {sendGmailSmtp,verifyGmailSmtp} from './gmail-smtp.js';
+import {sendGmailAppsScript,checkGmailAppsScript} from './gmail-apps-script.js';
 let tokenCache;
 const oauthMessages={
  invalid_client:['GMAIL_OAUTH_INVALID_CLIENT','Google rejected the Gmail client ID or client secret. Ask the Super Admin to check the matching Google OAuth credentials.'],
@@ -57,6 +58,7 @@ export async function sendGmailMessage({to,subject,text,html}){
  const {value,source}=await getIntegrationWithSource('gmail');
  if(!integrationReady('gmail',value))throw connectionError(['GMAIL_NOT_CONFIGURED','Email needs the Gmail connection. Ask the Super Admin to configure it.'],source);
  if(gmailDeliveryMethod(value)==='smtp')return sendGmailSmtp(value,{to:email,subject:title,text:z.string().optional().parse(text),html:z.string().optional().parse(html)},source);
+ if(gmailDeliveryMethod(value)==='apps_script')return sendGmailAppsScript(value,{to:email,subject:title,text:z.string().optional().parse(text),html:z.string().optional().parse(html)},source);
  const {token,sender}=await gmailAccessToken();
  const headers=[`From: ${sender}`,`To: ${email}`,`Subject: =?UTF-8?B?${Buffer.from(title).toString('base64')}?=`,'MIME-Version: 1.0'];
  let mime;
@@ -79,6 +81,11 @@ export async function checkGmailConnection(){
  if(gmailDeliveryMethod(value)==='smtp'){
   await verifyGmailSmtp(value,source);
   return 'Gmail SMTP sign-in is valid. Complete a password and email-code sign-in to confirm delivery.';
+ }
+ if(gmailDeliveryMethod(value)==='apps_script'){
+  const result=await checkGmailAppsScript(value,source);
+  if(result.remaining<1)throw Object.assign(new Error('The Google account has reached its Apps Script email limit. Try again after its quota resets.'),{status:503,safe:true,code:'GMAIL_SCRIPT_QUOTA_EXCEEDED'});
+  return 'Apps Script access is valid. Complete a password and email-code sign-in to confirm delivery.';
  }
  await gmailAccessToken();
  return 'Google access is valid. Complete a password and email-code sign-in to confirm delivery.';

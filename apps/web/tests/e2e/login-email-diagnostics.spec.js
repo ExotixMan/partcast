@@ -3,7 +3,7 @@ import {test,expect} from '@playwright/test';
 const userId='11111111-1111-4111-8111-111111111111',sessionId='77777777-7777-4777-8777-777777777777';
 const token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({session_id:sessionId,amr:[{method:'password'}]})).toString('base64url')+'.fixture';
 
-async function fixture(context,{delay=0}={}){
+async function fixture(context,{delay=0,script=false}={}){
  await context.addInitScript(({userId,token})=>{
   localStorage.setItem('sb-ragdjkdcrvexqfadlqbf-auth-token',JSON.stringify({access_token:token,refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}}));
  },{userId,token});
@@ -15,7 +15,9 @@ async function fixture(context,{delay=0}={}){
   if(path==='/auth/otp/request'){
    requests++;
    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
-   return route.fulfill({status:broken?503:200,headers,json:broken?{
+   return route.fulfill({status:broken?503:200,headers,json:broken?script?{
+    error:'The Apps Script signing key was not accepted. Check the matching key in Render and Script properties.',code:'GMAIL_SCRIPT_AUTH_FAILED',diagnostics:{provider:'gmail',stage:'apps_script_send',settings_source:'api_environment'}
+   }:{
     error:'The server could not connect to Gmail SMTP. Check SMTP access on the API host.',code:'GMAIL_SMTP_UNAVAILABLE',
     diagnostics:{provider:'gmail',stage:'smtp_connection',settings_source:'api_environment',smtp_error_code:'ETIMEDOUT',smtp_command:'CONN'}
    }:{sent:true,expiresIn:600,resendAfter:60}});
@@ -37,6 +39,12 @@ test('OTP failures expose a safe expandable connection reference before sign-in 
  store.restore();await page.getByRole('button',{name:'Send email code',exact:true}).click();
  await expect(page.getByText('Your password is correct. Enter the code sent to your email to finish signing in.',{exact:true})).toBeVisible();
  await expect(page.getByText('Error details',{exact:true})).toHaveCount(0);expect(store.requests).toBe(2);
+});
+
+test('Apps Script sign-in errors expose a safe reference and recover after a corrected connection',async({page,context})=>{
+ const store=await fixture(context,{script:true});await page.goto('/login');
+ const alert=page.getByRole('alert').filter({hasText:'signing key was not accepted'});await expect(alert).toBeVisible();await alert.locator('summary').click();await expect(alert.getByText('Reference: GMAIL_SCRIPT_AUTH_FAILED',{exact:true})).toBeVisible();
+ store.restore();await page.getByRole('button',{name:'Send email code',exact:true}).click();await expect(page.getByText('Your password is correct. Enter the code sent to your email to finish signing in.',{exact:true})).toBeVisible();expect(store.requests).toBe(2);await expect(page.getByText('Error details',{exact:true})).toHaveCount(0);
 });
 
 test('a delayed email submission stays pending beyond the former 20-second timeout',async({page,context})=>{
