@@ -150,7 +150,7 @@ export default function LoginPage() {
   return <div className="login-page flex min-h-[100dvh] flex-col bg-white">
     <header className="border-b border-slate-200 px-3 py-5 sm:px-8">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3">
-        <p className="text-2xl font-bold tracking-tight text-slate-950" aria-label="PartCast">Part<span className="text-red-600">Cast</span><span className="text-red-600">.</span></p>
+        <a href="/about.html" aria-label={t('About PartCast')} className="inline-flex min-h-11 items-center gap-2 text-2xl font-bold tracking-tight text-slate-950"><img src="/brand/partcast-mark.svg" width="44" height="44" alt="" /><span>Part<span className="text-red-600">Cast.</span></span></a>
         <Preferences />
       </div>
     </header>

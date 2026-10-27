@@ -10,6 +10,7 @@ a:hover { color:#7f1d1d; }
 .header-inner,.page,.site-footer { width:min(100% - 2.5rem,74rem); margin-inline:auto; }
 .header-inner { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.5rem 1.5rem; padding-block:1rem; }
 .brand { display:inline-flex; min-height:44px; align-items:center; color:#172033; text-decoration:none; font-size:1.5rem; font-weight:700; letter-spacing:-.04em; }
+.brand img { display:block; flex-shrink:0; margin-right:.6rem; }
 .brand span { color:#b91c1c; }
 .site-nav { display:flex; flex-wrap:wrap; gap:.25rem 1.25rem; }
 .site-nav a { display:inline-flex; min-height:44px; align-items:center; font-size:1rem; }
@@ -38,6 +39,18 @@ code { font-size:.95em; overflow-wrap:anywhere; }
 .contact { border-top:1px solid #dce1e8; padding-top:1rem; }
 .site-footer { display:flex; flex-wrap:wrap; justify-content:space-between; gap:.5rem 1.5rem; padding-block:1.5rem 2rem; border-top:1px solid #dce1e8; color:#526076; font-size:1rem; }
 .site-footer p { margin:0; }
+.about-page { width:min(100% - 2.5rem,65rem); margin:0 auto; padding-block:3rem; }
+.about-page section + section { margin-top:3rem; }
+.about-intro { max-width:43rem; }
+.about-logo { display:block; margin-bottom:1.25rem; border:1px solid #dce1e8; border-radius:1.5rem; }
+.about-lead { margin:.75rem 0; font-size:clamp(1.5rem,4vw,2rem); font-weight:700; line-height:1.35; letter-spacing:-.03em; }
+.about-sign-in { display:inline-flex; min-height:48px; align-items:center; gap:1.5rem; margin-top:.75rem; border-radius:.75rem; padding:.75rem 1.25rem; background:#b91c1c; color:white; font-weight:700; text-decoration:none; }
+.about-sign-in:hover { background:#991b1b; color:white; }
+.about-features { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
+.about-features article { min-width:0; border:1px solid #dce1e8; border-radius:1rem; padding:1.25rem; background:#fff; }
+.about-features h3 { margin:0; }
+.about-features p { margin:.65rem 0 0; }
+@media (max-width:700px) { .about-features { grid-template-columns:minmax(0,1fr); } .about-page { padding-block:2rem; } }
 @media (max-width:900px) { .page { grid-template-columns:minmax(0,1fr); gap:1.5rem; padding-block:2rem; } .contents { position:static; grid-row:1; } }
 @media (max-width:389px) { .header-inner,.page,.site-footer { width:calc(100% - 2rem); } .site-nav { gap:.25rem 1rem; } .summary { padding:1rem; } }
 @media print { :root { background:white; color:black; } body { font-size:11pt; } .site-header,.contents,.skip-link,.site-footer { display:none; } .page { display:block; width:100%; margin:0; padding:0; } a { color:inherit; } h2,h3 { break-after:avoid; } .document section { margin-top:1.5rem; } }

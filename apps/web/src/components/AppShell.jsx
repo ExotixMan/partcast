@@ -97,7 +97,7 @@ function SidebarContent({
   const reviewLinks = tools.filter(n => canOpenPage(profile?.role,n.to));
   return <>
     <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-6">
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600"><Boxes size={24} /></span>
+      <img src="/brand/partcast-mark.svg" width="44" height="44" alt="" className="h-11 w-11 shrink-0 rounded-xl" />
       <div><p className="text-xl font-bold tracking-tight text-slate-950">{t("PartCast")}<span className="text-red-600">.</span></p><p className="text-xs font-medium text-slate-500">{t("NPG Auto Parts")}</p></div>
     </div>
     <nav aria-label={mobile ? t('All pages') : t('Main navigation')} className="flex-1 space-y-5 overflow-y-auto px-3 py-5">

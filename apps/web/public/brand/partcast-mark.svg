@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">PartCast</title>
+  <desc id="desc">White PC initials inside a red hexagonal parts emblem on a white background.</desc>
+  <path fill="#fff" d="M0 0h512v512H0z"/>
+  <path fill="#b91c1c" d="m256 68 136 78v220l-136 78-136-78V146z"/>
+  <g fill="none" stroke="#fff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M166 330V182h46c26 0 40 15 40 38s-14 39-40 39h-46"/>
+    <path d="M348 202c-12-13-24-19-38-19-29 0-43 27-43 73s14 73 43 73c14 0 26-6 38-19"/>
+  </g>
+</svg>
