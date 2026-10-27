@@ -278,12 +278,14 @@ test('new stock information blocks an oversized sale while preserving edited pri
   await quantity.fill('1');await expect(quantity).not.toHaveAttribute('aria-invalid');await expect(confirm).toBeEnabled();await expect(add).toBeDisabled();await confirm.click();await expect.poll(()=>store.batches.length).toBe(1);expect(store.batches[0].lines[0]).toMatchObject({quantity:1,unit_price:125.25});
 });
 
-test('receiving caps each item at two and requires confirmation while selling rejects a zero-stock barcode',async({page,context})=>{
+test('receiving accepts 100 after a quantity warning and final review while selling rejects a zero-stock barcode',async({page,context})=>{
   const store=await storeFixture(context);store.products[0].current_stock=0;
   await page.goto('/counter');
   await page.getByRole('button',{name:'Scan',exact:true}).click();await page.getByLabel('Barcode number',{exact:true}).fill('123456789012');await page.getByRole('button',{name:'Find this barcode',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Only 0 pcs are available.');await expect(page.getByLabel('Quantity',{exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'Receive delivery',exact:true}).click();await page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true}).click();await page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true}).click();
-  const quantity=page.getByLabel('Quantity',{exact:true});await expect(quantity).toHaveValue('2');await expect(quantity).toHaveAttribute('max','2');await expect(page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true})).toBeDisabled();await quantity.fill('1000');await expect(quantity).toHaveValue('2');await expect(page.getByRole('alert')).toContainText('Receive a maximum of 2 units per item.');await page.getByRole('button',{name:'3. Confirm delivery',exact:true}).click();const review=page.getByRole('dialog',{name:'Confirm delivery',exact:true});await expect(review).toBeVisible();expect(store.batches).toHaveLength(0);await expect(review.getByText('2 pcs',{exact:true})).toHaveCount(2);await review.getByRole('button',{name:'Yes, receive these items',exact:true}).click();await expect.poll(()=>store.batches.length).toBe(1);expect(store.batches[0].tx_type).toBe('stock_in');expect(store.batches[0].lines[0].quantity).toBe(2);expect(store.products[0].current_stock).toBe(2);
+  const quantity=page.getByLabel('Quantity',{exact:true});await expect(quantity).toHaveValue('2');await expect(quantity).toHaveAttribute('max','100');await quantity.fill('1000');await expect(quantity).toHaveValue('2');await expect(page.getByRole('alert')).toContainText('Receive a maximum of 100 units per item.');
+  await quantity.fill('100');await page.getByRole('button',{name:'3. Confirm delivery',exact:true}).click();const warning=page.getByRole('dialog',{name:'Large delivery quantity',exact:true});await expect(warning).toBeVisible();await expect(warning.getByText('100 pcs',{exact:true})).toBeVisible();expect(store.batches).toHaveLength(0);await warning.getByRole('button',{name:'Yes, continue',exact:true}).click();
+  const review=page.getByRole('dialog',{name:'Confirm delivery',exact:true});await expect(review).toBeVisible();expect(store.batches).toHaveLength(0);await review.getByRole('button',{name:'Yes, receive these items',exact:true}).click();await expect.poll(()=>store.batches.length).toBe(1);expect(store.batches[0].tx_type).toBe('stock_in');expect(store.batches[0].lines[0].quantity).toBe(100);expect(store.products[0].current_stock).toBe(100);
 });
 
 test('a lost sale acknowledgement can retry its frozen operation after stock has already decreased',async({page,context})=>{
@@ -301,14 +303,49 @@ test('a lost sale acknowledgement can retry its frozen operation after stock has
 
 test('delivery review cancels safely, focuses quantity for editing, and confirms the updated basket only once',async({page,context})=>{
   const store=await storeFixture(context);await page.goto('/counter?mode=stock_in');
-  const add=page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true});await add.evaluate(button=>{for(let i=0;i<20;i++)button.click();});
-  const quantity=page.getByLabel('Quantity',{exact:true});await expect(quantity).toHaveValue('2');await expect(add).toBeDisabled();await quantity.fill('1000');await expect(quantity).toHaveValue('2');
-  for(let i=0;i<2;i++){await page.getByRole('button',{name:'Scan',exact:true}).click();await page.getByLabel('Barcode number',{exact:true}).fill('123456789012');await page.getByRole('button',{name:'Find this barcode',exact:true}).click();await expect(quantity).toHaveValue('2');}
+  const add=page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true});await add.click();await add.click();
+  const quantity=page.getByLabel('Quantity',{exact:true});await expect(quantity).toHaveValue('2');await expect(add).toBeEnabled();await quantity.fill('1000');await expect(quantity).toHaveValue('2');
   await page.getByRole('button',{name:'3. Confirm delivery',exact:true}).click();const review=page.getByRole('dialog',{name:'Confirm delivery',exact:true});await expect(review).toBeVisible();expect(store.batches).toHaveLength(0);expect(store.products[0].current_stock).toBe(5);await expect(review).toContainText('7 pcs');await expect(review).toContainText('₱200.00');
   await review.getByRole('button',{name:'Go back and edit',exact:true}).click();await expect(review).toHaveCount(0);await expect(quantity).toBeFocused();await expect(quantity).toHaveValue('2');expect(store.batches).toHaveLength(0);
   await quantity.fill('1');await page.getByRole('button',{name:'3. Confirm delivery',exact:true}).click();await expect(review).toContainText('6 pcs');await expect(review).toContainText('₱100.00');
   await page.keyboard.press('Escape');await expect(review).toHaveCount(0);expect(store.batches).toHaveLength(0);
   await page.getByRole('button',{name:'3. Confirm delivery',exact:true}).click();await review.getByRole('button',{name:'Yes, receive these items',exact:true}).evaluate(button=>{for(let i=0;i<10;i++)button.click();});await expect.poll(()=>store.batches.length).toBe(1);expect(store.batches[0].lines[0]).toMatchObject({quantity:1,unit_price:100});expect(store.products[0].current_stock).toBe(6);await expect(review).toHaveCount(0);
+});
+
+test('rapid delivery taps pause at every five units and cancelled or removed quantities cannot retain approval',async({page,context})=>{
+  const store=await storeFixture(context);await page.goto('/counter?mode=stock_in');const add=page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true});
+  const quantity=page.getByLabel('Quantity',{exact:true}),warning=page.getByRole('dialog',{name:'Large delivery quantity',exact:true});
+  await add.evaluate(button=>{for(let i=0;i<20;i++)button.click();});await expect(warning.getByText('5 pcs',{exact:true})).toBeVisible();await expect(quantity).toHaveValue('4');expect(store.batches).toHaveLength(0);
+  await warning.getByRole('button',{name:'Go back and edit',exact:true}).click();await expect(quantity).toHaveValue('4');await expect(quantity).toBeFocused();
+  for(const milestone of [5,10,15]){
+    const current=Number(await quantity.inputValue());for(let i=current+1;i<=milestone;i++)await add.click();await expect(warning.getByText(`${milestone} pcs`,{exact:true})).toBeVisible();await expect(quantity).toHaveValue(String(milestone-1));await warning.getByRole('button',{name:'Yes, continue',exact:true}).click();await expect(quantity).toHaveValue(String(milestone));
+  }
+  await quantity.fill('14');await quantity.press('Tab');await add.click();await expect(warning.getByText('15 pcs',{exact:true})).toBeVisible();await page.keyboard.press('Escape');await expect(quantity).toHaveValue('14');
+  await page.getByRole('button',{name:'Remove Toyota brake pad from basket',exact:true}).click();await add.evaluate(button=>{for(let i=0;i<20;i++)button.click();});await expect(warning.getByText('5 pcs',{exact:true})).toBeVisible();await expect(quantity).toHaveValue('4');expect(store.batches).toHaveLength(0);
+});
+
+test('typing a large delivery waits until editing finishes and cannot bypass warnings through form submission',async({page,context})=>{
+  const store=await storeFixture(context);await page.goto('/counter?mode=stock_in');await page.getByRole('button',{name:'Add Toyota brake pad to basket',exact:true}).click();
+  const quantity=page.getByLabel('Quantity',{exact:true}),warning=page.getByRole('dialog',{name:'Large delivery quantity',exact:true});
+  await quantity.fill('100');await expect(warning).toHaveCount(0);await quantity.press('Tab');await expect(warning.getByText('100 pcs',{exact:true})).toBeVisible();await warning.getByRole('button',{name:'Go back and edit',exact:true}).click();await expect(quantity).toHaveValue('1');
+  await quantity.fill('100');await page.locator('#store-basket').evaluate(form=>form.requestSubmit());await expect(warning).toBeVisible();expect(store.batches).toHaveLength(0);await warning.getByRole('button',{name:'Yes, continue',exact:true}).click();
+  const review=page.getByRole('dialog',{name:'Confirm delivery',exact:true});await expect(review).toBeVisible();await review.getByRole('button',{name:'Go back and edit',exact:true}).click();await expect(quantity).toHaveValue('100');
+  await quantity.fill('99');await quantity.press('Tab');await quantity.fill('100');await quantity.press('Tab');await expect(warning.getByText('100 pcs',{exact:true})).toBeVisible();expect(store.batches).toHaveLength(0);
+});
+
+test('repeated delivery barcode scans share the five-unit warnings with card selection',async({page,context})=>{
+  const store=await storeFixture(context);await page.goto('/counter?mode=stock_in');const warning=page.getByRole('dialog',{name:'Large delivery quantity',exact:true});
+  const scan=async()=>{await page.getByRole('button',{name:'Scan',exact:true}).click();await page.getByLabel('Barcode number',{exact:true}).fill('123456789012');await page.getByRole('button',{name:'Find this barcode',exact:true}).click();};
+  for(let i=0;i<5;i++)await scan();await expect(warning.getByText('5 pcs',{exact:true})).toBeVisible();await warning.getByRole('button',{name:'Yes, continue',exact:true}).click();await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue('5');
+  for(let i=0;i<5;i++)await scan();await expect(warning.getByText('10 pcs',{exact:true})).toBeVisible();await warning.getByRole('button',{name:'Go back and edit',exact:true}).click();await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue('9');expect(store.batches).toHaveLength(0);
+});
+
+test('five-unit delivery warnings fit larger Tagalog text on a phone and Escape restores the prior quantity',async({page,context})=>{
+  const store=await storeFixture(context,{language:'fil',large:true,dark:true});
+  for(const width of [320,390]){
+    await page.setViewportSize({width,height:844});await page.goto('/counter?mode=stock_in');await expect(page.locator('.counter-card-action')).toHaveCount(2);await page.locator('.counter-card-action').first().evaluate(button=>{for(let i=0;i<20;i++)button.click();});
+    const warning=page.getByRole('dialog',{name:'Maraming piyesa sa delivery',exact:true});await expect(warning).toBeVisible();await expect(warning.getByRole('button',{name:'Oo, magpatuloy',exact:true})).toBeInViewport();await expect(warning.getByRole('button',{name:'Bumalik at baguhin',exact:true})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`/tmp/partcast-delivery-quantity-warning-${width}.png`,fullPage:false});await page.keyboard.press('Escape');await expect(page.getByLabel('Dami',{exact:true})).toHaveValue('4');expect(store.batches).toHaveLength(0);
+  }
 });
 
 test('offline deliveries enter the waiting queue only after explicit review and still allow zero cost',async({page,context})=>{

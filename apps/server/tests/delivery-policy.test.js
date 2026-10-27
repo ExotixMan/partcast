@@ -8,11 +8,11 @@ const {batchSchema}=await import('../src/utils/storeValidation.js');
 const user='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222',operation='44444444-4444-4444-8444-444444444444',part='33333333-3333-4333-8333-333333333333';
 const delivery=quantity=>({kind:'batch',tx_type:'stock_in',lines:[{product_id:part,quantity,unit_price:100}],is_credit:false,paid_amount:0});
 
-test('delivery limits allow one or two whole units per part and preserve sale and ledger rules',async()=>{
+test('delivery limits allow up to 100 whole units per part and preserve sale and ledger rules',async()=>{
  const previous=adminDb.from;adminDb.from=()=>assert.fail('Valid deliveries and other operations need no receipt lookup.');
  try{
-  assert.equal(MAX_DELIVERY_QUANTITY,2);
-  for(const quantity of [1,2])assert.equal(await enforceDeliveryLimit(user,operation,delivery(quantity)),null);
+  assert.equal(MAX_DELIVERY_QUANTITY,100);
+  for(const quantity of [1,2,3,5,10,100])assert.equal(await enforceDeliveryLimit(user,operation,delivery(quantity)),null);
   assert.equal(await enforceDeliveryLimit(user,operation,{...delivery(1000),tx_type:'sale'}),null);
   assert.equal(await enforceDeliveryLimit(user,operation,{kind:'debt',principal:1000}),null);
  }finally{adminDb.from=previous;}
@@ -22,7 +22,7 @@ test('a new oversized or fractional delivery is refused as a whole before any st
  const previous=adminDb.from;let reads=0;
  adminDb.from=table=>{assert.equal(table,'business_sync_receipts');return {select(){return this;},eq(){return this;},maybeSingle:async()=>{reads++;return {data:null,error:null};}};};
  try{
-  for(const quantity of [3,1000,0.5,1.5])await assert.rejects(enforceDeliveryLimit(user,operation,{...delivery(1),lines:[...delivery(1).lines,{product_id:other,quantity,unit_price:0}]}),error=>error.status===422&&error.safe===true&&error.message==='Receive a maximum of 2 units per item.');
+  for(const quantity of [101,1000,0.5,1.5])await assert.rejects(enforceDeliveryLimit(user,operation,{...delivery(1),lines:[...delivery(1).lines,{product_id:other,quantity,unit_price:0}]}),error=>error.status===422&&error.safe===true&&error.message==='Receive a maximum of 100 units per item.');
   assert.equal(reads,4);
  }finally{adminDb.from=previous;}
 });
@@ -59,9 +59,9 @@ test('the HTTP delivery route enforces the cap before RPC while preserving exact
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
  const post=body=>previous.fetch(`http://127.0.0.1:${server.address().port}/api/inventory/batch`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({client_operation_id:operation,...body})});
  try{
-  for(const quantity of [3,1000]){const response=await post(delivery(quantity));assert.equal(response.status,422);assert.match((await response.json()).error,/maximum of 2/);}
+  for(const quantity of [101,1000]){const response=await post(delivery(quantity));assert.equal(response.status,422);assert.match((await response.json()).error,/maximum of 100/);}
   assert.equal(writes.length,0);assert.equal(audits,0);
-  assert.equal((await post(delivery(2))).status,201);assert.equal(writes.length,1);assert.equal(writes[0].p_payload.lines[0].quantity,2);
+  assert.equal((await post(delivery(100))).status,201);assert.equal(writes.length,1);assert.equal(writes[0].p_payload.lines[0].quantity,100);
   const {client_operation_id,...payload}=batchSchema.parse({client_operation_id:operation,...delivery(1000)});saved={payload,result:{batchId:operation,total:100000}};
   let response=await post(delivery(1000));assert.equal(response.status,201);assert.deepEqual(await response.json(),saved.result);assert.equal(writes.length,1);assert.equal(audits,1);
   assert.equal((await post(delivery(999))).status,422);uid=other;assert.equal((await post(delivery(1000))).status,422);uid=user;

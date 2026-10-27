@@ -1495,5 +1495,10 @@
   "Have you received these items? Check the quantities before saving.": "Natanggap mo ba ang mga piyesang ito? Suriin ang dami bago i-save.",
   "Receive a maximum of 2 units per item.": "Hanggang 2 unit lamang bawat piyesa ang maaaring tanggapin.",
   "Maximum 2 per item": "Hanggang 2 bawat piyesa",
-  "Total units": "Kabuuang unit"
+  "Total units": "Kabuuang unit",
+  "Receive a maximum of 100 units per item.": "Hanggang 100 unit lamang bawat piyesa ang maaaring tanggapin.",
+  "Maximum 100 per item": "Hanggang 100 bawat piyesa",
+  "Large delivery quantity": "Maraming piyesa sa delivery",
+  "This quantity is high for one item. Do you want to continue?": "Marami ito para sa isang piyesa. Gusto mo bang magpatuloy?",
+  "Yes, continue": "Oo, magpatuloy"
 }
