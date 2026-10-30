@@ -1,3 +1,4 @@
+import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useRef, useState } from 'react';
@@ -165,6 +166,8 @@ export default function DebtsPage() {
     setQ('');
     setFilter('all');
   }
+  useLiveRefresh(load,['customer_debts', 'debt_payments']);
+
   return <>
     <PageHeader title={t('Customer utang')} actions={<button className="btn-secondary" disabled={cached || !navigator.onLine || loading} onClick={() => open('add')}><Plus size={18} aria-hidden="true" />{t('Add existing utang')}</button>} />
     {!modal && error && <p role="alert" className="mb-4 text-red-700">{t(error)}</p>}

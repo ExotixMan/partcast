@@ -4,7 +4,7 @@ Use the **production** branch for both Render services and the GitHub default br
 
 ## Database and API
 
-Back up existing data. Apply only unapplied [migrations](../supabase/migrations) in order through `0012_sale_financial_integrity.sql`. Run 0006 by itself and commit before 0007. Existing stores through 0011 need only 0012. A reset and inventory reimport are unnecessary. Fresh installations can use the [two-part installer](../supabase/paste-ready/README.md).
+Back up existing data. Apply only unapplied [migrations](../supabase/migrations) in order through `0013_realtime.sql`. Run 0006 by itself and commit before 0007. Existing stores through 0011 need 0012 followed by 0013; stores through 0012 need only 0013. Apply 0013 after the two-part installer on fresh projects. A reset and inventory reimport are unnecessary. Fresh installations can use the [two-part installer](../supabase/paste-ready/README.md).
 
 For a Docker API, use the root Dockerfile. For an existing native Render Node API, leave Root Directory blank, set Build Command to `bash scripts/render-build.sh`, Start Command to `bash scripts/render-start.sh`, and Health Check Path to `/health`. Both paths install/check Python with numpy, pandas, scikit-learn and xgboost. A Node-only npm install cannot run forecasting.
 

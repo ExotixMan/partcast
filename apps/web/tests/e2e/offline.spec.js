@@ -133,7 +133,7 @@ test('home search and stock shortcuts carry the selected task to Inventory on a 
  await page.getByLabel('Find a part',{exact:true}).fill('BP-001');
  await page.getByRole('button',{name:'Find',exact:true}).click();
  await expect(page).toHaveURL(/inventory\?q=BP-001/);
- await expect(page.getByRole('textbox',{name:'Search inventory'})).toHaveValue('BP-001');
+ await expect(page.getByRole('combobox',{name:'Search inventory'})).toHaveValue('BP-001');
  await expect(page.getByRole('article').getByText('Toyota brake pad',{exact:true})).toBeVisible();
  await page.getByRole('navigation',{name:'Quick navigation'}).getByRole('link',{name:'Home',exact:true}).click();
  await page.getByRole('link',{name:/Running low/}).click();

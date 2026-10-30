@@ -1,3 +1,4 @@
+import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useMemo, useState, useRef } from 'react';
@@ -333,6 +334,8 @@ export default function ReorderPage() {
     }catch(error){setEmailError(error.message);}
     finally{setBusy('');}
   }
+  useLiveRefresh(load,['products', 'suppliers', 'product_suppliers', 'forecast_runs', 'supplier_email_logs']);
+
   return <>
     <PageHeader title={t("Restock")} inlineActions={tab==='reorder'} actions={<><button className="btn-secondary px-3" aria-label={refreshing?t('Checking stock…'):t('Refresh list')} onClick={()=>load()} disabled={refreshing||Boolean(busy)}><RefreshCw size={17} /><span className="hidden sm:inline">{refreshing ? t('Checking stock…') : t('Refresh list')}</span></button>{admin && tab==='suppliers' && <button className="btn-primary" onClick={() => openSupplier()}><Plus size={17} />{t("Add supplier")}</button>}</>} />
 

@@ -1,3 +1,4 @@
+import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useState } from 'react';
 import { FileSpreadsheet, UploadCloud, TriangleAlert, CheckCircle2 } from 'lucide-react';
@@ -83,6 +84,8 @@ export default function ImportPage() {
       setBusy(false);
     }
   }
+  useLiveRefresh(load,['import_batches']);
+
   return <>
     <PageHeader title={t("Import spreadsheets")} subtitle={t("Add existing stock or sales records from an Excel or CSV file.")} actions={<Link className="btn-secondary" to="/sales?source=imported">{t('View sales')}</Link>} />
     <section className="panel p-5 sm:p-6"><div className="grid gap-6 lg:grid-cols-2">

@@ -1,3 +1,5 @@
+import ProductSearch from '../components/ProductSearch.jsx';
+import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import {suggestedQuantity} from '../lib/restock.js';
@@ -44,8 +46,8 @@ export default function DashboardPage() {
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [search, setSearch] = useState('');
-  const load = async () => {
-    setBusy(true);
+  const load = async (background=false) => {
+    if(!background)setBusy(true);
     setError('');
     try {
       setData(await api.get('/api/dashboard'));
@@ -58,6 +60,7 @@ export default function DashboardPage() {
   useEffect(() => {
     load();
   }, []);
+  useLiveRefresh(load,['products','inventory_transactions','legacy_sales','forecast_runs','product_suppliers','suppliers']);
   const metrics = data?.metrics || {};
   const attention = Number(metrics.lowStock || 0) + Number(metrics.outOfStock || 0);
   const restock = data?.reorder || [];
@@ -100,7 +103,7 @@ export default function DashboardPage() {
           e.preventDefault();
           navigate(`/inventory${search.trim() ? `?q=${encodeURIComponent(search.trim())}` : ''}`);
         }}>
-          <label htmlFor="home-part-search" className="label">{t("Find a part")}</label><div className="flex gap-2"><div className="relative min-w-0 flex-1"><Search size={19} className="pointer-events-none absolute left-3 top-4 text-slate-500" /><input id="home-part-search" className="input pl-10" placeholder={t("Part number, name or brand")} value={search} onChange={e => setSearch(e.target.value)} /></div><button className="btn-primary" type="submit">{t("Find")}<ArrowRight size={17} /></button></div>
+          <label htmlFor="home-part-search" className="label">{t("Find a part")}</label><div className="flex gap-2"><div className="relative min-w-0 flex-1"><ProductSearch id="home-part-search" label={t('Find a part')} placeholder={t('Part number, name or brand')} value={search} onChange={setSearch} onSelect={item=>navigate(`/inventory?q=${encodeURIComponent(item.product.part_number||item.label)}`)}/></div><button className="btn-primary" type="submit">{t("Find")}<ArrowRight size={17} /></button></div>
         </Form>}
       </div>
     </section>

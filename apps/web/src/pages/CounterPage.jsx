@@ -1,3 +1,5 @@
+import useLiveRefresh from '../hooks/useLiveRefresh.js';
+import ProductSearch from '../components/ProductSearch.jsx';
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -74,9 +76,9 @@ export default function CounterPage() {
     observer.observe(basket);
     return () => observer.disconnect();
   }, []);
-  async function load() {
+  async function load(background=false) {
     const n = ++request.current;
-    setLoading(true);
+    if(!background)setLoading(true);
     setCatalogError('');
     try {
       const r = await api.get(`/api/products?page=${page}&pageSize=25&q=${encodeURIComponent(q)}&category=${category}`);
@@ -105,6 +107,7 @@ export default function CounterPage() {
       window.removeEventListener('partcast:queue', load);
     };
   }, [q, category, page]);
+  useLiveRefresh(load,['products']);
   const {total,balance,overpaid,validPayment,zeroSaleTotal} = basketAmounts(cart,{txType:mode,isCredit:credit,paidAmount:paid});
   const formattedTotal = total === null ? '—' : money(total);
   const basketLabel = cart.length===1 ? t('1 part in basket') : t('{v0} parts in basket',{v0:cart.length});
@@ -359,10 +362,7 @@ export default function CounterPage() {
  <div className="counter-workspace">
  <section className="counter-catalog" aria-label={t('Choose parts')}><h2 className="counter-browse-heading"><span className="counter-step" aria-hidden="true"><Wrench size={18} /></span>{t('1. Choose your parts')}</h2>
  {catalogError&&<div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><p>{t(catalogError)}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={load}>{t('Try again')}</button></div>}
- <div className="counter-search-panel"><label className="label" htmlFor="counter-part-search">{t('Find a part')}</label><div className="counter-search-row"><div className="counter-search-field min-w-0 flex-1"><Search size={20} aria-hidden="true" /><input id="counter-part-search" className="input" type="search" placeholder={t('Name, part number, or barcode')} value={q} onChange={e => {
-              setQ(e.target.value);
-              setPage(1);
-            }} /></div><button type="button" className="btn-secondary" disabled={locked} onClick={() => setScan(true)}><ScanLine size={20} aria-hidden="true" /><span>{t('Scan')}</span></button></div></div>
+ <div className="counter-search-panel"><label className="label" htmlFor="counter-part-search">{t('Find a part')}</label><div className="counter-search-row"><div className="min-w-0 flex-1"><ProductSearch id="counter-part-search" label={t('Find a part')} placeholder={t('Name, part number, or barcode')} value={q} category={category} onChange={value=>{setQ(value);setPage(1);}} /></div><button type="button" className="btn-secondary" disabled={locked} onClick={() => setScan(true)}><ScanLine size={20} aria-hidden="true" /><span>{t('Scan')}</span></button></div></div>
  <h3 className="text-base font-semibold">{t('Browse categories')}</h3>
  <CounterCategories value={category} onChange={value => { setCategory(value); setPage(1); }} disabled={locked} />
  {unknown && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4"><p>{t("No part is saved with barcode ")}{unknown}.</p>{canAddPart ? <Link className="btn-secondary mt-3" to={`/inventory?newBarcode=${encodeURIComponent(unknown)}`}>{t("Add this part")}</Link> : <p className="mt-2 text-sm">{t("Ask the owner to add this part to Inventory first.")}</p>}</div>}

@@ -1,3 +1,4 @@
+import {invalidateData,mutationTables} from './liveData.js';
 import {verifiedCacheMatches} from './access.js';
 import {lineCents,validAmount,validQuantity,MAX_DELIVERY_QUANTITY} from './store.js';
 import { readCache, saveCache, updateCachedProduct, queueItems, projectedProducts, enqueueMovement, drainQueue } from './offline.js';
@@ -48,11 +49,13 @@ async function networkRequest(path, options = {}) {
     if (res.status === 428) window.dispatchEvent(new Event('partcast:verify-email'));
     throw error;
   }
-  if (res.status === 204) return null;
+  if (res.status === 204) { if(options.method && options.method!=='GET')invalidateData(mutationTables(path)); return null; }
   if(responseType==='image' && /image\/(webp|png|jpeg)/.test(res.headers.get('content-type')||''))return res.blob();
   if (responseType === 'blob' && /application\/(vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|octet-stream)/.test(res.headers.get('content-type') || '')) return res.blob();
   if (!json || responseType === 'blob') throw new ApiError('The store server returned unexpected information. Ask the store owner to check the server address.', 502);
-  return res.json();
+  const result=await res.json();
+  if(options.method && options.method!=='GET')invalidateData(mutationTables(path));
+  return result;
 }
 
 async function localRead(path) {
@@ -113,10 +116,12 @@ export async function prepareOffline() {
 export async function syncOffline() {
   if (syncing || !currentSession?.user?.id || !navigator.onLine) return syncing;
   const userId = currentSession.user.id;
-  syncing = drainQueue(userId, payload => {
+  let committed=false;
+  syncing = drainQueue(userId, async payload => {
     if (currentSession?.user?.id !== userId) throw new ApiError('Account changed. Please sign in again.', 401);
-    return networkRequest(({batch:'/api/inventory/batch',debt:'/api/debts',payment:'/api/debts/payment'})[payload.kind]||'/api/inventory/movement', { method: 'POST', body: JSON.stringify(payload) });
-  }).then(() => prepareOffline()).finally(() => { syncing = null; });
+    const result=await networkRequest(({batch:'/api/inventory/batch',debt:'/api/debts',payment:'/api/debts/payment'})[payload.kind]||'/api/inventory/movement', { method: 'POST', body: JSON.stringify(payload) });
+    committed=true;return result;
+  }).then(() => prepareOffline()).then(() => {if(committed)invalidateData(['products','inventory_transactions','demand_observations','customer_debts','debt_payments']);}).finally(() => { syncing = null; });
   return syncing;
 }
 async function movement(body, batch = false) {

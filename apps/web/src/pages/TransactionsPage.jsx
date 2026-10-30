@@ -1,3 +1,4 @@
+import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useState } from 'react';
@@ -48,6 +49,7 @@ export default function TransactionsPage({salesOnly=false,embedded=false}) {
       controller.abort();
     };
   }, [page, type, refresh, filters]);
+  useLiveRefresh(()=>setRefresh(value=>value+1),['inventory_transactions','products']);
   return <>
     {!embedded&&<PageHeader title={salesOnly?t('Sales'):t("Stock history")} subtitle={salesOnly?t('Review parts sold, customers and amounts.'):t("Review sales, deliveries and stock corrections.")} actions={refreshButton} />}
     <section className="panel overflow-hidden" aria-label={salesOnly?t('Counter sales'):t('Stock history')} aria-busy={loading}>

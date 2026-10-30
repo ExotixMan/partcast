@@ -1500,5 +1500,15 @@
   "Maximum 100 per item": "Hanggang 100 bawat piyesa",
   "Large delivery quantity": "Maraming piyesa sa delivery",
   "This quantity is high for one item. Do you want to continue?": "Marami ito para sa isang piyesa. Gusto mo bang magpatuloy?",
-  "Yes, continue": "Oo, magpatuloy"
+  "Yes, continue": "Oo, magpatuloy",
+  "Search suggestions": "Mga mungkahing resulta",
+  "Searching…": "Naghahanap…",
+  "Search unavailable. Please try again.": "Hindi makapaghanap. Subukan muli.",
+  "No matches found.": "Walang nakitang tugma.",
+  "Actual sales": "Aktuwal na benta",
+  "Predicted demand": "Tinatayang demand",
+  "Projected stock": "Inaasahang natitirang stock",
+  "On hand": "Kasalukuyang stock",
+  "Actual sales, estimated demand and projected stock": "Aktuwal na benta, tinatayang demand at natitirang stock",
+  "Actual sales and stock update automatically. Projected stock assumes no future deliveries. Update demand estimate to retrain predictions using new sales.": "Awtomatikong nagbabago ang aktuwal na benta at stock. Walang kasamang susunod na delivery sa projection. I-update ang demand estimate para magamit sa modelo ang bagong benta."
 }

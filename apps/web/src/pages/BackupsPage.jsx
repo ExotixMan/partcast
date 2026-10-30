@@ -1,3 +1,4 @@
+import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import HelpDetails from '../components/HelpDetails.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useState } from 'react';
@@ -69,6 +70,8 @@ export default function BackupsPage() {
   const downloadButton = row => row.status === 'created' ? <button className="btn-secondary w-full lg:w-auto" disabled={Boolean(downloading)} aria-label={t("Download backup {v0}", {
     v0: row.file_name
   })} onClick={() => download(row.id)}><Download size={17} aria-hidden="true" />{downloading === row.id ? t('Preparing download…') : t('Download backup')}</button> : null;
+  useLiveRefresh(load,['backup_logs']);
+
   return <>
     <PageHeader title={t("Backup copies")} subtitle={t("Save an extra copy of your store records, or download a copy you saved earlier.")} actions={<button className="btn-primary" onClick={create} disabled={busy}><RefreshCw size={17} aria-hidden="true" className={busy ? 'animate-spin' : ''} />{busy ? t('Saving backup…') : t('Save a backup now')}</button>} />
     <HelpDetails title="Backup help" className="mb-3"><p>{t("Backups are private Excel files. An internet connection is needed to save or download them. Each download link expires after five minutes; you can request a new one here.")}</p></HelpDetails>

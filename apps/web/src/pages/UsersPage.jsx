@@ -1,3 +1,4 @@
+import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import HelpDetails from '../components/HelpDetails.jsx';
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
@@ -106,6 +107,8 @@ export default function UsersPage() {
       setChanging('');
     }
   }
+  useLiveRefresh(load,['profiles', 'audit_logs']);
+
   return <>
     <PageHeader title={t("Staff access")} subtitle={t("Choose who can use PartCast and what each person is allowed to manage.")} actions={<button className="btn-primary" onClick={() => setModal(true)}><Plus size={17} aria-hidden="true" />{t("Add staff account")}</button>} />
     {loading ? <Loading label={t("Loading staff accounts…")} /> : error ? <div className="panel space-y-3 p-5" role="alert"><h2 className="font-semibold">{t("Staff accounts could not be loaded")}</h2><p className="text-sm text-red-700">{t(error)}</p><button className="btn-secondary" onClick={load}>{t("Try again")}</button></div> : <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">

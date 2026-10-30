@@ -7,6 +7,8 @@ import {canOpenPage} from '../lib/access.js';
 import SyncStatus from './SyncStatus.jsx';
 import NotificationCenter from './NotificationCenter.jsx';
 import Preferences from './Preferences.jsx';
+import { supabase } from '../lib/supabase.js';
+import { startLiveData } from '../lib/liveData.js';
 import AssistantChat from './AssistantChat.jsx';
 import ErrorBoundary from './ErrorBoundary.jsx';
 const daily = [{
@@ -116,6 +118,9 @@ function SidebarContent({
   </>;
 }
 export default function AppShell() {
+  const { profile: liveProfile } = useAuth();
+  useEffect(() => { if (liveProfile?.id) return startLiveData(supabase, liveProfile.id); }, [liveProfile?.id]);
+
   useLocale();
   const {profile} = useAuth();
   const quickLinks = daily.filter(n => ['/', '/counter', '/inventory'].includes(n.to) && canOpenPage(profile?.role,n.to));

@@ -59,17 +59,19 @@ test('forecast chart returns the entire latest run without mixing or truncating 
    if(table==='profiles')return {data:{id:'11111111-1111-4111-8111-111111111111',active:true,role}};
    if(table==='login_verifications')return {data:{expires_at:'2099-01-01T00:00:00Z'}};
    if(table==='latest_completed_forecast_run')return {data:hasRun?{id:current}:null};
+   if(table==='products')return {data:{id:filters.id,current_stock:5}};
+   if(table==='demand_observations')return {data:[{occurred_on:today,quantity:2}]};
    assert.equal(table,'demand_forecasts');forecastReads++;
    return {data:rows.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v)).slice(0,limit)};
   };
-  return {select(){return this;},eq(k,v){filters[k]=v;return this;},gte(){return this;},order(){return this;},limit(n){limit=n;return this;},single:async()=>result(),maybeSingle:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
+  return {select(){return this;},eq(k,v){filters[k]=v;return this;},gte(){return this;},gt(){return this;},lte(){return this;},range(){return this;},order(){return this;},limit(n){limit=n;return this;},single:async()=>result(),maybeSingle:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
  };
  const app=express();app.use('/api',authenticate,router);app.use(errorHandler);
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
  const url=`http://127.0.0.1:${server.address().port}/api/forecast/product/`,headers={Authorization:`Bearer ${testToken}`};
  try{
   let response=await fetch(url+product,{headers});assert.equal(response.status,200);
-  let body=await response.json();assert.equal(body.data.length,90);assert(body.data.every(r=>r.run_id===current&&r.predicted_quantity===0.5));assert.equal(body.run.id,current);
+  let body=await response.json();assert.equal(body.data.length,90);assert(body.data.every(r=>r.run_id===current&&r.predicted_quantity===0.5));assert.equal(body.run.id,current);assert.equal(body.product.current_stock,5);assert.equal(body.actualSales.length,1);
   response=await fetch(url+'99999999-9999-4999-8999-999999999999',{headers});assert.deepEqual((await response.json()).data,[]);
   hasRun=false;const reads=forecastReads;response=await fetch(url+product,{headers});body=await response.json();assert.equal(body.run,null);assert.deepEqual(body.data,[]);assert.equal(forecastReads,reads);
   assert.equal((await fetch(url+'invalid',{headers})).status,400);

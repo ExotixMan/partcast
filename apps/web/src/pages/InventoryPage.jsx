@@ -1,3 +1,5 @@
+import useLiveRefresh from '../hooks/useLiveRefresh.js';
+import ProductSearch from '../components/ProductSearch.jsx';
 import Form from '../components/Form.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -150,9 +152,9 @@ export default function InventoryPage() {
       });
     }
   }
-  const load = async () => {
+  const load = async (background = false) => {
     const request = ++requestNumber.current;
-    setLoading(true);
+    if(!background)setLoading(true);
     setLoadError('');
     try {
       const result = await api.get(`/api/products?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(q)}&status=${status}&category=${category}`);
@@ -167,6 +169,7 @@ export default function InventoryPage() {
       if (request === requestNumber.current) setLoading(false);
     }
   };
+  useLiveRefresh(load,['products']);
   useEffect(() => {
     const changed = () => {
       setOffline(!navigator.onLine);
@@ -186,7 +189,7 @@ export default function InventoryPage() {
   }, [page, q, status, category]);
   useEffect(() => {
     const timer = setTimeout(load, 250);
-    return () => clearTimeout(timer);
+    return () => {requestNumber.current++;clearTimeout(timer);};
   }, [page, q, status, category]);
   useEffect(() => {
     api.get('/api/suppliers').then(result => setSuppliers(result.data || [])).catch(() => {});
@@ -436,15 +439,7 @@ export default function InventoryPage() {
       <div className="inventory-toolbar panel">
         <label htmlFor="inventory-search" className="label">{t('Search inventory')}</label>
         <div className="inventory-search-row"><div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-4 top-3.5 text-slate-500" size={20} aria-hidden="true" />
-          <input id="inventory-search" className="input min-h-12 pl-12 pr-12" aria-label={t('Search inventory')} type="text" placeholder={t('Name, part number, or barcode')} value={q} onChange={event => {
-              setQ(event.target.value);
-              setPage(1);
-            }} />
-          {q && <button type="button" aria-label={t('Clear search')} className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => {
-              setQ('');
-              setPage(1);
-            }}><X size={18} aria-hidden="true" /></button>}
+          <ProductSearch id="inventory-search" label={t('Search inventory')} placeholder={t('Name, part number, or barcode')} value={q} category={category} status={status} onChange={value=>{setQ(value);setPage(1);}} />
         </div><button type="button" className="btn-secondary shrink-0" onClick={() => setScan(true)}><ScanLine size={20} aria-hidden="true" />{t('Scan')}</button></div>
         <div className="inventory-filter-row">
           <div className="inventory-stock-filters" role="group" aria-label={t('Filter by stock level')}>
