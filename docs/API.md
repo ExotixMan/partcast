@@ -31,9 +31,16 @@ All `/api/*` endpoints require a Supabase Bearer access token. `/api/admin/*` ad
 ## Forecasting
 
 - `GET /api/forecast/runs`
+- `GET /api/forecast/products` — all active products, including products without a trained forecast; includes live `current_stock`, `predicted_total`, and `forecast_days`.
 - `GET /api/forecast/product/:id`
 - `POST /api/forecast/train`
 - `GET /api/data-quality`
+
+`GET /api/forecast/product/:id` returns `{ data, product, actualSales, run, today }`.
+`data` contains future predictions from the latest completed run only, avoiding
+duplicate dates from older models. `product` includes current stock and thresholds;
+`actualSales` contains actual-sale observations for the last 30 days, inclusive of
+`today` (UTC). Products without predictions still return stock and actual sales.
 
 ## Imports / reports / backups
 

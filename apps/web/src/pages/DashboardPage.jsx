@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useLiveQuery } from '../hooks/useLiveQuery.js';
 import { AlertTriangle, Boxes, CircleDollarSign, PackageX, RefreshCw } from 'lucide-react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '../lib/api.js';
@@ -10,9 +10,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 const peso=v=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',maximumFractionDigits:0}).format(Number(v||0));
 
 export default function DashboardPage(){
- const [data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const load=async()=>{setBusy(true);setError('');try{setData(await api.get('/api/dashboard'));}catch(e){setError(e.message);}finally{setBusy(false);}};
- useEffect(()=>{load();},[]);
+ const {data,error,loading:busy,refresh:load}=useLiveQuery(signal=>api.get('/api/dashboard',{signal}),[],['products','inventory_transactions','legacy_sales','forecast_runs','product_suppliers','suppliers']);
  if(!data&&!error)return <Loading label="Loading dashboard..."/>;
  return <>
   <PageHeader title="Dashboard" subtitle="Live inventory condition, sales movement, and forecast-based replenishment." actions={<button className="btn-secondary" onClick={load} disabled={busy}><RefreshCw size={16} className={busy?'animate-spin':''}/>Refresh</button>}/>

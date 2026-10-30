@@ -29,6 +29,11 @@ For a fresh Supabase project, run migrations in order:
 1. `0001_schema.sql`
 2. `0002_rls.sql`
 3. `0003_training_import.sql`
+4. `0004_realtime.sql` (live updates across tabs, browsers, and devices)
+
+Existing projects should also run `0004_realtime.sql` once. It adds the app's
+tables to the Supabase Realtime publication without changing their access policies.
+See [live updates and search](docs/REALTIME.md) for behavior and verification.
 
 ## Recommended dataset import order
 

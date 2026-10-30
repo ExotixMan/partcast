@@ -11,6 +11,7 @@ import { importInventoryWorkbook, importLegacySalesWorkbook, importDemandTrainin
 import { buildReportWorkbook } from '../utils/excel.js';
 import { runForecastPython } from '../utils/ml.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
+import { getProductPlanning } from '../services/planning.js';
 
 const router = Router();
 const upload = multer({
@@ -272,20 +273,14 @@ router.get('/forecast/products', async (req,res,next) => {
   try {
     const { data: latest, error: latestError } = await adminDb.from('latest_completed_forecast_run').select('id,horizon_days,completed_at').maybeSingle();
     if (latestError) throw latestError;
-    if (!latest) return res.json({ run: null, data: [] });
-    const rows = await fetchAll(() => adminDb.from('demand_forecasts')
-      .select('product_id,forecast_date,predicted_quantity,product:products(part_number,description,brand)')
-      .eq('run_id', latest.id).gte('forecast_date', new Date().toISOString().slice(0,10)).order('forecast_date'));
-    const grouped = new Map();
+    const products = await fetchAll(() => adminDb.from('products').select('id,part_number,description,brand,current_stock').eq('active',true).order('id'));
+    const rows = latest ? await fetchAll(() => adminDb.from('demand_forecasts')
+      .select('product_id,forecast_date,predicted_quantity')
+      .eq('run_id', latest.id).gt('forecast_date', new Date().toISOString().slice(0,10)).order('forecast_date').order('id')) : [];
+    const grouped = new Map(products.map(p => [p.id, { ...p, product_id:p.id, predicted_total:0, forecast_days:0 }]));
     for (const row of rows) {
-      const current = grouped.get(row.product_id) || {
-        product_id: row.product_id,
-        part_number: row.product?.part_number || null,
-        description: row.product?.description || 'Product',
-        brand: row.product?.brand || null,
-        predicted_total: 0,
-        forecast_days: 0
-      };
+      const current = grouped.get(row.product_id);
+      if (!current) continue;
       current.predicted_total += Number(row.predicted_quantity || 0);
       current.forecast_days += 1;
       grouped.set(row.product_id, current);
@@ -298,12 +293,8 @@ router.get('/forecast/products', async (req,res,next) => {
 
 router.get('/forecast/product/:id', async (req,res,next) => {
   try {
-    const { data, error } = await adminDb.from('demand_forecasts')
-      .select('forecast_date,predicted_quantity,run_id,forecast_runs!inner(status,completed_at)')
-      .eq('product_id',req.params.id).eq('forecast_runs.status','completed')
-      .gte('forecast_date',new Date().toISOString().slice(0,10)).order('forecast_date').limit(120);
-    if (error) throw error;
-    res.json({ data });
+    const id = z.string().uuid().parse(req.params.id);
+    res.json(await getProductPlanning(adminDb, id));
   } catch(e){ next(e); }
 });
 

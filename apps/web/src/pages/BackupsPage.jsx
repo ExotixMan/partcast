@@ -1,28 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw, ShieldCheck } from 'lucide-react';
+import { useLiveQuery } from '../hooks/useLiveQuery.js';
 import { api } from '../lib/api.js';
 import PageHeader from '../components/PageHeader.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Toast from '../components/Toast.jsx';
 
 export default function BackupsPage() {
-  const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const load = () =>
-    api.get('/api/admin/backups')
-      .then(r => setRows(r.data || []))
-      .catch(e =>
-        setToast({
-          type: 'error',
-          message: e.message
-        })
-      );
-
-  useEffect(() => {
-    load();
-  }, []);
+  const {data,error,refresh:load}=useLiveQuery(signal=>api.get('/api/admin/backups',{signal}),[],['backup_logs']);
+  const rows=data?.data||[];
+  useEffect(()=>{if(error)setToast({type:'error',message:error});},[error]);
 
   async function create() {
     setBusy(true);

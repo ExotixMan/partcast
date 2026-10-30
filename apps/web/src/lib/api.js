@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { invalidateData, mutationTables } from './liveData.js';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:10000').replace(/\/$/, '');
 
@@ -21,13 +22,13 @@ async function request(path, options = {}) {
     }
     throw new Error(message);
   }
-  if (res.status === 204) return null;
-  if (contentType.includes('application/json')) return res.json();
-  return res.blob();
+  const result = res.status === 204 ? null : contentType.includes('application/json') ? await res.json() : await res.blob();
+  if (options.method && options.method !== 'GET') invalidateData(mutationTables(path));
+  return result;
 }
 
 export const api = {
-  get: path => request(path),
+  get: (path, options) => request(path, options),
   post: (path, body) => request(path, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body ?? {}) }),
   patch: (path, body) => request(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) }),
   download: async path => {

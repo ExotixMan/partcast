@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownToLine, ArrowUpFromLine, Pencil, Plus, Search, ShoppingCart } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Pencil, Plus, ShoppingCart } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { useLiveQuery } from '../hooks/useLiveQuery.js';
+import SearchSuggestions from '../components/SearchSuggestions.jsx';
 import Modal from '../components/Modal.jsx';
 import Loading from '../components/Loading.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -13,12 +15,15 @@ const blankProduct={part_number:'',sub_number:'',description:'',brand:'',unit:'p
 const blankMove={product_id:'',tx_type:'stock_in',quantity:1,unit_cost:'',unit_price:'',reference_no:'',supplier_id:'',customer_name:'',total_amount:'',notes:''};
 
 export default function InventoryPage(){
- const [rows,setRows]=useState([]),[count,setCount]=useState(0),[page,setPage]=useState(1),[q,setQ]=useState(''),[status,setStatus]=useState('all'),[loading,setLoading]=useState(true);
+ const [page,setPage]=useState(1),[q,setQ]=useState(''),[status,setStatus]=useState('all');
  const [productModal,setProductModal]=useState(false),[editingId,setEditingId]=useState(null),[moveModal,setMoveModal]=useState(false),[product,setProduct]=useState(blankProduct),[move,setMove]=useState(blankMove),[suppliers,setSuppliers]=useState([]),[saving,setSaving]=useState(false),[toast,setToast]=useState(null);
  const pageSize=25;
- const load=async()=>{setLoading(true);try{const r=await api.get(`/api/products?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(q)}&status=${status}`);setRows(r.data);setCount(r.count||0);}catch(e){setToast({type:'error',message:e.message});}finally{setLoading(false);}};
- useEffect(()=>{const t=setTimeout(load,250);return()=>clearTimeout(t);},[page,q,status]);
- useEffect(()=>{api.get('/api/suppliers').then(r=>setSuppliers(r.data||[])).catch(()=>{});},[]);
+ const {data:inventory,loading,error,refresh:load}=useLiveQuery(signal=>api.get(`/api/products?page=${page}&pageSize=${pageSize}&q=${encodeURIComponent(q)}&status=${status}`,{signal}),[page,q,status],['products'],150);
+ const rows=inventory?.data||[],count=inventory?.count||0;
+ const {data:suggestionResult,loading:searching,error:searchError}=useLiveQuery(signal=>q.trim()?api.get(`/api/products?page=1&pageSize=10&q=${encodeURIComponent(q)}&status=${status}`,{signal}):Promise.resolve({data:[]}),[q,status],['products'],100);
+ const suggestions=(suggestionResult?.data||[]).map(r=>({id:r.id,label:r.part_number||r.description,description:`${r.description} · ${r.brand||'No brand'}`}));
+ const {data:supplierResult}=useLiveQuery(signal=>api.get('/api/suppliers',{signal}),[],['suppliers']);
+ useEffect(()=>{setSuppliers(supplierResult?.data||[]);},[supplierResult]);
  const selected=useMemo(()=>rows.find(r=>r.id===move.product_id),[rows,move.product_id]);
  function openAdd(){setEditingId(null);setProduct(blankProduct);setProductModal(true);}
  function openEdit(row){setEditingId(row.id);setProduct({part_number:row.part_number||'',sub_number:row.sub_number||'',description:row.description||'',brand:row.brand||'',unit:row.unit||'',location:row.location||'',current_stock:Number(row.current_stock||0),minimum_stock:Number(row.minimum_stock||0),safety_stock:Number(row.safety_stock||0),unit_cost:Number(row.unit_cost||0),selling_price:Number(row.selling_price||0)});setProductModal(true);}
@@ -40,8 +45,9 @@ export default function InventoryPage(){
  async function saveMovement(){setSaving(true);try{const payload={...move,supplier_id:move.supplier_id||null,unit_cost:move.unit_cost===''?null:Number(move.unit_cost),unit_price:move.unit_price===''?null:Number(move.unit_price),total_amount:move.total_amount===''?null:Number(move.total_amount)};await api.post('/api/inventory/movement',payload);setMoveModal(false);setToast({message:`${move.tx_type.replace('_',' ')} recorded successfully.`});load();}catch(e){setToast({type:'error',message:e.message});}finally{setSaving(false);}}
  return <>
   <PageHeader title="Inventory" subtitle="Search parts, maintain stock thresholds, and record stock movement without leaving the page." actions={<button className="btn-primary" onClick={openAdd}><Plus size={17}/>Add product</button>}/>
-  <section className="panel overflow-hidden">
-   <div className="panel-header"><div className="relative w-full sm:max-w-md"><Search className="absolute left-3 top-2.5 text-slate-400" size={18}/><input className="input pl-10" placeholder="Search part number, description, or brand" value={q} onChange={e=>{setQ(e.target.value);setPage(1);}}/></div><select className="input w-full sm:w-44" value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}><option value="all">All stock</option><option value="low">Low stock</option><option value="out">Out of stock</option></select></div>
+  <section className="panel">
+   <div className="panel-header"><div className="w-full sm:max-w-md"><SearchSuggestions placeholder="Search part number, description, or brand" value={q} onChange={value=>{setQ(value);setPage(1);}} items={suggestions} loading={searching} error={searchError} onSelect={item=>{setQ(item.label);setPage(1);}}/></div><select className="input w-full sm:w-44" value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}><option value="all">All stock</option><option value="low">Low stock</option><option value="out">Out of stock</option></select></div>
+   {error&&<p role="alert" className="px-5 py-3 text-sm text-red-700">{error}</p>}
    {loading?<Loading/>:rows.length===0?<EmptyState title="No matching inventory"/>:<div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Part</th><th className="px-4 py-3">Brand</th><th className="px-4 py-3 text-right">On hand</th><th className="px-4 py-3 text-right">Minimum</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.map(r=><tr key={r.id} className="hover:bg-slate-50/70"><td className="px-5 py-3"><p className="font-semibold text-slate-900">{r.part_number||'No part number'}</p><p className="mt-0.5 max-w-md truncate text-xs text-slate-500">{r.description}</p></td><td className="px-4 py-3 text-slate-600">{r.brand||'—'}</td><td className="px-4 py-3 text-right font-semibold">{Number(r.current_stock).toFixed(0)}</td><td className="px-4 py-3 text-right text-slate-600">{Number(r.minimum_stock).toFixed(0)}</td><td className="px-4 py-3 text-slate-600">{r.location||'—'}</td><td className="px-4 py-3"><StatusBadge status={r.stock_status}/></td><td className="px-5 py-3"><div className="flex justify-end gap-1"><button title="Edit product and thresholds" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100" onClick={()=>openEdit(r)}><Pencil size={17}/></button><button title="Stock in" className="rounded-lg p-2 text-emerald-700 hover:bg-emerald-50" onClick={()=>openMove(r,'stock_in')}><ArrowDownToLine size={17}/></button><button title="Stock out" className="rounded-lg p-2 text-amber-700 hover:bg-amber-50" onClick={()=>openMove(r,'stock_out')}><ArrowUpFromLine size={17}/></button><button title="Record sale" className="rounded-lg p-2 text-red-700 hover:bg-red-50" onClick={()=>openMove(r,'sale')}><ShoppingCart size={17}/></button></div></td></tr>)}</tbody></table></div>}
    <Pagination page={page} pageSize={pageSize} count={count} onPage={setPage}/>
   </section>

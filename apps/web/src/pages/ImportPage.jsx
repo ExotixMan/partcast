@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FileSpreadsheet, UploadCloud, TriangleAlert, CheckCircle2 } from 'lucide-react';
+import { useLiveQuery } from '../hooks/useLiveQuery.js';
 import { api } from '../lib/api.js';
 import PageHeader from '../components/PageHeader.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -8,9 +9,10 @@ import Toast from '../components/Toast.jsx';
 const typeLabel={auto:'Auto detect from columns',inventory:'Inventory / purchase history','legacy-sales':'Historical sales / customer references','demand-training':'XGBoost demand training data'};
 
 export default function ImportPage(){
- const [files,setFiles]=useState([]),[kind,setKind]=useState('auto'),[useProxy,setUseProxy]=useState(false),[busy,setBusy]=useState(false),[history,setHistory]=useState([]),[toast,setToast]=useState(null),[results,setResults]=useState([]);
- const load=()=>api.get('/api/imports').then(r=>setHistory(Array.isArray(r?.data)?r.data:[])).catch(e=>setToast({type:'error',message:e.message}));
- useEffect(()=>{load();},[]);
+ const [files,setFiles]=useState([]),[kind,setKind]=useState('auto'),[useProxy,setUseProxy]=useState(false),[busy,setBusy]=useState(false),[toast,setToast]=useState(null),[results,setResults]=useState([]);
+ const {data,error,refresh:load}=useLiveQuery(signal=>api.get('/api/imports',{signal}),[],['import_batches']);
+ const history=data?.data||[];
+ useEffect(()=>{if(error)setToast({type:'error',message:error});},[error]);
  const names=useMemo(()=>files.map(f=>f.name).join(', '),[files]);
  async function send(){if(!files.length||busy)return;setBusy(true);setResults([]);const done=[];try{for(const file of files){const fd=new FormData();fd.append('file',file);fd.append('kind',kind);fd.append('useProxy',String(useProxy));try{const r=await api.post('/api/imports/spreadsheet',fd);done.push({file:file.name,ok:true,...r});}catch(e){done.push({file:file.name,ok:false,error:e.message});}}setResults(done);const ok=done.filter(x=>x.ok).length;setToast({type:ok===done.length?'success':'error',message:`${ok} of ${done.length} spreadsheet(s) imported successfully.`});load();}finally{setBusy(false);}}
  return <><PageHeader title="Import Data" subtitle="Upload Excel or CSV files with any file name. PartCast can identify supported datasets from their column structure."/>

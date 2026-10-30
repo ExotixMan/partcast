@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Mail, Plus, RefreshCw, Send, Truck } from 'lucide-react';
+import { useLiveQuery } from '../hooks/useLiveQuery.js';
 import { api } from '../lib/api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import EmptyState from '../components/EmptyState.jsx';
@@ -14,10 +15,11 @@ const blankSupplier={name:'',contact_person:'',email:'',phone:'',address:''};
 
 export default function ReorderPage(){
  const {profile}=useAuth(); const admin=['owner','admin'].includes(profile?.role);
- const [tab,setTab]=useState('reorder'),[rows,setRows]=useState([]),[suppliers,setSuppliers]=useState([]),[loading,setLoading]=useState(true),[toast,setToast]=useState(null),[busy,setBusy]=useState('');
+ const [tab,setTab]=useState('reorder'),[toast,setToast]=useState(null),[busy,setBusy]=useState('');
  const [supplierModal,setSupplierModal]=useState(false),[supplier,setSupplier]=useState(blankSupplier),[assign,setAssign]=useState(null),[assignSupplier,setAssignSupplier]=useState(''),[unitCost,setUnitCost]=useState(0),[leadTime,setLeadTime]=useState(7);
- const load=async()=>{setLoading(true);try{const [r,s]=await Promise.all([api.get('/api/reorder?onlyNeeded=true'),api.get('/api/suppliers')]);setRows(r.data||[]);setSuppliers(s.data||[]);}catch(e){setToast({type:'error',message:e.message});}finally{setLoading(false);}};
- useEffect(()=>{load();},[]);
+ const {data,loading,error,refresh:load}=useLiveQuery(async signal=>{const [r,s]=await Promise.all([api.get('/api/reorder?onlyNeeded=true',{signal}),api.get('/api/suppliers',{signal})]);return {rows:r.data||[],suppliers:s.data||[]};},[],['products','forecast_runs','product_suppliers','suppliers']);
+ const rows=data?.rows||[],suppliers=data?.suppliers||[];
+ useEffect(()=>{if(error)setToast({type:'error',message:error});},[error]);
  const groups=useMemo(()=>{const m=new Map();for(const r of rows){const key=r.supplier_id||'unassigned';if(!m.has(key))m.set(key,{supplierId:r.supplier_id,name:r.supplier_name||'Supplier not assigned',email:r.supplier_email,items:[]});m.get(key).items.push(r);}return [...m.values()];},[rows]);
  async function createSupplier(){setBusy('supplier');try{await api.post('/api/suppliers',{...supplier,email:supplier.email||null,contact_person:supplier.contact_person||null,phone:supplier.phone||null,address:supplier.address||null});setSupplier(blankSupplier);setSupplierModal(false);setToast({message:'Supplier added.'});load();}catch(e){setToast({type:'error',message:e.message});}finally{setBusy('');}}
  async function saveAssign(){if(!assignSupplier)return;setBusy('assign');try{await api.post(`/api/products/${assign.product_id}/suppliers/${assignSupplier}`,{latest_unit_cost:Number(unitCost||0),lead_time_days:Number(leadTime||7),is_primary:true});setAssign(null);setToast({message:'Primary supplier assigned.'});load();}catch(e){setToast({type:'error',message:e.message});}finally{setBusy('');}}

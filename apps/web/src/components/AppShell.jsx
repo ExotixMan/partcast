@@ -3,8 +3,10 @@ import {
   BarChart3, Boxes, BrainCircuit, ChevronRight, FileDown, History, LogOut,
   Menu, RefreshCcw, Settings, ShieldCheck, Truck, Upload, UserCog, Users, X
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { supabase } from '../lib/supabase.js';
+import { startLiveData } from '../lib/liveData.js';
 import AssistantChat from './AssistantChat.jsx';
 
 const nav = [
@@ -50,6 +52,10 @@ function SidebarContent({ close }) {
 }
 
 export default function AppShell() {
+  const { profile } = useAuth();
+  useEffect(() => {
+    if (profile?.id) return startLiveData(supabase, profile.id);
+  }, [profile?.id]);
   const [open,setOpen]=useState(false);
   const location=useLocation();
   const current = nav.find(n => n.to==='/' ? location.pathname==='/' : location.pathname.startsWith(n.to));

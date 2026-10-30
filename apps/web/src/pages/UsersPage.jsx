@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, ShieldCheck, UserRound } from 'lucide-react';
+import { useLiveQuery } from '../hooks/useLiveQuery.js';
 import { api } from '../lib/api.js';
 import Modal from '../components/Modal.jsx';
 import PageHeader from '../components/PageHeader.jsx';
@@ -8,8 +9,10 @@ import Toast from '../components/Toast.jsx';
 
 const blank={fullName:'',email:'',password:'',role:'inventory_staff'};
 export default function UsersPage(){
- const [rows,setRows]=useState([]),[modal,setModal]=useState(false),[form,setForm]=useState(blank),[busy,setBusy]=useState(false),[toast,setToast]=useState(null),[audit,setAudit]=useState([]);
- const load=async()=>{try{const [u,a]=await Promise.all([api.get('/api/admin/users'),api.get('/api/admin/audit')]);setRows(u.data||[]);setAudit(a.data||[]);}catch(e){setToast({type:'error',message:e.message});}};useEffect(()=>{load();},[]);
+ const [modal,setModal]=useState(false),[form,setForm]=useState(blank),[busy,setBusy]=useState(false),[toast,setToast]=useState(null);
+ const {data,error,refresh:load}=useLiveQuery(async signal=>{const [u,a]=await Promise.all([api.get('/api/admin/users',{signal}),api.get('/api/admin/audit',{signal})]);return {rows:u.data||[],audit:a.data||[]};},[],['profiles','audit_logs']);
+ const rows=data?.rows||[],audit=data?.audit||[];
+ useEffect(()=>{if(error)setToast({type:'error',message:error});},[error]);
  async function create(){setBusy(true);try{await api.post('/api/admin/users',form);setForm(blank);setModal(false);setToast({message:'Staff account created.'});load();}catch(e){setToast({type:'error',message:e.message});}finally{setBusy(false);}}
  async function change(id,patch){try{await api.patch(`/api/admin/users/${id}`,patch);setToast({message:'User access updated.'});load();}catch(e){setToast({type:'error',message:e.message});}}
  return <><PageHeader title="Users & Security" subtitle="Owner-controlled staff accounts, roles, activation state, and audit trail." actions={<button className="btn-primary" onClick={()=>setModal(true)}><Plus size={16}/>Add staff account</button>}/>
