@@ -1510,5 +1510,20 @@
   "Projected stock": "Inaasahang natitirang stock",
   "On hand": "Kasalukuyang stock",
   "Actual sales, estimated demand and projected stock": "Aktuwal na benta, tinatayang demand at natitirang stock",
-  "Actual sales and stock update automatically. Projected stock assumes no future deliveries. Update demand estimate to retrain predictions using new sales.": "Awtomatikong nagbabago ang aktuwal na benta at stock. Walang kasamang susunod na delivery sa projection. I-update ang demand estimate para magamit sa modelo ang bagong benta."
+  "Actual sales and stock update automatically. Projected stock assumes no future deliveries. Update demand estimate to retrain predictions using new sales.": "Awtomatikong nagbabago ang aktuwal na benta at stock. Walang kasamang susunod na delivery sa projection. I-update ang demand estimate para magamit sa modelo ang bagong benta.",
+  "XGBoost is updating automatically…": "Awtomatikong nagkakalkula ang XGBoost…",
+  "New sales received. XGBoost will update shortly.": "Na-save na ang bagong benta. Awtomatikong magkakalkula ang XGBoost.",
+  "More sales history is needed. Estimates will update automatically when enough history is available.": "Kailangan pa ng kasaysayan ng benta. Awtomatikong lalabas ang pagtataya kapag sapat na ang datos.",
+  "The automatic update is delayed. Retrying automatically; the last completed estimates remain visible.": "Naantala ang pagkalkula. Awtomatikong susubukan muli; ipinapakita muna ang huling natapos na pagtataya.",
+  "XGBoost updates automatically after sales.": "Awtomatikong nagbabago ang XGBoost matapos ang benta.",
+  "Checking automatic forecasts…": "Sinusuri ang awtomatikong pagtataya…",
+  "Sales are saved immediately. New predictions appear here automatically when the calculation finishes, even if this page was closed.": "Agad na nase-save ang benta. Awtomatikong lalabas dito ang bagong pagtataya kapag tapos na ang pagkalkula, kahit nakasara ang pahinang ito.",
+  "Changing the planning period automatically recalculates the estimates.": "Awtomatikong kinakalkula muli ang pagtataya kapag binago ang panahon ng pagpaplano.",
+  "Automatic forecasting is not available. Ask the Super Admin to check setup.": "Hindi magamit ang awtomatikong pagtataya. Ipasuri sa Super Admin ang setup.",
+  "Sales, stock and XGBoost predictions update automatically. New predictions replace the last completed estimates when training finishes. Projected stock assumes no future deliveries.": "Awtomatikong nagbabago ang benta, stock at XGBoost. Lalabas ang bagong pagtataya kapag tapos na ang pagkalkula. Walang kasamang susunod na delivery sa projection.",
+  "Uses saved sales automatically. No manual update is needed.": "Awtomatikong ginagamit ang na-save na benta. Hindi kailangan ng manual na update.",
+  "No upcoming daily estimates are available for this part. They will appear automatically when enough recent sales are available.": "Wala pang susunod na araw na pagtataya para sa piyesang ito. Awtomatiko itong lalabas kapag sapat na ang bagong benta.",
+  "Record actual sales in PartCast or import a prepared sales spreadsheet. Estimates update automatically when enough recent history is available.": "Itala ang aktuwal na benta sa PartCast o mag-import ng naihandang talaan. Awtomatikong lalabas ang pagtataya kapag sapat na ang bagong kasaysayan.",
+  "Estimates update automatically using recent sales. Parts without enough recent history will be left out.": "Awtomatikong ginagamit ang bagong benta sa pagtataya. Hindi kasama ang mga piyesang kulang ang bagong kasaysayan.",
+  "No estimates have been calculated yet. Keep recording sales; estimates will appear automatically when enough history is available.": "Wala pang nakalkulang pagtataya. Patuloy na itala ang benta; awtomatiko itong lalabas kapag sapat na ang kasaysayan."
 }

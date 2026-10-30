@@ -1,3 +1,4 @@
+import {automaticForecasts} from './services/automaticForecasts.js';
 import express from 'express';
 import { applyHttpSecurity } from './middleware/httpSecurity.js';
 import { config } from './config.js';
@@ -24,4 +25,5 @@ app.use('/jobs',cronAuth,jobsRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(config.PORT,'0.0.0.0',()=>console.log(`PartCast API listening on ${config.PORT}`));
+const server=app.listen(config.PORT,'0.0.0.0',()=>{console.log(`PartCast API listening on ${config.PORT}`);automaticForecasts.start();});
+for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{automaticForecasts.stop();server.close();});

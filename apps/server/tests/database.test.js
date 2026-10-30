@@ -34,6 +34,8 @@ test('real PostgreSQL migrations, atomic sync, access control and alerts', async
  await db.exec(await readFile(new URL('../../../supabase/migrations/0010_sale_price_validation.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0011_restock_workflows.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../../supabase/migrations/0012_sale_financial_integrity.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../../../supabase/migrations/0013_realtime.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../../../supabase/migrations/0014_automatic_forecasts.sql',import.meta.url),'utf8'));
  await db.exec(`insert into auth.users(id) values('${staff}'),('${inactive}');update public.profiles set active=true where id='${staff}';insert into products(id,description,current_stock,minimum_stock)values('${product}','Brake pad',5,2);`);
  await db.exec(`insert into login_verifications(session_id,user_id,expires_at) values('${staff}','${staff}',now()+interval '12 hours'),('${inactive}','${inactive}',now()+interval '12 hours');`);
  const claims=async id=>{await db.exec(`reset role;select set_config('request.jwt.claim.sub','${id}',false);select set_config('request.jwt.claim.role','authenticated',false);select set_config('request.jwt.claims','{"session_id":"${id}","amr":[{"method":"password"}]}',false);set role authenticated;`);};

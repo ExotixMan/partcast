@@ -13,6 +13,8 @@ const smallOrders=await read('0009_small_restock_orders.sql');
 const salePrices=await read('0010_sale_price_validation.sql');
 const restockWorkflows=await read('0011_restock_workflows.sql');
 const saleIntegrity=await read('0012_sale_financial_integrity.sql');
+const realtime=await read('0013_realtime.sql');
+const automaticForecasts=await read('0014_automatic_forecasts.sql');
 const body = sql => sql.replace(/^begin;\s*$/gm, '').replace(/^commit;\s*$/gm, '').trim();
 const baseline = [...schema.matchAll(/^create table public\.(\w+) \(\n([\s\S]*?)\n\);/gm)];
 const business = [...baseline.map(([_, name]) => name), 'stock_batches', 'customer_debts', 'debt_payments', 'stock_notifications', 'notification_reads'];
@@ -193,6 +195,10 @@ ${body(salePrices)}
 ${body(restockWorkflows)}
 
 ${body(saleIntegrity)}
+
+${body(realtime)}
+
+${body(automaticForecasts)}
 
 
 update storage.buckets set public=false where id in ('partcast-photos','partcast-models','partcast-backups');

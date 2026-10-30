@@ -2,7 +2,7 @@ const listeners = new Set();
 let broadcast = null;
 
 export const LIVE_TABLES = [
-  'products', 'inventory_transactions', 'demand_observations', 'legacy_sales',
+  'forecast_refresh_state', 'products', 'inventory_transactions', 'demand_observations', 'legacy_sales',
   'forecast_runs', 'suppliers', 'product_suppliers', 'import_batches',
   'profiles', 'audit_logs', 'backup_logs', 'supplier_email_logs', 'system_settings', 'customer_debts', 'debt_payments'
 ];
@@ -23,10 +23,10 @@ export function invalidateData(tables = LIVE_TABLES, notifyTabs = true) {
 export function mutationTables(path) {
   if (path.startsWith('/api/assistant/')) return [];
   if (path.startsWith('/api/debts')) return ['customer_debts','debt_payments'];
-  if (path.startsWith('/api/imports')) return ['products', 'inventory_transactions', 'demand_observations', 'legacy_sales', 'import_batches'];
-  if (path.startsWith('/api/forecast/train')) return ['forecast_runs'];
+  if (path.startsWith('/api/imports')) return ['products', 'inventory_transactions', 'demand_observations', 'legacy_sales', 'import_batches','forecast_refresh_state'];
+  if (path.startsWith('/api/forecast/train')||path.startsWith('/api/forecast/automation')) return ['forecast_refresh_state'];
   if (path.includes('/suppliers')) return ['suppliers', 'product_suppliers'];
-  if (path.startsWith('/api/products') || path.startsWith('/api/inventory/')) return ['products', 'inventory_transactions', 'demand_observations'];
+  if (path.startsWith('/api/products') || path.startsWith('/api/inventory/')) return ['products', 'inventory_transactions', 'demand_observations','forecast_refresh_state'];
   if (path.startsWith('/api/admin/backups')) return ['backup_logs'];
   if (path.startsWith('/api/admin/settings')) return ['system_settings'];
   if (path.startsWith('/api/admin/users') || path === '/api/me') return ['profiles', 'audit_logs'];

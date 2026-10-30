@@ -14,6 +14,7 @@ async function fixture(context,{role='owner'}={}){
  if(req.method()==='OPTIONS'){await route.fulfill({status:204,headers:{...headers,'access-control-allow-methods':'GET,POST,PATCH,DELETE,OPTIONS','access-control-allow-headers':'authorization,content-type'}});return;}
  let body={data:[]};
  if(url.pathname==='/api/me')body={user:{id:userId,full_name:'Store Staff',role,active:true,session_id:sid,verification_expires_at:'2099-01-01T00:00:00Z'}};
+ else if(url.pathname==='/api/forecast/automation')body={status:'waiting_history',horizon_days:30};
  else if(url.pathname==='/api/forecast/readiness')body={ready:false,status:'no_observations',record_count:0,current_part_count:0,latest_sale_date:null,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}};
  else if(url.pathname==='/api/offline-snapshot')body={products,suppliers:[{id:supplier,name:'Parts supplier'}]};
  else if(url.pathname==='/api/products'&&req.method()==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category');const data=products.filter(p=>`${p.part_number} ${p.description} ${p.barcode} ${p.search_aliases.join(' ')}`.toLowerCase().includes(q)&&(!category||category==='all'||p.category===category));body={data,count:data.length};}
@@ -335,67 +336,41 @@ test('saved invoice read failures show a retry instead of an empty or successful
  await expect(panel.getByText('Saved invoices could not be loaded.')).toBeVisible();await expect(panel.getByText('Invoices found: 0')).toHaveCount(0);
  failed=false;await panel.getByRole('button',{name:'Try again',exact:true}).click();await expect(panel.getByText('Invoices found: 1')).toBeVisible();await expect(panel.getByRole('table').getByText('Date unavailable')).toBeVisible();
 });
-test('demand planning hides diagnostic panels and enables updates only after usable history is verified',async({page,context})=>{
- await fixture(context);await page.setViewportSize({width:390,height:844});
- let ready=false;const posted=[];
- await context.route('http://localhost:10000/api/forecast/readiness**',async route=>{
-  if(route.request().method()==='OPTIONS')return route.fallback();
-  const lastSale=ready?'2026-10-15':'2024-05-17';
-  await route.fulfill({json:{ready,status:ready?'ready':'stale_history',record_count:23,current_part_count:ready?1:0,latest_sale_date:lastSale,requirements:{sale_days:5,calendar_days:35,maximum_age_days:31},products:[{product_id:p1,part_number:'BP-001',description:'Toyota brake pad',sale_days:7,calendar_days:1537,last_sale_date:lastSale,reasons:ready?[]:['old_history']}]},headers:{'access-control-allow-origin':'*'}});
- });
- await context.route('http://localhost:10000/api/forecast/train',async route=>{
-  if(route.request().method()==='OPTIONS')return route.fallback();
-  posted.push(route.request().postDataJSON());await route.fulfill({json:{forecastCount:7},headers:{'access-control-allow-origin':'*'}});
- });
- await page.goto('/forecast');
- await expect(page.getByRole('heading',{name:'Can these sales train XGBoost?'})).toHaveCount(0);
- await expect(page.getByRole('heading',{name:'Recorded sales',exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Practice demo',exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
- await expect(page.getByText('Add more recent sales before updating estimates.',{exact:true})).toBeVisible();
- await page.getByLabel('Website language').selectOption('fil');
- await expect(page.getByText('Magdagdag ng mas bagong benta bago i-update ang pagtataya.',{exact:true})).toBeVisible();
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await page.getByLabel('Wika ng website').selectOption('en');
- ready=true;await page.getByRole('button',{name:'Refresh sales data',exact:true}).click();
- await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeEnabled();
- await page.getByRole('button',{name:'Update demand estimate',exact:true}).click();
- await expect.poll(()=>posted.length).toBe(1);expect(posted[0]).toEqual({horizonDays:30,includeProxy:false});
- await expect(page.getByText(/Demand estimate updated/)).toBeVisible();
+test('planning is automatic and reports waiting history without offering a training button',async({page,context})=>{
+ await fixture(context);await page.setViewportSize({width:390,height:844});const posted=[];
+ await context.route('http://localhost:10000/api/forecast/train',async route=>{posted.push(route.request().postDataJSON());return route.fulfill({json:{queued:true},headers:{'access-control-allow-origin':'*'}});});
+ await page.goto('/forecast');await expect(page.getByText('More sales history is needed. Estimates will update automatically when enough history is available.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
+ await page.getByLabel('Website language').selectOption('fil');await expect(page.getByText('Kailangan pa ng kasaysayan ng benta. Awtomatikong lalabas ang pagtataya kapag sapat na ang datos.',{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(posted).toEqual([]);
 });
 
-test('a 25-second sales-history response stays pending and completes without the old 20-second timeout',async({page,context})=>{
+test('a slow automatic-status response keeps planning available and finishes without manual action',async({page,context})=>{
  await fixture(context);let requests=0;
- await context.route('http://localhost:10000/api/forecast/readiness**',async route=>{
-  if(route.request().method()==='OPTIONS')return route.fallback();
-  requests++;
-  await new Promise(resolve=>setTimeout(resolve,25000));
-  await route.fulfill({json:{ready:false,status:'no_observations',record_count:0,current_part_count:0,latest_sale_date:null,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}},headers:{'access-control-allow-origin':'*'}});
+ await context.route('http://localhost:10000/api/forecast/automation',async route=>{
+  if(route.request().method()==='OPTIONS')return route.fallback();requests++;
+  await new Promise(resolve=>setTimeout(resolve,1000));
+  await route.fulfill({json:{status:'ready',horizon_days:30},headers:{'access-control-allow-origin':'*'}});
  });
- await page.goto('/forecast');
- await expect(page.getByText('Preparing sales data…',{exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
- await expect(page.getByText('Still preparing. The server may need a moment to start.',{exact:true})).toBeVisible({timeout:12000});
- await expect(page.getByText('Record or import actual sales first.',{exact:true})).toBeVisible({timeout:30000});
- await expect(page.getByText('Sales history could not be checked.',{exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Refresh sales data',exact:true})).toBeEnabled();
- expect(requests).toBe(1);
+ await page.goto('/forecast');await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toBeVisible();
+ await expect(page.getByText('XGBoost updates automatically after sales.',{exact:true})).toBeVisible();expect(requests).toBe(1);
+ await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
 });
 
-test('leaving a running history check cancels it without marking the store offline',async({page,context})=>{
+test('leaving a running automatic-status check cancels it without marking the store offline',async({page,context})=>{
  await fixture(context);let release;
  await page.addInitScript(()=>{
   window.connectionEvents=[];
   window.addEventListener('partcast:connection',event=>window.connectionEvents.push(event.detail));
  });
- await context.route('http://localhost:10000/api/forecast/readiness**',async route=>{
+ await context.route('http://localhost:10000/api/forecast/automation',async route=>{
   if(route.request().method()==='OPTIONS')return route.fallback();
   await new Promise(resolve=>{release=resolve;});
   await route.abort('aborted');
  });
  try {
   await page.goto('/forecast');
-  await expect(page.getByText('Preparing sales data…',{exact:true})).toBeVisible();
+  await expect(page.getByText('Checking automatic forecasts…',{exact:true})).toBeVisible();
   await expect.poll(()=>typeof release).toBe('function');
   await page.evaluate(()=>{window.connectionEvents=[];});
   await page.getByRole('link',{name:'View sales',exact:true}).click();
@@ -509,15 +484,15 @@ test('simulated XGBoost demo shows its own metrics and leaves real forecasts unc
  await expect(page.getByRole('heading',{name:'Resulta ng demo · halimbawang benta lamang'})).toBeVisible();
 });
 
-test('an incomplete sales-history response keeps the demand page usable and cannot enable training',async({page,context})=>{
+test('an incomplete automatic-status response keeps the demand page usable and recovers on focus',async({page,context})=>{
  await fixture(context);const errors=[];page.on('pageerror',error=>errors.push(error.message));let valid=false;
- await context.route('http://localhost:10000/api/forecast/readiness**',async route=>{
+ await context.route('http://localhost:10000/api/forecast/automation',async route=>{
   if(route.request().method()==='OPTIONS')return route.fallback();
-  await route.fulfill({json:valid?{ready:false,status:'no_observations',record_count:0,current_part_count:0,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}}:{ready:true},headers:{'access-control-allow-origin':'*'}});
+  await route.fulfill({json:valid?{status:'waiting_history',horizon_days:30}:{ready:true},headers:{'access-control-allow-origin':'*'}});
  });
- await page.goto('/forecast');await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toBeVisible();await expect(page.getByText('The sales-history response was incomplete. Check again or ask your Super Admin to update the API.')).toBeVisible();
- await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toBeDisabled();
- valid=true;await page.getByRole('button',{name:'Refresh sales data',exact:true}).click();await expect(page.getByText('Record or import actual sales first.',{exact:true})).toBeVisible();expect(errors).toEqual([]);
+ await page.goto('/forecast');await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toBeVisible();await expect(page.getByText('Automatic forecasting is not available. Ask the Super Admin to check setup.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
+ valid=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('More sales history is needed. Estimates will update automatically when enough history is available.',{exact:true})).toBeVisible();expect(errors).toEqual([]);
 });
 test('password is required before Gmail email code; wrong code cannot open the store',async({page,context})=>{
  await page.setViewportSize({width:390,height:844});
@@ -696,11 +671,11 @@ test('a separate demo database uses the usual planning page while keeping genera
  await intercept('/api/forecast/runs',route=>route.fulfill({json:{data:trained?[{id:'run-demo',status:'completed',completed_at:'2026-10-17T00:00:00Z',metrics:{data_mode:'simulated_demo',production_accuracy_established:false}}]:[]},headers}));
  await intercept('/api/forecast/products',route=>route.fulfill({json:{run:trained?{id:'run-demo'}:null,data:trained?[{product_id:p1,part_number:'23303-64010',description:'FUEL FILTER',predicted_total:8,forecast_days:30}]:[]},headers}));
  await intercept('/api/forecast/product/*',route=>route.fulfill({json:{data:[{run_id:'run-demo',forecast_date:'2026-10-18',predicted_quantity:0.25}]},headers}));
- await intercept('/api/forecast/train',route=>{expect(route.request().postDataJSON()).toEqual({horizonDays:30,includeProxy:false});trained=true;return route.fulfill({json:{forecastCount:270},headers});});
+ await intercept('/api/forecast/automation',route=>{if(route.request().method()==='POST'){expect(route.request().postDataJSON()).toEqual({horizonDays:14});trained=true;return route.fulfill({json:{queued:true},headers});}return route.fulfill({json:{status:trained?'ready':'queued',horizon_days:trained?14:30,last_run_id:trained?'run-demo':null},headers});});
  await intercept('/api/forecast/recorded-sales**',route=>route.fulfill({json:{mode:'simulated_demo',record_count:778,part_count:9,last_sale_date:'2026-10-16',data:[{product_id:p1,part_number:'23303-64010',description:'FUEL FILTER',unit:'pcs',recorded_quantity:12,demo_records:40,actual_records:0,imported_records:0,sale_days:40,first_sale_date:'2024-10-17',last_sale_date:'2026-10-16'}]},headers}));
  await page.goto('/forecast');await expect(page.getByText('Demo demand records',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText('778',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText(/walkthrough estimates demand from generated quantities/)).toBeVisible();
  await expect(page.getByText('Actual quantities from imported sales',{exact:true})).toHaveCount(0);
- await page.getByRole('button',{name:'Update demand estimate',exact:true}).click();await expect(page.getByLabel('Choose a part')).toContainText('23303-64010');await page.getByRole('button',{name:'Daily list',exact:true}).click();await expect(page.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('0.3');
+ await page.getByLabel('How far ahead do you want to plan?',{exact:true}).selectOption('14');await expect(page.getByLabel('Choose a part')).toContainText('23303-64010');await page.getByRole('button',{name:'Daily list',exact:true}).click();await expect(page.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('0.3');
  await page.goto('/sales');await expect(page.getByText('Generated sample records: 40',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText('Generated sample quantities in the separate demo database.')).toBeVisible();
  for(const width of [320,768,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),String(width)).toBe(true);}
  await page.getByLabel('Website language').selectOption('fil');await expect(page.getByText('Mga ginawang halimbawang dami sa hiwalay na demo database.')).toBeVisible();

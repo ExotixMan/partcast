@@ -6,7 +6,7 @@ Inventory manages part details and stock corrections. Sell or receive records mu
 
 ## Upgrade an existing store
 
-Apply only missing migrations, in order. A store already through 0011 needs [0012_sale_financial_integrity.sql](supabase/migrations/0012_sale_financial_integrity.sql). It enforces sale quantities, rounded totals and credit due dates without rewriting old sales. Back up the store and apply the migration before deploying both services from `production`. Run migration 0006 and 0007 in separate committed executions if upgrading an older store. A store through 0012 also needs [0013_realtime.sql](supabase/migrations/0013_realtime.sql) for live database updates. See [search and live planning](docs/REALTIME.md).
+Apply only missing migrations, in order. A store already through 0011 needs [0012_sale_financial_integrity.sql](supabase/migrations/0012_sale_financial_integrity.sql). It enforces sale quantities, rounded totals and credit due dates without rewriting old sales. Back up the store and apply the migration before deploying both services from `production`. Run migration 0006 and 0007 in separate committed executions if upgrading an older store. A store through 0012 also needs [0013_realtime.sql](supabase/migrations/0013_realtime.sql) for live database updates. Then apply [0014_automatic_forecasts.sql](supabase/migrations/0014_automatic_forecasts.sql) to enable automatic XGBoost retraining after sales. See [search and live planning](docs/REALTIME.md).
 
 For a fresh installation or recognized-schema upgrade, use the [complete two-part SQL installer](supabase/paste-ready/README.md). The application does not require resetting or reimporting existing stock for this release.
 

@@ -10,7 +10,7 @@ export const apiConnectionIssue = connection.error || null;
 let currentSession = null;
 let syncing = null;
 export function setApiSession(session) { currentSession = session; }
-const cacheable = path => !/^\/api\/forecast\/(demo|readiness|status)/.test(path) && /^\/api\/(me|dashboard|products(?:\?|\/|$)|suppliers$|reorder|forecast\/|data-quality|notifications$|debts(?:\/|$)|barcode\/)/.test(path);
+const cacheable = path => !/^\/api\/forecast\/(demo|readiness|status|automation)/.test(path) && /^\/api\/(me|dashboard|products(?:\?|\/|$)|suppliers$|reorder|forecast\/|data-quality|notifications$|debts(?:\/|$)|barcode\/)/.test(path);
 export class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
 
 function checkConnection() {
@@ -121,7 +121,7 @@ export async function syncOffline() {
     if (currentSession?.user?.id !== userId) throw new ApiError('Account changed. Please sign in again.', 401);
     const result=await networkRequest(({batch:'/api/inventory/batch',debt:'/api/debts',payment:'/api/debts/payment'})[payload.kind]||'/api/inventory/movement', { method: 'POST', body: JSON.stringify(payload) });
     committed=true;return result;
-  }).then(() => prepareOffline()).then(() => {if(committed)invalidateData(['products','inventory_transactions','demand_observations','customer_debts','debt_payments']);}).finally(() => { syncing = null; });
+  }).then(() => prepareOffline()).then(() => {if(committed)invalidateData(['products','inventory_transactions','demand_observations','customer_debts','debt_payments','forecast_refresh_state']);}).finally(() => { syncing = null; });
   return syncing;
 }
 async function movement(body, batch = false) {

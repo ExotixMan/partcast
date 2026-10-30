@@ -6,6 +6,7 @@ import {pgcrypto} from '@electric-sql/pglite/contrib/pgcrypto';
 Object.assign(process.env,{PARTCAST_DEMO_MODE:'true',SUPABASE_URL:'http://127.0.0.1:9',SUPABASE_ANON_KEY:'test-only-public-key-12345',SUPABASE_SERVICE_ROLE_KEY:'test-only-service-key-12345',SETUP_SECRET:'test-only-setup-secret',CRON_SECRET:'test-only-cron-secret-long-enough',IP_HASH_SECRET:'test-only-hash-secret',INTEGRATION_ENCRYPTION_KEY:'test-only-encryption-key-32-characters'});
 const {createDataEnvironment}=await import('../src/services/dataEnvironment.js');
 const {adminDb}=await import('../src/supabase.js');
+const {trainForecast}=await import('../src/services/automaticForecasts.js');
 const {authenticate}=await import('../src/middleware/auth.js');
 const {default:router}=await import('../src/routes/api.js');
 const {default:express}=await import('express');
@@ -34,7 +35,7 @@ test('normal data mode excludes samples and demo mode requires the prepared data
  await assert.rejects(createDataEnvironment({db,demoEnabled:true})(),/not a prepared demo project/);
 });
 test('SQL seeds PostgreSQL, reruns safely, and seeded observations run the normal authenticated XGBoost pipeline',async()=>{
- const db=await database(),old={from:adminDb.from,auth:adminDb.auth.getUser,storage:adminDb.storage.from};let server;
+ const db=await database(),old={from:adminDb.from,auth:adminDb.auth.getUser,storage:adminDb.storage.from,rpc:adminDb.rpc};let server;
  try{
   await db.exec(seed);
   assert.equal(Number((await db.query('select count(*) n from products')).rows[0].n),9);
@@ -56,6 +57,7 @@ test('SQL seeds PostgreSQL, reruns safely, and seeded observations run the norma
     insert(value){inserted=value;writes.push({table,value});return this;},update(value){writes.push({table,value});return this;},
     then(resolve,reject){return Promise.resolve({data:null,count:778,error:null}).then(resolve,reject);}};
   };
+  adminDb.rpc=async(name,args)=>{assert.equal(name,'request_forecast_refresh');assert.equal(args.p_horizon,30);return {data:null,error:null};};
   adminDb.storage.from=()=>({upload:async(path,buffer)=>{assert(JSON.parse(buffer.toString()).learner);uploads.push(path);return {error:null};}});
   const app=express();app.use(express.json());app.use('/api',authenticate,router);app.use(errorHandler);server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
   const base=`http://127.0.0.1:${server.address().port}/api`,token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({session_id:user,amr:[{method:'password'}]})).toString('base64url')+'.test-only';
@@ -66,12 +68,13 @@ test('SQL seeds PostgreSQL, reruns safely, and seeded observations run the norma
   const quality=await(await fetch(base+'/data-quality',{headers})).json();assert.equal(quality.demoDemandRows,778);assert.equal(quality.actualDemandRows,0);
   const sales=await(await fetch(base+'/forecast/recorded-sales',{headers})).json();assert.equal(sales.mode,'simulated_demo');assert.equal(sales.record_count,778);assert(sales.data.every(row=>row.demo_records>0&&row.actual_records===0));
   const readiness=await(await fetch(base+'/forecast/readiness',{headers})).json();assert.equal(readiness.ready,true);assert.equal(readiness.current_part_count,9);
-  const response=await fetch(base+'/forecast/train',{method:'POST',headers,body:JSON.stringify({horizonDays:30})});const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));assert.equal(result.forecastCount,270);assert.equal(result.metrics.data_mode,'simulated_demo');assert.equal(result.metrics.production_accuracy_established,false);assert.equal(result.metrics.source_counts.actual_sale,undefined);assert.equal(uploads.length,1);
+  const response=await fetch(base+'/forecast/train',{method:'POST',headers,body:JSON.stringify({horizonDays:30})});const queued=await response.json();assert.equal(response.status,202,JSON.stringify(queued));assert.equal(queued.queued,true);
+  const result=await trainForecast({horizonDays:30,actorId:user});assert.equal(result.forecastCount,270);assert.equal(result.metrics.data_mode,'simulated_demo');assert.equal(result.metrics.production_accuracy_established,false);assert.equal(result.metrics.source_counts.actual_sale,undefined);assert.equal(uploads.length,1);
   const run=writes.find(w=>w.table==='forecast_runs'&&w.value.status==='completed');assert.equal(run.value.metrics.source_counts.simulated_demo,778);assert(Number.isFinite(run.value.metrics.horizon_validation.model.wape_percent));
   assert.equal(writes.filter(w=>w.table==='demand_forecasts').flatMap(w=>w.value).length,270);assert(filters.every(s=>s.length===1&&s[0]==='simulated_demo'));
   assert(Number((await db.query('select count(*) n from reorder_recommendations where recommended_quantity>0')).rows[0].n)>0);
   await db.exec('set role authenticated;');await assert.rejects(db.query('select * from partcast_demo_daily'),/permission denied/);await db.exec('reset role;');
- }finally{adminDb.from=old.from;adminDb.auth.getUser=old.auth;adminDb.storage.from=old.storage;if(server)await new Promise(resolve=>server.close(resolve));await db.close();}
+ }finally{adminDb.from=old.from;adminDb.auth.getUser=old.auth;adminDb.storage.from=old.storage;adminDb.rpc=old.rpc;if(server)await new Promise(resolve=>server.close(resolve));await db.close();}
 });
 test('SQL refuses an existing store before adding the demo marker or changing its records',async()=>{
  const db=await database();try{

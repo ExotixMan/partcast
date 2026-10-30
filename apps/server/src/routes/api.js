@@ -1,3 +1,4 @@
+import {automaticForecasts} from '../services/automaticForecasts.js';
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
@@ -9,8 +10,8 @@ import { audit } from '../utils/audit.js';
 import { fetchAll, cleanText } from '../utils/helpers.js';
 import { importInventoryWorkbook, importLegacySalesWorkbook, importDemandTrainingWorkbook, importSpreadsheetAuto, isSupportedSpreadsheetName } from '../services/importers.js';
 import { buildReportWorkbook } from '../utils/excel.js';
-import { runForecastPython,forecastingStatus,checkForecastReadiness } from '../utils/ml.js';
-import {getDataEnvironment,markForecastMetrics} from '../services/dataEnvironment.js';
+import { forecastingStatus,checkForecastReadiness } from '../utils/ml.js';
+import {getDataEnvironment} from '../services/dataEnvironment.js';
 import { createDemoJobs } from '../services/forecastDemo.js';
 import { getProductPlanning } from '../services/planning.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
@@ -406,45 +407,17 @@ router.get('/forecast/readiness', rolesAdmin, async (req,res,next) => {
   } catch(error) {next(error);}
 });
 
-router.post('/forecast/train', rolesAdmin, async (req, res, next) => {
-  try {
-    const body = z.object({ horizonDays:z.coerce.number().int().min(7).max(90).default(30), includeProxy:z.boolean().default(false) }).parse(req.body || {});
-    const runId = crypto.randomUUID();
-    if(body.includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
-    const observations = await demandForForecast(req.dataEnvironment);
-    const asOfDate = storeDay();
-    const readiness = await checkForecastReadiness({observations,asOfDate});
-    if (!readiness.ready) return res.status(422).json({error:readiness.message,code:'FORECAST_DATA_NOT_READY',readiness});
-    const productIds = [...new Set(observations.map(o=>o.product_id))];
-    const { data: created, error: runError } = await adminDb.from('forecast_runs').insert({
-      id:runId,status:'running',horizon_days:body.horizonDays,include_proxy:body.includeProxy,
-      training_rows:observations.length,product_count:productIds.length,started_by:req.user.id
-    }).select('*').single();
-    if (runError) throw runError;
-
-    try {
-      const { result, modelBuffer } = await runForecastPython({ observations, horizonDays:body.horizonDays,asOfDate });
-      const modelPath = `models/${runId}.json`;
-      const upload = await adminDb.storage.from('partcast-models').upload(modelPath, modelBuffer, { contentType:'application/json', upsert:true });
-      if (upload.error) throw upload.error;
-      const forecastRows = result.forecasts.map(f => ({ run_id:runId,product_id:f.product_id,forecast_date:f.forecast_date,predicted_quantity:f.predicted_quantity }));
-      for (let i=0;i<forecastRows.length;i+=500) {
-        const { error } = await adminDb.from('demand_forecasts').insert(forecastRows.slice(i,i+500));
-        if (error) throw error;
-      }
-      const { error: completeError } = await adminDb.from('forecast_runs').update({
-        status:'completed',model_version:result.model_version,metrics:markForecastMetrics(result.metrics,req.dataEnvironment),
-        training_date_min:result.training_date_min,training_date_max:result.training_date_max,
-        model_storage_path:modelPath,completed_at:new Date().toISOString()
-      }).eq('id',runId);
-      if (completeError) throw completeError;
-      await audit(req,'train','forecast_run',runId,{rows:observations.length,products:productIds.length,includeProxy:body.includeProxy});
-      res.json({ runId, metrics:markForecastMetrics(result.metrics,req.dataEnvironment), forecastCount:forecastRows.length });
-    } catch (inner) {
-      await adminDb.from('forecast_runs').update({status:'failed',error_message:String(inner.message).slice(0,1000),completed_at:new Date().toISOString()}).eq('id',runId);
-      throw inner;
-    }
-  } catch (e) { next(e); }
+router.get('/forecast/automation',async(req,res,next)=>{try{res.json(await automaticForecasts.status());}catch(e){next(e);}});
+router.post('/forecast/automation',rolesAdmin,async(req,res,next)=>{
+ try{const {horizonDays}=z.object({horizonDays:z.coerce.number().int().min(7).max(90)}).parse(req.body);res.status(202).json(await automaticForecasts.request(horizonDays));}catch(e){next(e);}
+});
+// Kept for older integrations; computation is always queued and serialized.
+router.post('/forecast/train',rolesAdmin,async(req,res,next)=>{
+ try{
+  const body=z.object({horizonDays:z.coerce.number().int().min(7).max(90).optional(),includeProxy:z.boolean().default(false)}).parse(req.body||{});
+  if(body.includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
+  res.status(202).json(await automaticForecasts.request(body.horizonDays));
+ }catch(e){next(e);}
 });
 
 router.post('/imports/spreadsheet', rolesAdmin, upload.single('file'), async (req,res,next) => {

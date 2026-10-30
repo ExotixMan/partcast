@@ -52,7 +52,9 @@ Draft `extra_columns` contains `{id: <uuid>, label: <1–50 characters>}` entrie
 - `GET /api/forecast/products`
 - `GET /api/forecast/runs`
 - `GET /api/forecast/product/:id`
-- `POST /api/forecast/train`
+- `GET /api/forecast/automation` — automatic-worker state, horizon, pending/processed versions, last completed run, and retry state.
+- `POST /api/forecast/automation` — verified manager changes `{horizonDays: 7..90}`; returns HTTP 202 `{queued:true}` and automatically recalculates.
+- `POST /api/forecast/train` — compatibility endpoint; queues serialized background work and returns HTTP 202 `{queued:true}`. Browsers do not call it after sales.
 - `POST /api/forecast/demo/jobs` and `GET /api/forecast/demo/jobs/:id`
   (verified managers; separate simulated evaluation with no store-data writes)
 - `GET /api/data-quality`

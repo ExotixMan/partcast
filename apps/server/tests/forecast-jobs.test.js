@@ -1,3 +1,4 @@
+import {createForecastTrainer} from '../src/services/forecastTraining.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -16,7 +17,8 @@ test('scheduled forecast reads same-day observations in a stable order and stops
  };
  adminDb.storage.from=()=>{unexpectedWrites++;throw new Error('Models must not be uploaded without a saved forecast run.');};
  try{
-  await assert.rejects(trainForecast({horizonDays:30}),error=>error===failure);
+  const trainer=createForecastTrainer({db:adminDb,getEnvironment:async()=>({sources:['actual_sale','imported_training_data']}),checkReadiness:async()=>({ready:true}),runPython:()=>{throw new Error('No model may run without a saved run');},markMetrics:x=>x});
+  await assert.rejects(trainer({horizonDays:30}),error=>error===failure);
   assert.equal(runs.length,1);assert.equal(runs[0].training_rows,1001);assert.equal(runs[0].status,'running');
   assert.equal(unexpectedWrites,0);
   assert.deepEqual(queries.map(query=>query.range),[[0,999],[1000,1999]]);

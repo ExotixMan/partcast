@@ -7,7 +7,8 @@ const token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringi
 async function fixture(context,{role='owner'}={}){
  await context.addInitScript(({userId,project,token})=>localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:token,refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}})),{userId,project,token});
  const products=[{id:p1,part_number:'BP-001',description:'Toyota brake pad',brand:'Toyota',unit:'pcs',location:'Shelf A',current_stock:5,minimum_stock:1,safety_stock:1,selling_price:500,unit_cost:100,category:'parts',barcode:'123456789012',search_aliases:['pastilyas'],photo_paths:[],stock_status:'ok'},{id:p2,part_number:'OIL-001',description:'Engine oil',brand:'Brand',unit:'bottles',location:'Shelf B',current_stock:8,minimum_stock:2,selling_price:100,unit_cost:60,category:'lubricants',barcode:'987654321098',search_aliases:['langis ng makina'],photo_paths:[],stock_status:'ok'}];
- const batches=[],debts=[],payments=[],emails=[],productWrites=[],photoUploads=[],supplierLinks=[];let disconnected=false;const sales=[];const today='2026-10-31';const receipts=new Map();
+ const batches=[],debts=[],payments=[],emails=[],productWrites=[],photoUploads=[],supplierLinks=[];let disconnected=false;const sales=[];const today='2026-10-31';let currentRun='run',prediction=2,completed=0;let automation={status:'ready',horizon_days:30,last_run_id:currentRun};const manualTraining=[];
+ function queueForecast(){automation={...automation,status:'queued'};setTimeout(()=>automation={...automation,status:'training'},50);setTimeout(()=>{currentRun=`automatic-${++completed}`;prediction++;automation={...automation,status:'ready',last_run_id:currentRun};},600);}const receipts=new Map();
  await context.route('http://localhost:10000/**',async route=>{
  const req=route.request(),url=new URL(req.url()),headers={'access-control-allow-origin':'*'};
  if(disconnected){await route.abort('internetdisconnected');return;}
@@ -16,11 +17,13 @@ async function fixture(context,{role='owner'}={}){
  if(url.pathname==='/api/me')body={user:{id:userId,full_name:'Store Staff',role,active:true,session_id:sid,verification_expires_at:'2099-01-01T00:00:00Z'}};
  else if(url.pathname==='/api/forecast/readiness')body={ready:false,status:'no_observations',record_count:0,current_part_count:0,latest_sale_date:null,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}};
  else if(url.pathname==='/api/offline-snapshot')body={products,suppliers:[{id:supplier,name:'Parts supplier'}]};
+ else if(url.pathname==='/api/forecast/automation'){if(req.method()==='POST'){automation.horizon_days=req.postDataJSON().horizonDays;queueForecast();body={queued:true};}else body=automation;}
+ else if(url.pathname==='/api/forecast/train'){manualTraining.push(req.postDataJSON());body={queued:true};}
  else if(url.pathname==='/api/forecast/status')body={ready:true};
  else if(url.pathname==='/api/data-quality')body={actualDemandRows:sales.length};
- else if(url.pathname==='/api/forecast/runs')body={data:[{id:'run',status:'completed',started_at:today}]};
- else if(url.pathname==='/api/forecast/products')body={run:{id:'run'},data:products.map(p=>({...p,product_id:p.id,predicted_total:4,forecast_days:2}))};
- else if(url.pathname.startsWith('/api/forecast/product/')){const product=products.find(p=>p.id===url.pathname.split('/').at(-1));body={product,today,run:{id:'run'},actualSales:sales,data:[{run_id:'run',forecast_date:'2026-11-01',predicted_quantity:2},{run_id:'run',forecast_date:'2026-11-02',predicted_quantity:2}]};}
+ else if(url.pathname==='/api/forecast/runs')body={data:[{id:currentRun,status:'completed',started_at:today}]};
+ else if(url.pathname==='/api/forecast/products')body={run:{id:currentRun},data:products.map(p=>({...p,product_id:p.id,predicted_total:prediction*2,forecast_days:2}))};
+ else if(url.pathname.startsWith('/api/forecast/product/')){const product=products.find(p=>p.id===url.pathname.split('/').at(-1));body={product,today,run:{id:currentRun},actualSales:sales,data:[{run_id:currentRun,forecast_date:'2026-11-01',predicted_quantity:prediction},{run_id:currentRun,forecast_date:'2026-11-02',predicted_quantity:prediction}]};}
  else if(url.pathname==='/api/products'&&req.method()==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category');const data=products.filter(p=>`${p.part_number} ${p.description} ${p.barcode} ${p.search_aliases.join(' ')}`.toLowerCase().includes(q)&&(!category||category==='all'||p.category===category));body={data,count:data.length};}
  else if(url.pathname==='/api/products'&&req.method()==='POST'){const payload=req.postDataJSON();productWrites.push(payload);body={product:{...payload,id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'}};}
  else if(url.pathname.startsWith('/api/products/')&&req.method()==='PATCH'){const changes=req.postDataJSON();productWrites.push(changes);const product=products.find(p=>p.id===url.pathname.split('/').at(-1));Object.assign(product,changes);body={product};}
@@ -29,6 +32,7 @@ async function fixture(context,{role='owner'}={}){
  if(!receipts.has(b.client_operation_id)){for(const l of b.lines){products.find(p=>p.id===l.product_id).current_stock+=(b.tx_type==='sale'?-1:1)*l.quantity;if(b.tx_type==='sale')sales.push({occurred_on:today,quantity:l.quantity});}
  const total=b.lines.reduce((s,l)=>s+Math.round(l.quantity*l.unit_price*100),0)/100;
  if(b.is_credit&&total>b.paid_amount)debts.push({id:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',customer_name:b.customer_name,principal:total-b.paid_amount,paid_amount:0,balance:total-b.paid_amount,due_date:b.due_date,occurred_at:b.occurred_at,status:'open'});
+ if(b.tx_type==='sale')queueForecast();
  receipts.set(b.client_operation_id,{batchId:'fake-basket',total});}
  body=receipts.get(b.client_operation_id);
  }
@@ -47,7 +51,7 @@ async function fixture(context,{role='owner'}={}){
  else if(url.pathname==='/api/dashboard')body={metrics:{totalProducts:2,lowStock:0,outOfStock:0,inventoryValue:980},salesTrend:[{day:'2026-10-29',revenue:40},{day:'2026-10-30',revenue:50},{day:today,revenue:sales.reduce((s,x)=>s+x.quantity*10,0)}],fastMoving:[],slowMoving:[],reorder:[]};
  await route.fulfill({json:body,headers});
  });
- return {batches,debts,payments,emails,products,productWrites,photoUploads,supplierLinks,disconnect:value=>{disconnected=value;}};
+ return {manualTraining,automation:()=>automation,completed:()=>completed,batches,debts,payments,emails,products,productWrites,photoUploads,supplierLinks,disconnect:value=>{disconnected=value;}};
 }
 
 test('single-character suggestions and live planning graphs work across production tabs',async({page,context})=>{
@@ -73,4 +77,20 @@ test('single-character suggestions and live planning graphs work across producti
  await planning.goto('/forecast');await expect(planning.getByText('On hand: 4 units',{exact:true})).toBeVisible();
  await page.goto('/inventory');await page.setViewportSize({width:390,height:844});const inventorySearch=page.getByRole('combobox',{name:'Search inventory',exact:true});await inventorySearch.fill('t');await expect(page.getByRole('listbox').getByRole('option').filter({hasText:'Toyota brake pad'})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);expect(errors).toEqual([]);
+});
+
+test('selling automatically replaces XGBoost predictions in two tabs without manual training',async({page,context})=>{
+ const api=await fixture(context);const planning=await context.newPage();
+ await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();
+ await planning.goto('/forecast');await expect(planning.getByText('XGBoost updates automatically after sales.',{exact:true})).toBeVisible();
+ await expect(planning.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
+ const predictions=planning.locator('.recharts-line').nth(1).locator('path.recharts-line-curve');await expect(planning.getByRole('img',{name:/Estimated daily sales for/})).toBeVisible();await expect(predictions).toHaveAttribute('d',/^M/);const before=await predictions.getAttribute('d');
+ await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'3. Confirm sale'}).click();
+ await expect.poll(()=>api.batches.length).toBe(1);await expect.poll(()=>api.completed()).toBe(1);
+ await expect(planning.getByText('About 6 units',{exact:false})).toBeVisible({timeout:12000});
+ await expect.poll(()=>predictions.getAttribute('d')).not.toBe(before);
+ await planning.getByRole('button',{name:'Daily list',exact:true}).click();await expect(planning.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('3');
+ await expect(planning.getByText('On hand: 4 units',{exact:true})).toBeVisible();expect(api.manualTraining).toEqual([]);
+ await planning.getByLabel('How far ahead do you want to plan?',{exact:true}).selectOption('14');await expect.poll(()=>api.automation().horizon_days).toBe(14);
+ expect(api.manualTraining).toEqual([]);
 });
