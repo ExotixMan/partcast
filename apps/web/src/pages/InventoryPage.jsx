@@ -1,3 +1,4 @@
+import PageInstructions from '../components/PageInstructions.jsx';
 import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import ProductSearch from '../components/ProductSearch.jsx';
 import Form from '../components/Form.jsx';
@@ -74,10 +75,10 @@ function Field({
   className = ''
 }) {
   useLocale();
-  return <div className={className}>
+  return <div className={`inventory-field ${className}`} data-field-hint={hint?t(hint):undefined} data-field-label={t(label)}>
     <label htmlFor={name} className="label">{t(label)}</label>
     {children}
-    {errors[name] ? <p id={`${name}-message`} className="mt-2 text-sm font-medium text-red-700">{t(errors[name])}</p> : hint && <p id={`${name}-message`} className="mt-2 text-sm leading-5 text-slate-500">{t(hint)}</p>}
+    {errors[name] ? <p id={`${name}-message`} className="mt-2 text-sm font-medium text-red-700">{t(errors[name])}</p> : hint && <p id={`${name}-message`} className="sr-only">{t(hint)}</p>}
   </div>;
 }
 export default function InventoryPage() {
@@ -100,6 +101,14 @@ export default function InventoryPage() {
   const [productModal, setProductModal] = useState(false),
     [editingId, setEditingId] = useState(null),
     [moveModal, setMoveModal] = useState(false);
+  const [fieldHint,setFieldHint]=useState(null);
+  useEffect(()=>setFieldHint(null),[productModal,moveModal]);
+  function showFieldHint(event){
+    const field=event.target.closest('.inventory-field');
+    setFieldHint(field?.dataset.fieldHint?{label:field.dataset.fieldLabel,text:field.dataset.fieldHint}:null);
+  }
+  function leaveFieldHint(event){if(!event.currentTarget.contains(event.relatedTarget))setFieldHint(null);}
+  const fieldHelp=<p role="note" aria-label={t('Field help')} className="text-sm leading-6 text-slate-600">{fieldHint?<><strong>{fieldHint.label}</strong>{' · '}{fieldHint.text}</>:t('* Required information')}</p>;
   const [product, setProduct] = useState(blankProduct),
     [move, setMove] = useState(blankMove),
     [suppliers, setSuppliers] = useState([]),
@@ -431,7 +440,7 @@ export default function InventoryPage() {
     </dl>
   </details>;
   return <div className="inventory-page">
-    <PageHeader title={t('Inventory')} actions={canEdit && <button type="button" className="btn-primary" disabled={offline} onClick={openAdd}><Plus size={18} aria-hidden="true" />{t('Add a new part')}</button>} />
+    <PageHeader title={t('Inventory')} help={<PageInstructions page="inventory" canEdit={canEdit}/>} actions={canEdit && <button type="button" className="btn-primary" disabled={offline} onClick={openAdd}><Plus size={18} aria-hidden="true" />{t('Add a new part')}</button>} />
 
     {offline && <div role="status" className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900"><Info size={19} className="mt-1 shrink-0" aria-hidden="true" /><p><strong>{t('You can still record stock changes.')}</strong>{t(' They are saved on this device and sent when your connection returns. Adding or editing part details needs a connection.')}</p></div>}
 
@@ -474,8 +483,8 @@ export default function InventoryPage() {
 
     <Modal open={productModal} onClose={() => {
       if (!saving) setProductModal(false);
-    }} title={editingId ? t('Edit part details') : t('Add a new part')} size="lg" footer={<><button className="btn-secondary" disabled={saving} onClick={() => setProductModal(false)}>{t("Cancel")}</button><button type="submit" form="inventory-product-form" className="btn-primary" disabled={saving}>{saving ? t('Saving…') : editingId ? t('Save changes') : t('Save part')}</button></>}>
-      <Form id="inventory-product-form" onSubmit={saveProduct} noValidate className="space-y-5">
+    }} title={editingId ? t('Edit part details') : t('Add a new part')} size="lg" footerNote={fieldHelp} footer={<><button className="btn-secondary" disabled={saving} onClick={() => setProductModal(false)}>{t("Cancel")}</button><button type="submit" form="inventory-product-form" className="btn-primary" disabled={saving}>{saving ? t('Saving…') : editingId ? t('Save changes') : t('Save part')}</button></>}>
+      <Form id="inventory-product-form" onFocusCapture={showFieldHint} onBlurCapture={leaveFieldHint} onSubmit={saveProduct} noValidate className="space-y-5">
         {formError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">{t(formError)}</p>}
         <Field name="description" label={t("Part name *")} errors={productErrors} hint={t("Use a name staff will recognize, such as Toyota brake pad.")}><input {...fieldProps('description', productErrors, true)} className="input" required minLength={2} maxLength={500} value={product.description} onChange={event => updateProduct('description', event.target.value)} /></Field>
         <div className="grid gap-5 sm:grid-cols-2">
@@ -513,12 +522,11 @@ export default function InventoryPage() {
             <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" disabled={saving} onClick={() => setConfirmRemoval(false)}>{t('Keep this part')}</button><button type="button" className="btn-danger" disabled={saving || offline} onClick={removePart}>{saving?t('Saving…'):t('Confirm removal')}</button></div>
           </div> : <button type="button" className="btn-danger mt-3" disabled={saving || offline} onClick={() => setConfirmRemoval(true)}><Trash2 size={17} />{t('Remove from active inventory')}</button>}
         </details>}
-        <p className="text-xs text-slate-500">{t("* Required information")}</p>
       </Form>
     </Modal>
 
-    <Modal open={moveModal} onClose={() => {if(!saving)setMoveModal(false);}} title={t("Adjust stock count")} description={t("Use this for damaged, missing, or counted stock. Record sales and deliveries in Sell or receive.")} footer={<><button className="btn-secondary" disabled={saving} onClick={()=>setMoveModal(false)}>{t("Cancel")}</button><button type="submit" form="inventory-adjust-form" className="btn-primary" disabled={saving}>{saving?t('Saving…'):t('Confirm correction')}</button></>}>
-      <Form id="inventory-adjust-form" onSubmit={saveMovement} noValidate className="space-y-5">
+    <Modal open={moveModal} onClose={() => {if(!saving)setMoveModal(false);}} title={t("Adjust stock count")} description={t("Use this for damaged, missing, or counted stock. Record sales and deliveries in Sell or receive.")} footerNote={fieldHelp} footer={<><button className="btn-secondary" disabled={saving} onClick={()=>setMoveModal(false)}>{t("Cancel")}</button><button type="submit" form="inventory-adjust-form" className="btn-primary" disabled={saving}>{saving?t('Saving…'):t('Confirm correction')}</button></>}>
+      <Form id="inventory-adjust-form" onFocusCapture={showFieldHint} onBlurCapture={leaveFieldHint} onSubmit={saveMovement} noValidate className="space-y-5">
         {formError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800">{t(formError)}</p>}
         <h3 className="font-bold">{selected?.description}</h3>
         <label className="block"><span className="label">{t("What needs correcting?")}</span><select className="input" value={move.tx_type} onChange={e=>updateMove('tx_type',e.target.value)}><option value="stock_out">{t("Remove stock")}</option><option value="stock_in">{t("Add stock")}</option></select></label>

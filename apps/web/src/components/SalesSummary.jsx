@@ -46,7 +46,7 @@ export default function SalesSummary({refreshKey=0}) {
   function allDates(){setDraft({from:'',to:''});setRange({from:'',to:''});setFormError('');setPage(1);}
 
   return <section className="panel mb-5 overflow-hidden" aria-labelledby="sales-summary-heading">
-    <div className="panel-header"><div><h2 id="sales-summary-heading" className="text-lg font-bold text-slate-950">{t('Sales by part')}</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{result?.mode==='simulated_demo'?t('Generated sample quantities in the separate demo database.'):t('See quantities sold from counter entries and imported sales history.')}</p><p className="mt-1 text-sm leading-6 text-slate-500">{t('Only saved quantities are counted. Missing days remain unknown.')}</p></div></div>
+    <div className="panel-header"><div><h2 id="sales-summary-heading" className="text-lg font-bold text-slate-950">{t('Sales by part')}</h2>{result?.mode==='simulated_demo'&&<p role="status" className="mt-1 text-sm font-semibold text-amber-800">{t('Generated sample quantities in the separate demo database.')}</p>}</div></div>
     <Form onSubmit={apply} className="grid min-w-0 gap-3 border-b border-slate-100 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-[1fr_1fr_auto_auto] xl:items-end">
       <label className="min-w-0"><span className="label">{t('From date')}</span><input className="input min-w-0" type="date" max={draft.to||today} value={draft.from} onChange={event=>setDraft({...draft,from:event.target.value})} /></label>
       <label className="min-w-0"><span className="label">{t('To date')}</span><input className="input min-w-0" type="date" min={draft.from||undefined} max={today} value={draft.to} onChange={event=>setDraft({...draft,to:event.target.value})} /></label>

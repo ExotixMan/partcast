@@ -10,3 +10,19 @@ test('every explicit interface translation key has a Tagalog entry with matching
  for(const file of files){const ast=parse(await readFile(new URL(file,import.meta.url),'utf8'),{sourceType:'module',plugins:['jsx']});traverse(ast,{CallExpression(p){if(p.node.callee.name!=='t')return;const key=p.node.arguments[0]?.value;if(typeof key!=='string'||!/[A-Za-z]/.test(key)||/^(PartCast|NPG)/.test(key)||key==='supplier@example.com')return;const translated=Object.hasOwn(translations,key)?translations[key]:translations[key.trim()];if(translated===undefined)missing.add(key);else assert.deepEqual([...key.matchAll(/\{v\d+\}/g)].map(x=>x[0]).sort(),[...translated.matchAll(/\{v\d+\}/g)].map(x=>x[0]).sort(),key);}});}
  assert.deepEqual([...missing],[]);
 });
+
+test('page guide instructions have Tagalog translations with matching placeholders',async()=>{
+ const ast=parse(await readFile(new URL('../src/components/PageInstructions.jsx',import.meta.url),'utf8'),{sourceType:'module',plugins:['jsx']});
+ const missing=[];
+ traverse(ast,{ObjectProperty(path){
+  if(!['title','steps','text'].includes(path.node.key.name))return;
+  const values=path.node.value.type==='ArrayExpression'?path.node.value.elements:[path.node.value];
+  for(const value of values){
+   if(value?.type!=='StringLiteral')continue;
+   const key=value.value,translated=translations[key];
+   if(translated===undefined)missing.push(key);
+   else assert.deepEqual([...key.matchAll(/\{v\d+\}/g)].map(x=>x[0]),[...translated.matchAll(/\{v\d+\}/g)].map(x=>x[0]),key);
+  }
+ }});
+ assert.deepEqual(missing,[]);
+});

@@ -175,9 +175,9 @@ for(const width of [390,1440])test(`small purchase suggestions keep forecast tot
  await page.goto('/reorder');
  const row=(width<1024?page.getByRole('article'):page.getByRole('row')).filter({hasText:'Toyota brake pad'});
  await expect(row).toContainText('11');await expect(row).toContainText('2 units');await expect(row).toContainText('₱200.00');await expect(row).not.toContainText('₱1,100.00');
- await page.getByText('Restock help',{exact:true}).click();await expect(page.getByText(/Suggestions start at 1–2 units per part/)).toBeVisible();
+ await page.getByRole('button',{name:'Quick guide',exact:true}).click();await expect(page.getByRole('dialog').getByText(/Suggestions start at 1–2 units per part/)).toBeVisible();await page.getByRole('button',{name:'Close guide',exact:true}).click();
  await page.getByRole('button',{name:'Review supplier email'}).click();await expect(page.getByLabel('Quantity *')).toHaveValue('2');await page.getByRole('button',{name:'Close',exact:true}).click();
- await page.getByLabel('Website language').selectOption('fil');await expect(row).toContainText('2');await expect(page.getByText(/Nagsisimula sa 1–2 bawat piyesa/)).toBeVisible();
+ await page.getByLabel('Website language').selectOption('fil');await expect(row).toContainText('2');await page.getByRole('button',{name:'Maikling gabay',exact:true}).click();await expect(page.getByRole('dialog').getByText(/Nagsisimula sa 1–2 bawat piyesa/)).toBeVisible();await page.getByRole('button',{name:'Isara ang gabay',exact:true}).click();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 test('supplier table supports custom columns, extra assigned parts, validation and a matching mobile preview',async({page,context})=>{
@@ -339,9 +339,9 @@ test('saved invoice read failures show a retry instead of an empty or successful
 test('planning is automatic and reports waiting history without offering a training button',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:390,height:844});const posted=[];
  await context.route('http://localhost:10000/api/forecast/train',async route=>{posted.push(route.request().postDataJSON());return route.fulfill({json:{queued:true},headers:{'access-control-allow-origin':'*'}});});
- await page.goto('/forecast');await expect(page.getByText('More sales history is needed. Estimates will update automatically when enough history is available.',{exact:true})).toBeVisible();
+ await page.goto('/forecast');await expect(page.getByText('More sales history is needed.',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
- await page.getByLabel('Website language').selectOption('fil');await expect(page.getByText('Kailangan pa ng kasaysayan ng benta. Awtomatikong lalabas ang pagtataya kapag sapat na ang datos.',{exact:true})).toBeVisible();
+ await page.getByLabel('Website language').selectOption('fil');await expect(page.getByText('Kailangan pa ng kasaysayan ng benta.',{exact:true})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(posted).toEqual([]);
 });
 
@@ -353,7 +353,7 @@ test('a slow automatic-status response keeps planning available and finishes wit
   await route.fulfill({json:{status:'ready',horizon_days:30},headers:{'access-control-allow-origin':'*'}});
  });
  await page.goto('/forecast');await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toBeVisible();
- await expect(page.getByText('XGBoost updates automatically after sales.',{exact:true})).toBeVisible({timeout:22000});expect(requests).toBe(1);
+ await expect(page.getByText('Updates automatically',{exact:true})).toBeVisible({timeout:22000});expect(requests).toBe(1);
  await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
 });
 
@@ -370,7 +370,7 @@ test('leaving a running automatic-status check cancels it without marking the st
  });
  try {
   await page.goto('/forecast');
-  await expect(page.getByText('Checking automatic forecasts…',{exact:true})).toBeVisible();
+  await expect(page.getByText('Checking for updates…',{exact:true})).toBeVisible();
   await expect.poll(()=>typeof release).toBe('function');
   await page.evaluate(()=>{window.connectionEvents=[];});
   await page.getByRole('link',{name:'View sales',exact:true}).click();
@@ -492,7 +492,7 @@ test('an incomplete automatic-status response keeps the demand page usable and r
  });
  await page.goto('/forecast');await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toBeVisible();await expect(page.getByText('Automatic forecasting is not available. Ask the Super Admin to check setup.',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
- valid=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('More sales history is needed. Estimates will update automatically when enough history is available.',{exact:true})).toBeVisible();expect(errors).toEqual([]);
+ valid=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByText('More sales history is needed.',{exact:true})).toBeVisible();expect(errors).toEqual([]);
 });
 test('password is required before Gmail email code; wrong code cannot open the store',async({page,context})=>{
  await page.setViewportSize({width:390,height:844});
@@ -673,9 +673,9 @@ test('a separate demo database uses the usual planning page while keeping genera
  await intercept('/api/forecast/product/*',route=>route.fulfill({json:{data:[{run_id:'run-demo',forecast_date:'2026-10-18',predicted_quantity:0.25}]},headers}));
  await intercept('/api/forecast/automation',route=>{if(route.request().method()==='POST'){expect(route.request().postDataJSON()).toEqual({horizonDays:14});trained=true;return route.fulfill({json:{queued:true},headers});}return route.fulfill({json:{status:trained?'ready':'queued',horizon_days:trained?14:30,last_run_id:trained?'run-demo':null},headers});});
  await intercept('/api/forecast/recorded-sales**',route=>route.fulfill({json:{mode:'simulated_demo',record_count:778,part_count:9,last_sale_date:'2026-10-16',data:[{product_id:p1,part_number:'23303-64010',description:'FUEL FILTER',unit:'pcs',recorded_quantity:12,demo_records:40,actual_records:0,imported_records:0,sale_days:40,first_sale_date:'2024-10-17',last_sale_date:'2026-10-16'}]},headers}));
- await page.goto('/forecast');await expect(page.getByText('Demo demand records',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText('778',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText(/walkthrough estimates demand from generated quantities/)).toBeVisible();
+ await page.goto('/forecast');await expect(page.getByText('Practice data — not actual store sales',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Quick guide',exact:true}).click();await expect(page.getByRole('dialog').getByText(/walkthrough estimates demand from generated quantities/)).toBeVisible();await page.getByRole('button',{name:'Close guide',exact:true}).click();await page.getByText('Sales data and update history',{exact:true}).click();await expect(page.getByText('Demo demand records',{exact:true}).first()).toBeVisible();await expect(page.getByText('778',{exact:true}).first()).toBeVisible();
  await expect(page.getByText('Actual quantities from imported sales',{exact:true})).toHaveCount(0);
- await page.getByLabel('How far ahead do you want to plan?',{exact:true}).selectOption('14');await expect(page.getByLabel('Choose a part')).toContainText('23303-64010');await page.getByRole('button',{name:'Daily list',exact:true}).click();await expect(page.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('0.3');
+ await page.getByLabel('Planning period',{exact:true}).selectOption('14');await expect(page.getByLabel('Choose a part')).toContainText('23303-64010');await page.getByRole('button',{name:'Daily list',exact:true}).click();await expect(page.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('0.3');
  await page.goto('/sales');await expect(page.getByText('Generated sample records: 40',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText('Generated sample quantities in the separate demo database.')).toBeVisible();
  for(const width of [320,768,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),String(width)).toBe(true);}
  await page.getByLabel('Website language').selectOption('fil');await expect(page.getByText('Mga ginawang halimbawang dami sa hiwalay na demo database.')).toBeVisible();

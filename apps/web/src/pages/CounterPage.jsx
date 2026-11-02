@@ -1,3 +1,4 @@
+import PageInstructions from '../components/PageInstructions.jsx';
 import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import ProductSearch from '../components/ProductSearch.jsx';
 import Form from '../components/Form.jsx';
@@ -352,7 +353,7 @@ export default function CounterPage() {
   }
   return <div className="counter-page">
  <div className="counter-heading">
- <PageHeader title={t('Sell or receive')} />
+ <PageHeader title={t('Sell or receive')} help={<PageInstructions page="counter"/>} />
  <div className="counter-mode-switch" role="group" aria-label={t('Sale or delivery')}>
   <button type="button" className="counter-mode" aria-label={t('Sell parts')} aria-pressed={mode === 'sale'} onClick={() => switchMode('sale')} disabled={locked}><ShoppingCart size={24} aria-hidden="true" /><span>{t('Sell parts')}</span></button>
   <button type="button" className="counter-mode" aria-label={t('Receive delivery')} aria-pressed={mode === 'stock_in'} onClick={() => switchMode('stock_in')} disabled={locked}><PackageCheck size={24} aria-hidden="true" /><span>{t('Receive delivery')}</span></button>

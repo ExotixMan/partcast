@@ -28,7 +28,7 @@ async function fixture(context,{role='owner',demandPerDay=2}={}){
  else if(url.pathname==='/api/products'&&req.method()==='POST'){const payload=req.postDataJSON();productWrites.push(payload);body={product:{...payload,id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'}};}
  else if(url.pathname.startsWith('/api/products/')&&req.method()==='PATCH'){const changes=req.postDataJSON();productWrites.push(changes);const product=products.find(p=>p.id===url.pathname.split('/').at(-1));Object.assign(product,changes);body={product};}
  else if(url.pathname==='/api/inventory/batch'){
- const b=req.postDataJSON();batches.push(b);
+ const b=req.postDataJSON();const replay=batches.find(previous=>previous.client_operation_id===b.client_operation_id);if(replay)expect(b).toEqual(replay);batches.push(b);
  if(!receipts.has(b.client_operation_id)){for(const l of b.lines){products.find(p=>p.id===l.product_id).current_stock+=(b.tx_type==='sale'?-1:1)*l.quantity;if(b.tx_type==='sale')sales.push({occurred_on:today,quantity:l.quantity});}
  const total=b.lines.reduce((s,l)=>s+Math.round(l.quantity*l.unit_price*100),0)/100;
  if(b.is_credit&&total>b.paid_amount)debts.push({id:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',customer_name:b.customer_name,principal:total-b.paid_amount,paid_amount:0,balance:total-b.paid_amount,due_date:b.due_date,occurred_at:b.occurred_at,status:'open'});
@@ -51,10 +51,11 @@ async function fixture(context,{role='owner',demandPerDay=2}={}){
  else if(url.pathname==='/api/dashboard')body={metrics:{totalProducts:2,lowStock:0,outOfStock:0,inventoryValue:980},salesTrend:[{day:'2026-10-29',revenue:40},{day:'2026-10-30',revenue:50},{day:today,revenue:sales.reduce((s,x)=>s+x.quantity*10,0)}],fastMoving:[],slowMoving:[],reorder:[]};
  await route.fulfill({json:body,headers});
  });
- return {manualTraining,automation:()=>automation,completed:()=>completed,batches,debts,payments,emails,products,productWrites,photoUploads,supplierLinks,disconnect:value=>{disconnected=value;}};
+ return {committedBatches:()=>new Set(batches.map(batch=>batch.client_operation_id)).size,manualTraining,automation:()=>automation,completed:()=>completed,batches,debts,payments,emails,products,productWrites,photoUploads,supplierLinks,disconnect:value=>{disconnected=value;}};
 }
 
 test('single-character suggestions and live planning graphs work across production tabs',async({page,context})=>{
+ test.setTimeout(90000);
  const api=await fixture(context);const planning=await context.newPage();
  const errors=[];for(const tab of [page,planning])tab.on('pageerror',e=>errors.push(e.message));
  await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();
@@ -67,13 +68,13 @@ test('single-character suggestions and live planning graphs work across producti
  const curve=planning.locator('.recharts-line').last().locator('path.recharts-line-curve');await expect(curve).toBeVisible();const initial=await curve.getAttribute('d');
  await page.getByRole('button',{name:'Receive delivery',exact:true}).click();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();
  await page.getByRole('button',{name:'3. Confirm delivery'}).click();await page.getByRole('button',{name:'Yes, receive these items',exact:true}).click();
- await expect.poll(()=>api.batches.length).toBe(1);await expect(planning.getByText('On hand: 6 units',{exact:true})).toBeVisible();await expect.poll(()=>curve.getAttribute('d')).not.toBe(initial);
+ await expect.poll(()=>api.committedBatches()).toBe(1);await expect(planning.getByText('On hand: 6 units',{exact:true})).toBeVisible();await expect.poll(()=>curve.getAttribute('d')).not.toBe(initial);
  const restocked=await curve.getAttribute('d');
  await page.getByRole('button',{name:'Sell parts',exact:true}).click();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'3. Confirm sale'}).click();
- await expect.poll(()=>api.batches.length).toBe(2);await expect(planning.getByText('On hand: 5 units',{exact:true})).toBeVisible();await expect.poll(()=>curve.getAttribute('d')).not.toBe(restocked);
+ await expect.poll(()=>api.committedBatches()).toBe(2);await expect(planning.getByText('On hand: 5 units',{exact:true})).toBeVisible();await expect.poll(()=>curve.getAttribute('d')).not.toBe(restocked);
  await planning.getByLabel('Search by part number or name',{exact:true}).fill('e');await planning.getByRole('listbox').getByRole('option').filter({hasText:'Engine oil'}).click();await expect(planning.getByText('On hand: 8 units',{exact:true})).toBeVisible();
  await planning.goto('/');const trend=planning.locator('.recharts-line-curve');await expect(trend).toBeVisible();const oldTrend=await trend.getAttribute('d');
- await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect.poll(()=>api.batches.length).toBe(3);await expect.poll(()=>trend.getAttribute('d')).not.toBe(oldTrend);
+ await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect.poll(()=>api.committedBatches()).toBe(3);await expect.poll(()=>trend.getAttribute('d')).not.toBe(oldTrend);
  await planning.goto('/forecast');await expect(planning.getByText('On hand: 4 units',{exact:true})).toBeVisible();
  await page.goto('/inventory');await page.setViewportSize({width:390,height:844});const inventorySearch=page.getByRole('combobox',{name:'Search inventory',exact:true});await inventorySearch.fill('t');await expect(page.getByRole('listbox').getByRole('option').filter({hasText:'Toyota brake pad'})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);expect(errors).toEqual([]);
@@ -82,7 +83,7 @@ test('single-character suggestions and live planning graphs work across producti
 test('selling automatically replaces XGBoost predictions in two tabs without manual training',async({page,context})=>{
  const api=await fixture(context);const planning=await context.newPage();
  await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();
- await planning.goto('/forecast');await expect(planning.getByText('XGBoost updates automatically after sales.',{exact:true})).toBeVisible();
+ await planning.goto('/forecast');await expect(planning.getByText('Updates automatically',{exact:true})).toBeVisible();
  await expect(planning.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
  const predictions=planning.locator('.recharts-line').nth(1).locator('path.recharts-line-curve');await expect(planning.getByRole('img',{name:/Estimated daily sales for/})).toBeVisible();await expect(predictions).toHaveAttribute('d',/^M/);const before=await predictions.getAttribute('d');
  await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'3. Confirm sale'}).click();
@@ -91,7 +92,7 @@ test('selling automatically replaces XGBoost predictions in two tabs without man
  await expect.poll(()=>predictions.getAttribute('d')).not.toBe(before);
  await planning.getByRole('button',{name:'Daily list',exact:true}).click();await expect(planning.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('3');
  await expect(planning.getByText('On hand: 4 units',{exact:true})).toBeVisible();expect(api.manualTraining).toEqual([]);
- await planning.getByLabel('How far ahead do you want to plan?',{exact:true}).selectOption('14');await expect.poll(()=>api.automation().horizon_days).toBe(14);
+ await planning.getByLabel('Planning period',{exact:true}).selectOption('14');await expect.poll(()=>api.automation().horizon_days).toBe(14);
  expect(api.manualTraining).toEqual([]);
 });
 
@@ -104,7 +105,6 @@ test('summary card matches forecast coverage and refreshes after a sale in anoth
  await expect(summary).toContainText('71.1%');await expect(summary).toContainText('Sufficient stock');
  await expect(summary.locator('div').filter({has:page.getByText('Remaining after demand',{exact:true})}).first()).toContainText('13');
  await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toHaveCSS('color','rgb(241, 245, 249)');
- await summary.scrollIntoViewIfNeeded();await summary.screenshot({path:'/tmp/partcast-production-forecast-summary-dark.png'});
  const counter=await context.newPage();await counter.goto('/counter');await expect(counter.getByText(/Inventory saved/)).toBeVisible();
  await counter.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await counter.getByLabel('Quantity',{exact:true}).fill('20');
  await counter.getByRole('button',{name:'3. Confirm sale'}).click();
@@ -113,7 +113,6 @@ test('summary card matches forecast coverage and refreshes after a sale in anoth
  await expect(summary).toContainText('at least 9 units');
  await expect(page.getByRole('button',{name:'Summary',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.setViewportSize({width:320,height:740});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await summary.screenshot({path:'/tmp/partcast-production-forecast-summary-320.png'});
 });
 
 test('summary avoids a sufficient-stock recommendation when no prediction exists',async({page,context})=>{

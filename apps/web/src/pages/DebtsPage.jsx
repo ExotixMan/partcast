@@ -1,3 +1,4 @@
+import PageInstructions from '../components/PageInstructions.jsx';
 import SearchSuggestions from '../components/SearchSuggestions.jsx';
 import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import Form from '../components/Form.jsx';
@@ -172,7 +173,7 @@ export default function DebtsPage() {
   useLiveRefresh(()=>{load(true);if(modal==='details'&&selected)loadPayments(selected);},['customer_debts','debt_payments']);
 
   return <>
-    <PageHeader title={t('Customer balances')} actions={<button className="btn-secondary" disabled={cached || !navigator.onLine || loading} onClick={() => open('add')}><Plus size={18} aria-hidden="true" />{t('Add existing balance')}</button>} />
+    <PageHeader title={t('Customer balances')} help={<PageInstructions page="balances"/>} actions={<button className="btn-secondary" disabled={cached || !navigator.onLine || loading} onClick={() => open('add')}><Plus size={18} aria-hidden="true" />{t('Add existing balance')}</button>} />
     {!modal && error && <p role="alert" className="mb-4 text-red-700">{t(error)}</p>}
     {loadError && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><p>{t(loadError)}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={load}>{t('Try again')}</button></div>}
     {pendingLedger.length > 0 && <p role="status" className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-900">{t('Customer balance changes are waiting to send. Check Review changes and wait for confirmation before recording another payment.')}</p>}
@@ -206,7 +207,7 @@ export default function DebtsPage() {
         })}
       </div>
       {!visible.length && !loadError && <div className="py-8 text-center"><p className="text-slate-600">{loading ? t('Loading balances…') : t('No matching customer balances.')}</p>{!loading && (search || filter !== 'all') && <button type="button" className="btn-secondary mt-3" onClick={clearFilters}>{t('Clear filters')}</button>}</div>}
-      <details className="group mt-5 border-t border-slate-100 pt-1"><summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 font-semibold text-slate-700">{t('When to add an existing balance')}<ChevronDown size={18} aria-hidden="true" className="shrink-0 transition-transform group-open:rotate-180" /></summary><p className="mt-2 text-sm text-slate-600">{t('For a new credit sale, use Sell or receive and choose “Customer will pay later”. Add existing balance only for balances already owed.')}</p></details>
+
     </section>
  <Modal open={!!modal} onClose={close} title={modal === 'add' ? t('Add existing customer balances') : modal === 'payment' ? t('Record a customer payment') : t('Payment history')} description={selected ? t("{v0} \xB7 {v1} remaining", {
       v0: selected.customer_name,

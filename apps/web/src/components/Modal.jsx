@@ -9,6 +9,7 @@ export default function Modal({
   onClose,
   children,
   footer,
+  footerNote,
   size = 'md'
 }) {
   useLocale();
@@ -65,6 +66,7 @@ export default function Modal({
           <button aria-label={t("Close modal")} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-slate-600 hover:bg-slate-100" onClick={onClose}><X size={20} /></button>
         </div>
         <div className={photo ? 'min-h-0 flex-1 overflow-hidden p-2 sm:p-3' : 'min-h-0 overflow-y-auto px-5 py-5'}>{children}</div>
+        {footerNote&&<div className="h-24 shrink-0 overflow-y-auto border-t border-slate-100 bg-slate-50 px-5 py-3 sm:h-20">{footerNote}</div>}
         {footer && <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end">{footer}</div>}
       </div>
     </div>, document.body);
