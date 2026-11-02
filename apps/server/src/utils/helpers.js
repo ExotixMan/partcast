@@ -1,5 +1,6 @@
 export function cleanText(value, max = 500) {
   if (value === null || value === undefined) return null;
+  if(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(String(value)))throw Object.assign(new Error('Remove unsupported control characters from the text and try again.'),{status:422,safe:true});
   return String(value).trim().slice(0, max) || null;
 }
 

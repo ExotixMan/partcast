@@ -30,8 +30,8 @@ export const batchSchema=z.object({...common,kind:z.literal('batch').default('ba
  const cents=v.lines.reduce((sum,l)=>sum+lineCents(l.quantity,l.unit_price),0n);
  const total=Number(cents)/100;
  if(cents>=100000000000000n)c.addIssue({code:'custom',path:['lines'],message:'The total is too large.'});
- if(v.is_credit&&v.tx_type!=='sale')c.addIssue({code:'custom',path:['is_credit'],message:'Utang applies to customer sales only.'});
- if(v.is_credit&&(!v.customer_name||v.customer_name.length<2))c.addIssue({code:'custom',path:['customer_name'],message:'Enter the customer name for utang.'});
+ if(v.is_credit&&v.tx_type!=='sale')c.addIssue({code:'custom',path:['is_credit'],message:'Credit applies to customer sales only.'});
+ if(v.is_credit&&(!v.customer_name||v.customer_name.length<2))c.addIssue({code:'custom',path:['customer_name'],message:'Enter the customer name for a credit sale.'});
  if(v.is_credit&&v.paid_amount>total)c.addIssue({code:'custom',path:['paid_amount'],message:'Payment cannot exceed the sale total.'});
  if(v.tx_type==='sale'&&v.is_credit&&v.paid_amount<total){
   const due=dated.safeParse(v.due_date);

@@ -9,12 +9,14 @@ import apiRoutes from './routes/api.js';
 import adminRoutes from './routes/admin.js';
 import loginRoutes from './routes/login.js';
 import jobsRoutes from './routes/jobs.js';
+import {validateJsonBody} from './middleware/validation.js';
 
 const app=express();
 app.set('trust proxy',1);
 applyHttpSecurity(app,{frontendOrigins:config.frontendOrigins});
 app.use(express.json({limit:'2mb'}));
 app.use(express.urlencoded({extended:false,limit:'1mb'}));
+app.use(validateJsonBody);
 
 app.get('/health',(req,res)=>res.json({ok:true,service:'partcast-api',time:new Date().toISOString(),revision:process.env.RENDER_GIT_COMMIT?.match(/^[a-f0-9]{40}$/i)?.[0]||null}));
 app.use('/setup',setupRoutes);

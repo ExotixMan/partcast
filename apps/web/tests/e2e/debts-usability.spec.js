@@ -107,3 +107,30 @@ test('a fully paid balance remains visible with its payment history after saving
   await expect(page.getByRole('dialog')).toContainText('200.00');
   await expect(page.getByRole('dialog')).toContainText('Mang Ben');
 });
+
+test('a payment in another tab updates the open payment limit without losing its draft',async({page,context})=>{
+  const store=await balancesFixture(context);await page.goto('/debts');
+  await customerCard(page,'Mang Ben').getByRole('button',{name:'Record payment'}).click();
+  const amount=page.getByLabel('Amount received');await amount.fill('150');
+  const other=await context.newPage();await other.goto('/debts');
+  await customerCard(other,'Mang Ben').getByRole('button',{name:'Record payment'}).click();
+  await other.getByLabel('Amount received').fill('100');await other.getByRole('button',{name:'Save payment',exact:true}).click();
+  await expect(amount).toHaveAttribute('max','100');await expect(amount).toHaveValue('150');
+  await page.getByRole('button',{name:'Save payment',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('100');expect(store.payments).toHaveLength(1);
+  await amount.fill('100');await page.getByRole('button',{name:'Save payment',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);expect(store.payments).toHaveLength(2);
+  await expect(customerCard(page,'Mang Ben')).toContainText('Fully paid');
+});
+
+test('customer balances use English labels and recommend names after the first letter',async({page,context})=>{
+ const store=await balancesFixture(context);
+ store.debts.push({id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',customer_name:'Alex',principal:10,paid_amount:0,balance:10,status:'open'},
+ {id:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',customer_name:'Alarcon',principal:20,paid_amount:0,balance:20,status:'open'});
+ await page.goto('/debts');await expect(page.getByRole('heading',{name:'Customer balances',exact:true})).toBeVisible();
+ await expect(page.locator('body')).not.toContainText(/\butang\b/i);
+ const search=page.getByRole('combobox',{name:'Find a customer',exact:true});await search.fill('A');
+ await expect(page.getByRole('option',{name:'Alex',exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'Alarcon',exact:true})).toBeVisible();
+ await page.getByRole('option',{name:'Alarcon',exact:true}).click();await expect(search).toHaveValue('Alarcon');
+ await expect(page.getByRole('heading',{name:'Alarcon',exact:true})).toBeVisible();
+});

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { subscribeToData } from '../lib/liveData.js';
 
-// Keep the current view during background updates. Older/aborted requests may
-// finish, but cannot overwrite newer filters, product selections or live data.
 export function useLiveQuery(loader, deps, tables, delay = 0) {
   const loaderRef = useRef(loader);
   loaderRef.current = loader;
@@ -15,7 +13,10 @@ export function useLiveQuery(loader, deps, tables, delay = 0) {
     let version = 0;
     let controller;
     let timer;
+    let pending=false;
     const run = async () => {
+      if(pending)return;
+      pending=true;
       clearTimeout(timer);
       controller?.abort();
       controller = new AbortController();
@@ -27,12 +28,14 @@ export function useLiveQuery(loader, deps, tables, delay = 0) {
         if (active && current === version && error.name !== 'AbortError') {
           setState(old => ({ ...old, error: error.message, loading: false }));
         }
+      } finally {
+        if(current===version)pending=false;
       }
     };
     const schedule = () => {
-      // Invalidate a request immediately, before the debounced replacement runs.
       ++version;
       controller?.abort();
+      pending=false;
       clearTimeout(timer);
       timer = setTimeout(run, 120);
     };

@@ -14,7 +14,7 @@ const reports = [{
   icon: History
 }, {
   type: 'debts',
-  title: 'Customer utang report',
+  title: 'Customer balances report',
   text: 'Export customer balances, due dates, and recorded payments.',
   use: 'Useful for following up balances.',
   icon: History

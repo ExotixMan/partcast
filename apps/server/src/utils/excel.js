@@ -44,7 +44,7 @@ export async function buildBackupWorkbook(data) {
   ]);
 
   addRows(wb.addWorksheet('Sale and delivery baskets'),data.stockBatches||[],[{header:'Basket ID',key:'id'},{header:'Type',key:'tx_type'},{header:'Customer',key:'customer_name'},{header:'Reference',key:'reference_no'},{header:'Total',key:'total_amount'},{header:'Paid at sale',key:'paid_amount'},{header:'Date',key:'occurred_at'},{header:'Notes',key:'notes'}]);
-  addRows(wb.addWorksheet('Customer utang'),data.customerDebts||[],[{header:'Debt ID',key:'id'},{header:'Basket ID',key:'batch_id'},{header:'Customer',key:'customer_name'},{header:'Phone',key:'phone'},{header:'Original utang',key:'principal'},{header:'Paid',key:'paid_amount'},{header:'Balance',key:'balance'},{header:'Due date',key:'due_date'},{header:'Reference',key:'reference_no'},{header:'Date',key:'occurred_at'},{header:'Notes',key:'notes'}]);
+  addRows(wb.addWorksheet('Customer balances'),data.customerDebts||[],[{header:'Debt ID',key:'id'},{header:'Basket ID',key:'batch_id'},{header:'Customer',key:'customer_name'},{header:'Phone',key:'phone'},{header:'Original balance',key:'principal'},{header:'Paid',key:'paid_amount'},{header:'Balance',key:'balance'},{header:'Due date',key:'due_date'},{header:'Reference',key:'reference_no'},{header:'Date',key:'occurred_at'},{header:'Notes',key:'notes'}]);
   addRows(wb.addWorksheet('Customer payments'),data.debtPayments||[],[{header:'Payment ID',key:'id'},{header:'Debt ID',key:'debt_id'},{header:'Amount',key:'amount'},{header:'Date',key:'paid_at'},{header:'Notes',key:'notes'}]);
   addRows(wb.addWorksheet('Inventory Transactions'), data.transactions, [
     { header: 'Date', key: 'occurred_at' }, { header: 'Type', key: 'tx_type' },

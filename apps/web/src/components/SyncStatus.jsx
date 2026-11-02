@@ -123,7 +123,7 @@ export default function SyncStatus() {
             sale: 'Sale',
             stock_in: 'Received stock',
             stock_out: 'Removed stock'
-          }[i.payload.tx_type] || (i.payload.kind==='payment'?t('Customer payment'):i.payload.kind==='debt'?t('Customer utang'):i.payload.tx_type)} · {i.payload.lines ? t("{v0} parts", {
+          }[i.payload.tx_type] || (i.payload.kind==='payment'?t('Customer payment'):i.payload.kind==='debt'?t('Customer balances'):i.payload.tx_type)} · {i.payload.lines ? t("{v0} parts", {
             v0: i.payload.lines.length
           }) : i.payload.kind==='payment'?`₱${i.payload.amount}`:i.payload.kind==='debt'?`₱${i.payload.principal}`:t("{v0} units", {v0:i.payload.quantity})} · {i.payload.reference_no || t('No reference')} · {new Date(i.createdAt).toLocaleString()}</span><span className={i.error ? 'text-red-700' : 'text-slate-600'}>{i.error || t('Waiting to send')}</span>{i.status === 'conflict' && <button className="btn-danger ml-auto" onClick={async () => {
           if (window.confirm(t('Remove this rejected transaction from the device? It has not been applied to the database.'))) {

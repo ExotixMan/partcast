@@ -33,26 +33,24 @@ export function mutationTables(path) {
   return [];
 }
 
-// One authenticated connection per tab. Messages contain invalidations only;
-// each page reloads authorized data from the API instead of trusting row payloads.
 export function startLiveData(client, userId, browser = window, doc = document) {
   const key = `partcast-data:${userId}`;
   let channel;
-  try { channel = new browser.BroadcastChannel(key); } catch { /* storage fallback below */ }
+  try { channel = new browser.BroadcastChannel(key); } catch {  }
   const receive = tables => {
     if (Array.isArray(tables)) invalidateData(tables.filter(t => LIVE_TABLES.includes(t)), false);
   };
   if (channel) channel.onmessage = event => receive(event.data);
   const send = tables => {
     if (channel) {
-      try { channel.postMessage(tables); return; } catch { /* storage fallback below */ }
+      try { channel.postMessage(tables); return; } catch {  }
     }
-    try { browser.localStorage.setItem(key, JSON.stringify({ tables, nonce: Math.random() })); } catch { /* unavailable storage */ }
+    try { browser.localStorage.setItem(key, JSON.stringify({ tables, nonce: Math.random() })); } catch {  }
   };
   broadcast = send;
   const onStorage = event => {
     if (event.key !== key || !event.newValue) return;
-    try { receive(JSON.parse(event.newValue).tables); } catch { /* ignore unrelated/invalid messages */ }
+    try { receive(JSON.parse(event.newValue).tables); } catch {  }
   };
   const refresh = () => invalidateData(LIVE_TABLES, false);
   const onVisible = () => { if (doc.visibilityState === 'visible') refresh(); };
@@ -65,7 +63,6 @@ export function startLiveData(client, userId, browser = window, doc = document) 
     realtime = realtime.on('postgres_changes', { event: '*', schema: 'public', table }, () => invalidateData([table], false));
   }
   realtime.subscribe(status => { if (status === 'SUBSCRIBED') refresh(); });
-  // Recover missed events or a temporarily unavailable Realtime connection.
   const timer = browser.setInterval(onVisible, 60000);
   return () => {
     browser.clearInterval(timer);

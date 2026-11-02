@@ -1,5 +1,3 @@
-// The database owns the queue and lease. Processes and browser tabs cannot
-// duplicate work, and committed sales remain pending through API restarts.
 export function createForecastAutomation({db,train,pollMs=2000,setTimer=setTimeout,clearTimer=clearTimeout,logger=console}){
  let busy=false,stopped=true,timer,lastWarning=0;
  async function finish(token,outcome,result={}){

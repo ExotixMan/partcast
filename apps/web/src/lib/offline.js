@@ -36,7 +36,6 @@ export async function readCache(userId, path) {
   const entry = await transaction('cache', 'readonly', s => s.get(`${userId}:${path}`));
   return entry && Date.now() - entry.savedAt < OFFLINE_MAX_AGE ? entry : null;
 }
-// A confirmed edit changes this part, but does not refresh the age of other saved records.
 export async function updateCachedProduct(userId, product) {
   if (!product?.id) return;
   await transaction('cache', 'readwrite', store => {
@@ -54,8 +53,6 @@ export async function updateCachedProduct(userId, product) {
           if (product.active !== false && !found) products.push(product);
           cursor.update({ ...entry, value: { ...entry.value, products } });
         } else if (/^\/api\/products(?:\?|$)/.test(entry.path) || entry.path === `/api/products/${product.id}` || entry.path.startsWith('/api/barcode/')) {
-          // Old filtered pages or barcode matches must not resurrect an edited
-          // or removed part when the complete snapshot expires.
           cursor.delete();
         }
       }

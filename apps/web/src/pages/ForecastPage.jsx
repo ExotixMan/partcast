@@ -5,7 +5,7 @@ import {planningChart} from '../lib/planning.js';
 import SearchSuggestions from '../components/SearchSuggestions.jsx';
 import HelpDetails from '../components/HelpDetails.jsx';
 import { t, useLocale } from "../context/LocaleContext.jsx";
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, BarChart3, CalendarDays, ChevronDown, ClipboardList, RefreshCw, Search, TriangleAlert } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -15,6 +15,7 @@ import Loading from '../components/Loading.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Toast from '../components/Toast.jsx';
 import ForecastAccuracy from '../components/ForecastAccuracy.jsx';
+import ForecastStockSummary from '../components/ForecastStockSummary.jsx';
 import ForecastDemo from '../components/ForecastDemo.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 const units = value => Number(value || 0).toLocaleString(undefined, {
@@ -53,26 +54,30 @@ export default function ForecastPage({demo=false}) {
   const [view, setView] = useState('chart');
   const [toast, setToast] = useState(null);
   const readiness=automation?.status==='waiting_history'?{ready:false}:null;
+  const loadRequest=useRef(0);
   async function load(background=false) {
+    const request=++loadRequest.current;
     if(!background)setLoading(true);
     setLoadError('');
     try {
       const [r, q, fp] = await Promise.all([api.get('/api/forecast/runs'), api.get('/api/data-quality'), api.get('/api/forecast/products')]);
+      if(request!==loadRequest.current)return;
       setRuns(r.data || []);
       setQuality(q);
       setForecastProducts(fp.data || []);
       setForecastRun(fp.run || null);
       setSelected(current => fp.data?.some(p => p.product_id === current) ? current : fp.data?.[0]?.product_id || '');
     } catch (error) {
-      setLoadError(error.message);
+      if(request===loadRequest.current)setLoadError(error.message);
     } finally {
-      setLoading(false);
+      if(request===loadRequest.current)setLoading(false);
     }
   }
   useEffect(() => {
     if(demoView)return;
     load();
     api.get('/api/forecast/status').then(setRuntime).catch(e=>setRuntime({ready:false,message:e.message}));
+    return()=>{loadRequest.current++;};
   }, [demoView]);
   useLiveRefresh(()=>{if(!demoView){load(true);}},['products','demand_observations','forecast_runs','legacy_sales','import_batches'],!demoView);
   const {data:planning,loading:loadingPart,error:partError}=useLiveQuery(signal=>!demoView&&selected?api.get(`/api/forecast/product/${selected}`,{signal}):Promise.resolve(null),[selected,forecastRun?.id,demoView],['products','demand_observations','forecast_runs']);
@@ -120,12 +125,12 @@ export default function ForecastPage({demo=false}) {
     {(metrics?.coverage_warning || metrics?.stale_product_count > 0) && <section className="mt-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-5"><TriangleAlert size={21} className="mt-0.5 shrink-0 text-amber-700" /><div><h2 className="font-bold text-amber-950">{demoDatabase?t('Sample forecast limitations'):t("Check your sales history before ordering")}</h2>{metrics.coverage_warning && <p className="mt-1 text-sm leading-6 text-amber-900">{demoDatabase?t('These errors describe generated demand only. They do not establish accuracy for the actual store.'):t("Some imported sales may be missing. Record every sale so the estimate reflects what customers actually buy.")}</p>}{metrics.stale_product_count > 0 && <p className="mt-1 text-sm leading-6 text-amber-900">{metrics.stale_product_count}{t(" parts were left out because their latest usable sales records are more than 31 days old. Add recent sales records, then update the estimates.")}</p>}</div></section>}
 
     <section className="panel mt-5">
-      <div className="panel-header"><div><h2 className="text-lg font-bold text-slate-950">{t("Look up a part")}</h2><p className="mt-1 text-sm text-slate-600">{t("Choose a part to see its estimated daily sales.")}</p></div>{forecastProducts.length > 0 && <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1" role="group" aria-label={t("Estimate display")}><button className={`flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold ${view === 'chart' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-600'}`} onClick={() => setView('chart')} aria-pressed={view === 'chart'}><BarChart3 size={16} />{t("Chart")}</button><button className={`flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold ${view === 'list' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-600'}`} onClick={() => setView('list')} aria-pressed={view === 'list'}><ClipboardList size={16} />{t("Daily list")}</button></div>}</div>
+      <div className="panel-header"><div><h2 className="text-lg font-bold text-slate-950">{t("Look up a part")}</h2><p className="mt-1 text-sm text-slate-600">{t("Choose a part to see its estimated daily sales.")}</p></div>{forecastProducts.length > 0 && <div className="flex max-w-full flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1" role="group" aria-label={t("Estimate display")}><button className={`flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold ${view === 'chart' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-600'}`} onClick={() => setView('chart')} aria-pressed={view === 'chart'}><BarChart3 size={16} />{t("Chart")}</button><button className={`flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold ${view === 'list' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-600'}`} onClick={() => setView('list')} aria-pressed={view === 'list'}><ClipboardList size={16} />{t("Daily list")}</button><button className={`flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold ${view === 'summary' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-600'}`} onClick={() => setView('summary')} aria-pressed={view === 'summary'}><ClipboardList size={16} />{t('Summary')}</button></div>}</div>
       {forecastProducts.length > 0 ? <>
         <div className="grid gap-4 border-b border-slate-100 p-4 sm:p-5 lg:grid-cols-2"><div><label className="label" htmlFor="forecast-part-search">{t("Search by part number or name")}</label><div className="relative"><SearchSuggestions id="forecast-part-search" label={t('Search by part number or name')} placeholder={t('For example: brake pad')} value={query} onChange={setQuery} items={filtered.slice(0,10).map(p=>({id:p.product_id,label:t(p.description),description:p.part_number}))} onSelect={item=>{setSelected(item.id);setQuery('');}} /></div></div><div><label className="label" htmlFor="forecast-part-choice">{t("Choose a part")}</label><select id="forecast-part-choice" className="input" value={filtered.some(p => p.product_id === selected) ? selected : ''} onChange={event => setSelected(event.target.value)}><option value="" disabled>{filtered.length ? t('Select a part from the list') : t('No matching parts')}</option>{filtered.map(p => <option key={p.product_id} value={p.product_id}>{p.part_number || t('No part number')} · {t(p.description)}</option>)}</select></div>{query && !filtered.length && <p className="text-sm text-slate-600 lg:col-span-2" role="status">{t("No estimated parts match \u201C")}{query}{t("\u201D. Try another part number or clear your search.")}</p>}</div>
-        {selectedProduct && <div className="border-b border-slate-100 bg-slate-50 px-4 py-4 sm:px-5"><p className="text-sm font-semibold text-red-700">{selectedProduct.part_number || t('No part number')}</p><h3 className="mt-1 text-lg font-bold text-slate-950">{t(selectedProduct.description)}</h3><p className="mt-2 text-sm font-semibold text-emerald-800">{t("On hand")}: {Number(planning?.product?.current_stock ?? selectedProduct.current_stock ?? 0).toLocaleString()} {t("units")}</p><p className="mt-2 text-sm text-slate-600"><strong className="text-slate-900">{t("About ")}{units(selectedProduct.predicted_total)}{t(" units")}</strong>{t(" estimated across ")}{selectedProduct.forecast_days}{t(" upcoming days.")}</p></div>}
+        {view!=='summary'&&selectedProduct && <div className="border-b border-slate-100 bg-slate-50 px-4 py-4 sm:px-5"><p className="text-sm font-semibold text-red-700">{selectedProduct.part_number || t('No part number')}</p><h3 className="mt-1 text-lg font-bold text-slate-950">{t(selectedProduct.description)}</h3><p className="mt-2 text-sm font-semibold text-emerald-800">{t("On hand")}: {Number(planning?.product?.current_stock ?? selectedProduct.current_stock ?? 0).toLocaleString()} {t("units")}</p><p className="mt-2 text-sm text-slate-600"><strong className="text-slate-900">{t("About ")}{units(selectedProduct.predicted_total)}{t(" units")}</strong>{t(" estimated across ")}{selectedProduct.forecast_days}{t(" upcoming days.")}</p></div>}
         <HelpDetails title="Understanding daily estimates" className="mx-4 border-b border-slate-100 sm:mx-5"><p>{t("Daily estimates are averages. For example, 0.7 a day means about 7 units over 10 days. Some days may have no sales.")}</p><p>{t("A value below 1 means the part may sell occasionally, rather than every day. Use the period total to help plan your order.")}</p></HelpDetails>
-        {loadingPart ? <Loading label={t("Loading this part’s estimate…")} /> : partError ? <div role="alert" className="p-5 text-sm text-amber-900">{t("This part\u2019s estimate could not be loaded. ")}{partError}<button className="btn-secondary mt-3 block" onClick={load}>{t("Try again")}</button></div> : planning ? <>
+        {loadingPart ? <Loading label={t("Loading this part’s estimate…")} /> : partError ? <div role="alert" className="p-5 text-sm text-amber-900">{t("This part\u2019s estimate could not be loaded. ")}{partError}<button className="btn-secondary mt-3 block" onClick={load}>{t("Try again")}</button></div> : view==='summary'&&selectedProduct?<ForecastStockSummary product={{...selectedProduct,predicted_total:forecast.reduce((total,row)=>total+Number(row.predicted_quantity),0),forecast_days:forecast.length}} stock={planning?.product?.current_stock??null}/>:planning ? <>
           {view === 'chart' ? <><p className="px-4 pt-5 text-sm text-slate-600 sm:px-5">{t("Actual sales, estimated demand and projected stock")}</p><div className="h-[300px] px-2 pb-2 pt-5 sm:h-[360px] sm:px-5" role="img" aria-label={t("Estimated daily sales for {v0}. Use Daily list to read the values.", {
               v0: selectedProduct?.description || t('the selected part')
             })}><ResponsiveContainer width="100%" height="100%"><LineChart data={chart} margin={{

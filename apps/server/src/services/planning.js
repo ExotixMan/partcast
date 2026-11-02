@@ -10,7 +10,6 @@ export async function getProductPlanning(db, productId, today = new Date().toISO
   ]);
   if (product.error) throw product.error;
   if (latest.error) throw latest.error;
-  // Never combine overlapping predictions from older completed model runs.
   let data = [];
   if (latest.data) {
     const result = await db.from('demand_forecasts').select('forecast_date,predicted_quantity,run_id')

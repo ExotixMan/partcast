@@ -26,7 +26,7 @@ const daily = [{
   icon: Boxes
 }, {
   to: '/debts',
-  label: 'Customer utang',
+  label: 'Customer balances',
   icon: Wallet
 }, {
   to: '/reorder',

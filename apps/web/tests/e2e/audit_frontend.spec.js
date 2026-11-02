@@ -124,13 +124,13 @@ test('payment history stays with the selected customer and explains loading or r
 test('a success message cannot block the next customer form and dismisses after six seconds',async({page,context})=>{
  const api=await fixture(context);await page.clock.install();await page.setViewportSize({width:390,height:844});await page.goto('/debts');
  for(const name of ['Camila','Dina']){
-  await page.getByRole('button',{name:'Add existing utang'}).click();const dialog=page.getByRole('dialog');await dialog.getByLabel('Customer name *').fill(name);await dialog.getByLabel('Amount still owed').fill('20');await dialog.getByRole('button',{name:'Save utang',exact:true}).click();await expect(dialog).toHaveCount(0);
+  await page.getByRole('button',{name:'Add existing balance'}).click();const dialog=page.getByRole('dialog');await dialog.getByLabel('Customer name *').fill(name);await dialog.getByLabel('Amount still owed').fill('20');await dialog.getByRole('button',{name:'Save balance',exact:true}).click();await expect(dialog).toHaveCount(0);
  }
- expect(api.debtWrites).toHaveLength(2);await expect(page.getByText('Customer utang saved.',{exact:true})).toBeVisible();await page.clock.fastForward(6100);await expect(page.getByText('Customer utang saved.',{exact:true})).toHaveCount(0);
+ expect(api.debtWrites).toHaveLength(2);await expect(page.getByText('Customer balance saved.',{exact:true})).toBeVisible();await page.clock.fastForward(6100);await expect(page.getByText('Customer balance saved.',{exact:true})).toHaveCount(0);
 });
 
 test('Restock export forwards its selected category and customer balances remain independent of it',async({page,context})=>{
  await fixture(context);const requests=[];
  await context.route('http://localhost:10000/api/reports/**',route=>{if(route.request().method()==='OPTIONS')return route.fallback();requests.push(new URL(route.request().url()));return route.fulfill({body:'fixture-report',contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers});});
- await page.goto('/reports');await page.getByRole('combobox',{name:'Category',exact:true}).selectOption('lubricants');await page.getByRole('button',{name:'Download Excel: Reorder report'}).click();await expect.poll(()=>requests.length).toBe(1);expect(requests[0].searchParams.get('category')).toBe('lubricants');await page.getByRole('button',{name:'Download Excel: Customer utang report'}).click();await expect.poll(()=>requests.length).toBe(2);expect(requests[1].searchParams.get('category')).toBe('all');
+ await page.goto('/reports');await page.getByRole('combobox',{name:'Category',exact:true}).selectOption('lubricants');await page.getByRole('button',{name:'Download Excel: Reorder report'}).click();await expect.poll(()=>requests.length).toBe(1);expect(requests[0].searchParams.get('category')).toBe('lubricants');await page.getByRole('button',{name:'Download Excel: Customer balances report'}).click();await expect.poll(()=>requests.length).toBe(2);expect(requests[1].searchParams.get('category')).toBe('all');
 });

@@ -10,9 +10,11 @@ import { requireRole } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { sendSupplierEmail, recommendationHash } from '../utils/email.js';
 import { createBackup } from './jobs.js';
+import {settingsInteger,uuidParam} from '../middleware/validation.js';
 
 const router=Router();
 router.use(requireRole('owner','admin'));
+router.param('id',uuidParam);
 
 router.get('/users', async(req,res,next)=>{
   try{
@@ -98,9 +100,9 @@ router.patch('/settings/:key', requireRole('owner'), async(req,res,next)=>{
     const key=z.enum(['forecast_horizon_days','auto_supplier_email_enabled','supplier_email_cooldown_days','backup_retention_days','include_legacy_proxy_by_default']).parse(req.params.key);
     let value;
     if(key==='auto_supplier_email_enabled' || key==='include_legacy_proxy_by_default') value=z.boolean().parse(req.body?.value);
-    else if(key==='forecast_horizon_days') value=z.coerce.number().int().min(7).max(90).parse(req.body?.value);
-    else if(key==='supplier_email_cooldown_days') value=z.coerce.number().int().min(1).max(30).parse(req.body?.value);
-    else value=z.coerce.number().int().min(1).max(365).parse(req.body?.value);
+    else if(key==='forecast_horizon_days') value=settingsInteger(7,90).parse(req.body?.value);
+    else if(key==='supplier_email_cooldown_days') value=settingsInteger(1,30).parse(req.body?.value);
+    else value=settingsInteger(1,365).parse(req.body?.value);
     if(['auto_supplier_email_enabled','include_legacy_proxy_by_default'].includes(key)&&value===true)throw Object.assign(new Error('This option is unavailable. Review supplier requests manually and use actual sold quantities for store forecasts.'),{status:422});
     const {data,error}=await adminDb.from('system_settings').upsert({key,value,updated_by:req.user.id,updated_at:new Date().toISOString()},{onConflict:'key'}).select('*').single();
     if(error)throw error;

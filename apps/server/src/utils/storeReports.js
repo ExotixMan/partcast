@@ -25,7 +25,7 @@ export async function storeReport(type,query){
  }
  if(type==='debts'){
  const rows=await fetchAll(()=>dateQuery(adminDb.from('customer_balances').select('*'),dates).order('customer_name').order('id'));
- return [scope,{name:'Customer utang',rows,columns:columns([['Customer','customer_name'],['Phone','phone'],['Date (UTC)','occurred_at'],['Due date','due_date'],['Original utang','principal'],['Payments','paid_amount'],['Remaining balance','balance'],['Status','status'],['Reference','reference_no'],['Notes','notes']])}];
+ return [scope,{name:'Customer balances',rows,columns:columns([['Customer','customer_name'],['Phone','phone'],['Date (UTC)','occurred_at'],['Due date','due_date'],['Original balance','principal'],['Payments','paid_amount'],['Remaining balance','balance'],['Status','status'],['Reference','reference_no'],['Notes','notes']])}];
  }
  if(type==='reorder'){
  const rows=await fetchAll(()=>{

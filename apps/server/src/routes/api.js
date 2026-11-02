@@ -23,8 +23,10 @@ import {neededRestock,normalizeRestock} from '../utils/restock.js';
 import {supplierParts} from '../utils/supplierParts.js';
 import {summarizeRecordedSales} from '../utils/recordedSales.js';
 import {searchText,paginationQuery,invoicePaginationQuery,literalSearchFilter} from '../utils/search.js';
+import {settingsInteger,uuidParam} from '../middleware/validation.js';
 const storeDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
 const router = Router();
+router.param('id',uuidParam);
 router.use(authorizeApi);
 router.use(async(req,res,next)=>{try{req.dataEnvironment=await getDataEnvironment();next();}catch(error){next(error);}});
 router.use(storeRoutes);
@@ -301,7 +303,7 @@ router.post('/products/:productId/suppliers/:supplierId', rolesAdmin, async (req
     const productId=z.string().uuid().parse(req.params.productId),supplierId=z.string().uuid().parse(req.params.supplierId);
     const body = z.object({
       latest_unit_cost: amount.default(0),
-      lead_time_days: z.coerce.number().int().min(0).max(365).default(7),
+      lead_time_days: settingsInteger(0,365).default(7),
       supplier_part_number: z.string().trim().max(120).nullable().optional(),
       is_primary: z.boolean().default(false)
     }).parse(req.body);
@@ -409,12 +411,11 @@ router.get('/forecast/readiness', rolesAdmin, async (req,res,next) => {
 
 router.get('/forecast/automation',async(req,res,next)=>{try{res.json(await automaticForecasts.status());}catch(e){next(e);}});
 router.post('/forecast/automation',rolesAdmin,async(req,res,next)=>{
- try{const {horizonDays}=z.object({horizonDays:z.coerce.number().int().min(7).max(90)}).parse(req.body);res.status(202).json(await automaticForecasts.request(horizonDays));}catch(e){next(e);}
+ try{const {horizonDays}=z.object({horizonDays:settingsInteger(7,90)}).parse(req.body);res.status(202).json(await automaticForecasts.request(horizonDays));}catch(e){next(e);}
 });
-// Kept for older integrations; computation is always queued and serialized.
 router.post('/forecast/train',rolesAdmin,async(req,res,next)=>{
  try{
-  const body=z.object({horizonDays:z.coerce.number().int().min(7).max(90).optional(),includeProxy:z.boolean().default(false)}).parse(req.body||{});
+  const body=z.object({horizonDays:settingsInteger(7,90).optional(),includeProxy:z.boolean().default(false)}).parse(req.body||{});
   if(body.includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
   res.status(202).json(await automaticForecasts.request(body.horizonDays));
  }catch(e){next(e);}

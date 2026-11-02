@@ -49,7 +49,7 @@ test('multi-part credit sale records customer balance and partial payment',async
  const api=await fixture(context);await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();
  await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'Add Engine oil to basket'}).click();
  await page.getByLabel('Quantity',{exact:true}).nth(0).fill('2');await page.getByLabel('Customer will pay later').check();await page.getByLabel('Customer name *').fill('Juan');await page.getByLabel('Amount paid now').fill('200');
- await expect(page.getByText('Remaining utang:')).toContainText('900');await page.getByRole('button',{name:'3. Confirm sale'}).click();
+ await expect(page.getByText('Remaining balance:')).toContainText('900');await page.getByRole('button',{name:'3. Confirm sale'}).click();
  await expect.poll(()=>api.batches.length).toBe(1);expect(api.batches[0].lines).toHaveLength(2);expect(api.products[0].current_stock).toBe(3);expect(api.products[1].current_stock).toBe(7);
  await page.goto('/debts');await expect(page.getByRole('heading',{name:'Juan'})).toBeVisible();await page.getByRole('button',{name:'Record payment'}).click();await page.getByLabel('Amount received').fill('901');await page.getByRole('button',{name:'Save payment'}).click();expect(api.payments).toHaveLength(0);
  await page.getByLabel('Amount received').fill('400');await page.getByRole('button',{name:'Save payment'}).click();await expect.poll(()=>api.payments.length).toBe(1);expect(api.debts[0].balance).toBe(500);
@@ -76,7 +76,7 @@ test('changing prices or removing items rechecks payment and prevents negative u
  const api=await fixture(context);await page.goto('/counter');
  await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'Add Engine oil to basket'}).click();
  await page.getByLabel('Customer will pay later').check();await page.getByLabel('Customer name *').fill('Juan');await page.getByLabel('Amount paid now').fill('200');
- const balance=page.getByText('Remaining utang:'),confirm=page.getByRole('button',{name:'3. Confirm sale'});
+ const balance=page.getByText('Remaining balance:'),confirm=page.getByRole('button',{name:'3. Confirm sale'});
  await expect(balance).toContainText('400.00');await page.getByLabel('Price per unit',{exact:true}).first().fill('100');await expect(balance).toContainText('0.00');
  await page.getByLabel('Price per unit',{exact:true}).first().fill('50');await expect(page.getByRole('alert')).toContainText('higher than the updated total');await expect(balance).toContainText('—');await expect(confirm).toBeDisabled();expect(api.batches).toHaveLength(0);
  await page.getByLabel('Amount paid now').fill('100');await expect(balance).toContainText('50.00');
@@ -97,7 +97,7 @@ test('offline missing prices block a sale until entered; decimal credit sale rec
  await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.evaluate(async()=>{await navigator.serviceWorker.ready;});
  api.disconnect(true);await context.setOffline(true);await expect(page.getByText('Working offline',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await expect(page.getByRole('button',{name:'3. Confirm sale'})).toBeDisabled();
- await page.getByLabel('Price per unit',{exact:true}).fill('19.90');await page.getByLabel('Customer will pay later').check();await page.getByLabel('Customer name *').fill('Juan');await page.getByLabel('Amount paid now').fill('9.91');await expect(page.getByText('Remaining utang:')).toContainText('9.99');
+ await page.getByLabel('Price per unit',{exact:true}).fill('19.90');await page.getByLabel('Customer will pay later').check();await page.getByLabel('Customer name *').fill('Juan');await page.getByLabel('Amount paid now').fill('9.91');await expect(page.getByText('Remaining balance:')).toContainText('9.99');
  await page.getByRole('button',{name:'3. Confirm sale'}).click();await expect(page.getByText(/1 unsent transaction/)).toBeVisible();expect(api.batches).toHaveLength(0);
  api.disconnect(false);await context.setOffline(false);await expect.poll(()=>api.batches.length,{timeout:15000}).toBe(1);expect(api.batches[0].lines[0].unit_price).toBe(19.9);expect(api.batches[0].paid_amount).toBe(9.91);expect(api.debts[0].balance).toBeCloseTo(9.99,2);expect(api.products[0].selling_price).toBe(0);
 });
@@ -349,11 +349,11 @@ test('a slow automatic-status response keeps planning available and finishes wit
  await fixture(context);let requests=0;
  await context.route('http://localhost:10000/api/forecast/automation',async route=>{
   if(route.request().method()==='OPTIONS')return route.fallback();requests++;
-  await new Promise(resolve=>setTimeout(resolve,1000));
+  await new Promise(resolve=>setTimeout(resolve,18000));
   await route.fulfill({json:{status:'ready',horizon_days:30},headers:{'access-control-allow-origin':'*'}});
  });
  await page.goto('/forecast');await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toBeVisible();
- await expect(page.getByText('XGBoost updates automatically after sales.',{exact:true})).toBeVisible();expect(requests).toBe(1);
+ await expect(page.getByText('XGBoost updates automatically after sales.',{exact:true})).toBeVisible({timeout:22000});expect(requests).toBe(1);
  await expect(page.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
 });
 
@@ -542,12 +542,12 @@ test('dated sales export validates ranges and downloads an actual Excel workbook
 });
 test('sales and customer balances fit phone tablet and desktop screens',async({page,context})=>{
  const api=await fixture(context);api.debts.push({id:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',customer_name:'Sample Customer',principal:500,paid_amount:100,balance:400,due_date:'2026-11-01',status:'open'});
- for(const width of [320,820,1440]){await page.setViewportSize({width,height:900});for(const route of ['/counter','/debts']){await page.goto(route);await expect(page.getByRole('heading',{name:route==='/counter'?'Sell or receive':'Customer utang',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}}
+ for(const width of [320,820,1440]){await page.setViewportSize({width,height:900});for(const route of ['/counter','/debts']){await page.goto(route);await expect(page.getByRole('heading',{name:route==='/counter'?'Sell or receive':'Customer balances',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}}
 });
 
 test('receive a multi-part delivery and add an existing past-due customer balance',async({page,context})=>{
  const api=await fixture(context);await page.goto('/counter?mode=stock_in');await expect(page.getByText(/Inventory saved/)).toBeVisible();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'Add Engine oil to basket'}).click();await page.getByLabel('Quantity',{exact:true}).nth(0).fill('2');await page.getByRole('button',{name:'3. Confirm delivery'}).click();await page.getByRole('button',{name:'Yes, receive these items',exact:true}).click();await expect.poll(()=>api.batches.length).toBe(1);expect(api.batches[0].tx_type).toBe('stock_in');expect(api.products.map(p=>p.current_stock)).toEqual([7,9]);expect(api.debts).toHaveLength(0);
- await page.goto('/debts');await page.getByRole('button',{name:'Add existing utang'}).click();await page.getByLabel('Customer name *').fill('Existing Customer');await page.getByLabel('Amount still owed').fill('125.5');await page.getByLabel('Due date').fill('2020-01-01');await page.getByRole('button',{name:'Save utang'}).click();await expect(page.getByRole('heading',{name:'Existing Customer'})).toBeVisible();await expect(page.getByRole('article').filter({hasText:'Existing Customer'})).toContainText('Past due');expect(api.debts[0].balance).toBe(125.5);
+ await page.goto('/debts');await page.getByRole('button',{name:'Add existing balance'}).click();await page.getByLabel('Customer name *').fill('Existing Customer');await page.getByLabel('Amount still owed').fill('125.5');await page.getByLabel('Due date').fill('2020-01-01');await page.getByRole('button',{name:'Save balance'}).click();await expect(page.getByRole('heading',{name:'Existing Customer'})).toBeVisible();await expect(page.getByRole('article').filter({hasText:'Existing Customer'})).toContainText('Past due');expect(api.debts[0].balance).toBe(125.5);
 });
 
 test('temporary API failure retains one basket and retries its original operation',async({page,context})=>{
@@ -560,7 +560,7 @@ test('Cashier sees only selling and read-only inventory, including whole photo p
  const api=await fixture(context,{role:'cashier'});api.products[0].photo_paths=[`${p1}/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webp`];
  await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page).toHaveURL(/counter/);await expect(page.getByRole('heading',{name:'Sell or receive',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'View photos of Toyota brake pad'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(1);expect(await page.getByRole('dialog').locator('img').evaluate(img=>getComputedStyle(img).objectFit)).toBe('contain');await page.getByRole('button',{name:'Close modal'}).click();
- await page.getByRole('button',{name:'More pages'}).click();const nav=page.getByRole('dialog',{name:'All pages'});await expect(nav.getByRole('link',{name:/Demand planning|Reports|Settings|Customer utang|^Sales/})).toHaveCount(0);await page.getByRole('button',{name:'Close navigation'}).click();
+ await page.getByRole('button',{name:'More pages'}).click();const nav=page.getByRole('dialog',{name:'All pages'});await expect(nav.getByRole('link',{name:/Demand planning|Reports|Settings|Customer balances|^Sales/})).toHaveCount(0);await page.getByRole('button',{name:'Close navigation'}).click();
  await page.goto('/inventory');await expect(page.getByRole('heading',{name:'Inventory',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Add a new part'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Edit details'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Adjust stock'})).toHaveCount(0);await expect(page.getByText(/View only/).filter({visible:true})).toHaveCount(2);
  for(const path of ['/reports','/debts','/forecast','/forecast-demo','/sales','/it-settings','/users']){await page.goto(path);await expect(page).toHaveURL(/counter/);}
  expect(api.productWrites).toHaveLength(0);
@@ -783,7 +783,7 @@ test('external settings submit uses field validation and failed pages recover wi
  await page.getByLabel('Keep backup copies for (days)').fill('30');await page.getByLabel('Plan stock for the next (days)').fill('91');await page.getByRole('button',{name:'Save settings',exact:true}).click();await expect(page.getByRole('alert')).toContainText('90');expect(writes).toBe(0);
  await page.getByLabel('Plan stock for the next (days)').fill('30');await page.getByRole('button',{name:'Save settings',exact:true}).click();await expect.poll(()=>writes).toBe(2);
  let broken=true;await context.route('http://localhost:10000/api/debts',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({json:{data:broken?{}:[]},headers:{'access-control-allow-origin':'*'}}));
- await page.setViewportSize({width:390,height:844});await page.goto('/debts');await expect(page.getByRole('heading',{name:'This page could not open'})).toBeVisible();await expect(page.getByRole('navigation',{name:'Quick navigation'})).toBeVisible();broken=false;await page.getByRole('button',{name:'Try again',exact:true}).click();await expect(page.getByRole('heading',{name:'Customer utang',exact:true})).toBeVisible();
+ await page.setViewportSize({width:390,height:844});await page.goto('/debts');await expect(page.getByRole('heading',{name:'This page could not open'})).toBeVisible();await expect(page.getByRole('navigation',{name:'Quick navigation'})).toBeVisible();broken=false;await page.getByRole('button',{name:'Try again',exact:true}).click();await expect(page.getByRole('heading',{name:'Customer balances',exact:true})).toBeVisible();
 });
 
 test('compact restock stays readable with larger Tagalog text on phone tablet and desktop and offers retry',async({page,context})=>{

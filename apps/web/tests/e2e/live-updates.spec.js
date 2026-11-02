@@ -4,10 +4,10 @@ const ExcelJS=createRequire(new URL('../../../server/package.json',import.meta.u
 const userId='11111111-1111-4111-8111-111111111111',p1='33333333-3333-4333-8333-333333333333',p2='99999999-9999-4999-8999-999999999999',project='ragdjkdcrvexqfadlqbf',supplier='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const sid='77777777-7777-4777-8777-777777777777';
 const token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({session_id:sid,amr:[{method:'password'}]})).toString('base64url')+'.test-only-signature';
-async function fixture(context,{role='owner'}={}){
+async function fixture(context,{role='owner',demandPerDay=2}={}){
  await context.addInitScript(({userId,project,token})=>localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:token,refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}})),{userId,project,token});
  const products=[{id:p1,part_number:'BP-001',description:'Toyota brake pad',brand:'Toyota',unit:'pcs',location:'Shelf A',current_stock:5,minimum_stock:1,safety_stock:1,selling_price:500,unit_cost:100,category:'parts',barcode:'123456789012',search_aliases:['pastilyas'],photo_paths:[],stock_status:'ok'},{id:p2,part_number:'OIL-001',description:'Engine oil',brand:'Brand',unit:'bottles',location:'Shelf B',current_stock:8,minimum_stock:2,selling_price:100,unit_cost:60,category:'lubricants',barcode:'987654321098',search_aliases:['langis ng makina'],photo_paths:[],stock_status:'ok'}];
- const batches=[],debts=[],payments=[],emails=[],productWrites=[],photoUploads=[],supplierLinks=[];let disconnected=false;const sales=[];const today='2026-10-31';let currentRun='run',prediction=2,completed=0;let automation={status:'ready',horizon_days:30,last_run_id:currentRun};const manualTraining=[];
+ const batches=[],debts=[],payments=[],emails=[],productWrites=[],photoUploads=[],supplierLinks=[];let disconnected=false;const sales=[];const today='2026-10-31';let currentRun='run',prediction=demandPerDay,completed=0;let automation={status:'ready',horizon_days:30,last_run_id:currentRun};const manualTraining=[];
  function queueForecast(){automation={...automation,status:'queued'};setTimeout(()=>automation={...automation,status:'training'},50);setTimeout(()=>{currentRun=`automatic-${++completed}`;prediction++;automation={...automation,status:'ready',last_run_id:currentRun};},600);}const receipts=new Map();
  await context.route('http://localhost:10000/**',async route=>{
  const req=route.request(),url=new URL(req.url()),headers={'access-control-allow-origin':'*'};
@@ -93,4 +93,33 @@ test('selling automatically replaces XGBoost predictions in two tabs without man
  await expect(planning.getByText('On hand: 4 units',{exact:true})).toBeVisible();expect(api.manualTraining).toEqual([]);
  await planning.getByLabel('How far ahead do you want to plan?',{exact:true}).selectOption('14');await expect.poll(()=>api.automation().horizon_days).toBe(14);
  expect(api.manualTraining).toEqual([]);
+});
+
+test('summary card matches forecast coverage and refreshes after a sale in another tab',async({page,context})=>{
+ const api=await fixture(context,{demandPerDay:16});api.products[0].current_stock=45;
+ await context.addInitScript(()=>localStorage.setItem('partcast-theme','dark'));
+ await page.setViewportSize({width:560,height:950});await page.goto('/forecast');
+ await page.getByRole('button',{name:'Summary',exact:true}).click();
+ const summary=page.getByRole('article',{name:'Demand forecast summary'});
+ await expect(summary).toContainText('71.1%');await expect(summary).toContainText('Sufficient stock');
+ await expect(summary.locator('div').filter({has:page.getByText('Remaining after demand',{exact:true})}).first()).toContainText('13');
+ await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toHaveCSS('color','rgb(241, 245, 249)');
+ await summary.scrollIntoViewIfNeeded();await summary.screenshot({path:'/tmp/partcast-production-forecast-summary-dark.png'});
+ const counter=await context.newPage();await counter.goto('/counter');await expect(counter.getByText(/Inventory saved/)).toBeVisible();
+ await counter.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await counter.getByLabel('Quantity',{exact:true}).fill('20');
+ await counter.getByRole('button',{name:'3. Confirm sale'}).click();
+ await expect(summary).toContainText('Restocking needed');await expect(summary).toContainText('Short by');
+ await expect(summary.getByRole('progressbar')).toHaveAttribute('aria-valuenow','100');
+ await expect(summary).toContainText('at least 9 units');
+ await expect(page.getByRole('button',{name:'Summary',exact:true})).toHaveAttribute('aria-pressed','true');
+ await page.setViewportSize({width:320,height:740});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await summary.screenshot({path:'/tmp/partcast-production-forecast-summary-320.png'});
+});
+
+test('summary avoids a sufficient-stock recommendation when no prediction exists',async({page,context})=>{
+ await fixture(context);
+ await context.route('http://localhost:10000/api/forecast/product/*',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({headers:{'access-control-allow-origin':'*'},json:{product:{id:p1,current_stock:45},today:'2026-10-31',actualSales:[],run:null,data:[]}}));
+ await page.goto('/forecast');await page.getByRole('button',{name:'Summary',exact:true}).click();
+ await expect(page.getByText('No demand estimate is available for this part yet.',{exact:true})).toBeVisible();
+ await expect(page.getByText('Sufficient stock',{exact:true})).toHaveCount(0);
 });

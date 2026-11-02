@@ -88,3 +88,7 @@ html[data-theme="dark"] .recharts-default-tooltip {background:#1f2937!important;
 html[data-theme="dark"] :focus-visible {outline-color:#fca5a5;}
 html[data-theme="dark"] .login-page .input:focus {border-color:#cbd5e1;}
 html[data-theme="dark"] .login-page .input:focus-visible {outline-color:#cbd5e1;}
+
+html[data-theme="dark"] .page-title{color:#f1f5f9;}
+html[data-theme="dark"] .page-subtitle{color:#cbd5e1;}
+.relative > svg.absolute,.counter-search-field > svg{z-index:1;}
