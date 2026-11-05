@@ -2,14 +2,39 @@ import crypto from 'node:crypto';
 import {Router} from 'express';
 import {z} from 'zod';
 import rateLimit from 'express-rate-limit';
-import {authenticateBase} from '../middleware/auth.js';
-import {adminDb} from '../supabase.js';
+import {authenticateBase,sessionClaims} from '../middleware/auth.js';
+import {adminDb,userDb} from '../supabase.js';
 import {config} from '../config.js';
 import {sendLoginCode} from '../utils/gmail.js';
-const router=Router();router.use(authenticateBase);
+import {recaptchaEnabled,verifyRecaptcha,createBotProof,validBotProof} from '../utils/recaptcha.js';
+const router=Router();
+router.post('/password',rateLimit({windowMs:15*60*1000,limit:15,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Too many sign-in attempts. Wait before trying again.'}}),async(req,res,next)=>{
+ try{
+  if(!recaptchaEnabled())return res.status(409).json({error:'Security check is not configured.'});
+  const body=z.object({email:z.string().trim().email().max(254),password:z.string().min(1).max(128),captchaToken:z.string().max(4096)}).parse(req.body);
+  await verifyRecaptcha(body.captchaToken);
+  const {data,error}=await userDb().auth.signInWithPassword({email:body.email,password:body.password});
+  if(error){
+   if(error.status===429)return res.status(429).json({error:'Too many sign-in attempts. Wait before trying again.'});
+   if(error.status===0||error.status>=500||error.name==='AuthRetryableFetchError')return res.status(503).json({error:'The sign-in service is temporarily unavailable. Please try again.'});
+   return res.status(401).json({error:'Email or password is incorrect.'});
+  }
+  const sessionId=sessionClaims(data.session.access_token).session_id;
+  if(!sessionId)throw Object.assign(new Error('The sign-in service is temporarily unavailable. Please try again.'),{status:503,safe:true});
+  res.json({session:{access_token:data.session.access_token,refresh_token:data.session.refresh_token},botProof:createBotProof(data.user.id,sessionId)});
+ }catch(e){next(e);}
+});
+router.use(authenticateBase);
 const hash=(req,code)=>crypto.createHmac('sha256',config.INTEGRATION_ENCRYPTION_KEY||config.IP_HASH_SECRET).update(`${req.user.id}:${req.user.session_id}:${code}`).digest('hex');
 router.post('/otp/request',rateLimit({windowMs:15*60*1000,limit:15,keyGenerator:req=>req.user.id,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Too many code requests. Wait before trying again.'}}),async(req,res,next)=>{
  try{
+  let botProof;
+  if(recaptchaEnabled()){
+   if(!validBotProof(req.body?.botProof,req.user.id,req.user.session_id)){
+    await verifyRecaptcha(req.body?.captchaToken);
+    botProof=createBotProof(req.user.id,req.user.session_id);
+   }
+  }
   const code=String(crypto.randomInt(0,1000000)).padStart(6,'0'),codeHash=hash(req,code);
   const {error}=await adminDb.rpc('issue_email_challenge',{p_user:req.user.id,p_session:req.user.session_id,p_hash:codeHash});
   if(error){if(error.code==='P0001')return res.status(429).json({error:'Wait 60 seconds before requesting another code.'});throw error;}
@@ -18,7 +43,7 @@ router.post('/otp/request',rateLimit({windowMs:15*60*1000,limit:15,keyGenerator:
    if(e.deliveryUncertain)throw Object.assign(new Error('The sign-in email could not be confirmed. Request a new code and use the most recent email.'),{status:503,safe:true,code:/^GMAIL_[A-Z_]+$/.test(e.code||'')?e.code:'GMAIL_SIGNIN_EMAIL_UNCONFIRMED',details:e.safe?e.details:undefined});
    throw e;
   }
-  res.json({sent:true,expiresIn:600,resendAfter:60});
+  res.json({sent:true,expiresIn:600,resendAfter:60,...(botProof?{botProof}:{})});
  }catch(e){next(e);}
 });
 router.post('/otp/verify',rateLimit({windowMs:15*60*1000,limit:40,keyGenerator:req=>req.user.id,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Too many code attempts. Wait before trying again.'}}),async(req,res,next)=>{

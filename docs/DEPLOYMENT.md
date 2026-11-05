@@ -22,6 +22,21 @@ Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_API_URL` before buil
 
 Apply the database upgrade first, then deploy the API and website. Confirm both services show the intended commit. Check `/health`, password plus email-code login, account role, inventory loading and notification refresh. A successful build is not proof that live credentials or email delivery work. Run write tests only in a separate test project or on specifically authorized real transactions.
 
+## Login bot protection
+
+PartCast supports the classic Google reCAPTCHA v2 **“I’m not a robot” Checkbox**. Register the exact website hostname `partcast-web.onrender.com` at [Google reCAPTCHA Admin](https://www.google.com/recaptcha/admin/create). Use v2 Checkbox keys that support the classic `siteverify` endpoint, not v3, invisible or Enterprise assessment keys. This is separate from Gmail OAuth branding verification.
+
+1. Deploy the API and website code before enabling the keys. In the static website’s Render Headers settings, update Content-Security-Policy to match `render.yaml`, keeping any custom API origins. reCAPTCHA requires the Google/gstatic script and Google frame destinations listed there. Pushing YAML only updates services managed by that Blueprint.
+2. On the Render **API service**, set `RECAPTCHA_SITE_KEY=6LfnIhEuAAAAAJU50RIpM40Pv2B4wjMm6S7VhaD7` (the owner-provided public key) and `RECAPTCHA_SECRET_KEY` to its matching private Secret Key, together, then redeploy the API. Keep the Secret Key out of chat, the repository and all `VITE_` variables. `/setup/status` publishes only the public Site Key; no separate website rebuild is needed to change it. Leave both keys blank until setup is ready to preserve existing login. Do not use Google’s public demo keys in production.
+3. Keep public Supabase signups disabled. Supabase’s native CAPTCHA option supports other providers and should remain off for this Google integration; PartCast verifies Google challenges on its own API.
+4. In a private window, verify the checkbox, password and email-code steps with a dedicated test account. Check that missing, invalid, expired or wrong-host challenge tokens cannot issue an email code, and that a completed check does not replace the email code. Never run email or write tests against real staff accounts without authorization.
+
+With keys configured, PartCast’s password endpoint verifies the single-use Google token before checking the password. It returns a signed proof bound to that user and password session, valid for ten minutes, so a normal email-code resend does not require another puzzle. The proof stays in memory and its expiry is not extended by resending. Reloading the email-code page requires a fresh checkbox check before another email can be sent. Tokens expire after two minutes and every password attempt requires a new check.
+
+The email-code endpoint independently requires the signed proof or a fresh Google token; calling Supabase’s public password endpoint directly cannot bypass that requirement or grant store access. Supabase separately rate-limits its password endpoint. Existing verified sessions retain their usual expiry. No database migration or change to Gmail delivery is required.
+
+Public policy and homepage sign-in links use `/`, the actual static app entry, so they work even if a manually configured host lacks the SPA rewrite for `/login`. Keep the `/* → /index.html` rewrite in Render for direct links and page refreshes throughout the app.
+
 ## Backups and scheduled forecasts
 
 GitHub Actions needs `PARTCAST_API_URL` and `PARTCAST_CRON_SECRET` in repository Actions secrets. The workflow runs a daily Excel backup and a weekly forecast. Manual supplier requests remain in Restock; the legacy supplier cron route returns a skipped result. Cron timing is best effort.

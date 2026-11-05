@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { adminDb } from '../supabase.js';
 import { config } from '../config.js';
+import { publicRecaptcha } from '../utils/recaptcha.js';
 
 const router = Router();
 
@@ -11,7 +12,7 @@ router.get('/status', async (req, res, next) => {
   try {
     const { count, error } = await adminDb.from('profiles').select('*', { count: 'exact', head: true });
     if (error) throw error;
-    res.json({ needsSetup: (count || 0) === 0 });
+    res.json({ needsSetup: (count || 0) === 0, captcha: publicRecaptcha() });
   } catch (e) { next(e); }
 });
 

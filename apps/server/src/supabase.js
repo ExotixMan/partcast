@@ -7,7 +7,7 @@ export const adminDb = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE
 
 export function userDb(accessToken) {
   return createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    ...(accessToken ? {global: { headers: { Authorization: `Bearer ${accessToken}` } }} : {}),
     auth: { persistSession: false, autoRefreshToken: false }
   });
 }

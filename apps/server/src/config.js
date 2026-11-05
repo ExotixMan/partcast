@@ -14,6 +14,8 @@ const schema = z.object({
   SETUP_SECRET: z.string().min(16),
   CRON_SECRET: z.string().min(24),
   IP_HASH_SECRET: z.string().min(16),
+  RECAPTCHA_SITE_KEY: z.string().trim().max(200).regex(/^[A-Za-z0-9_-]*$/).refine(value=>!value||value.length>=20,'Use a valid reCAPTCHA Site Key.').default(''),
+  RECAPTCHA_SECRET_KEY: z.string().trim().max(200).regex(/^[A-Za-z0-9_-]*$/).refine(value=>!value||value.length>=20,'Use a valid reCAPTCHA Secret Key.').default(''),
   GMAIL_CLIENT_ID: z.string().default(''),
   GMAIL_CLIENT_SECRET: z.string().default(''),
   GMAIL_REFRESH_TOKEN: z.string().default(''),
@@ -29,6 +31,8 @@ const schema = z.object({
   ML_SCRIPT_PATH: z.string().default('../../ml/train_forecast.py'),
   BACKUP_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30)
 }).superRefine((values, ctx) => {
+  if(Boolean(values.RECAPTCHA_SITE_KEY)!==Boolean(values.RECAPTCHA_SECRET_KEY))ctx.addIssue({code:'custom',path:['RECAPTCHA_SECRET_KEY'],message:'Set both reCAPTCHA keys together, or leave both blank.'});
+  if(values.NODE_ENV==='production'&&values.RECAPTCHA_SITE_KEY==='6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI')ctx.addIssue({code:'custom',path:['RECAPTCHA_SITE_KEY'],message:'Use a registered reCAPTCHA key, not the public test key.'});
   if(values.NODE_ENV==='production')for(const field of ['SETUP_SECRET','CRON_SECRET','IP_HASH_SECRET','INTEGRATION_ENCRYPTION_KEY']){
     const issue=secretConfigurationIssue(values[field]);
     if(issue)ctx.addIssue({code:'custom',path:[field],message:issue});

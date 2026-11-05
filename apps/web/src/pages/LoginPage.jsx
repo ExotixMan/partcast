@@ -7,6 +7,8 @@ import { storeConfigured, storeConnectionIssue } from '../lib/supabase.js';
 import { publicApi, apiConnectionIssue } from '../lib/api.js';
 import Preferences from '../components/Preferences.jsx';
 import { connectionMessage } from '../lib/connection.js';
+import LoginBotCheck from '../components/LoginBotCheck.jsx';
+
 function emailErrorReference(error){
   if(!/^GMAIL_[A-Z_]{1,64}$/.test(error?.code||''))return '';
   const detail=error.diagnostics||{};
@@ -41,9 +43,12 @@ export default function LoginPage() {
   const {
     signIn,
     requestOtp,
-    verifyOtp, needsOtp, session, signOut
+    verifyOtp, needsOtp, session, signOut, hasLoginBotProof
   } = useAuth();
   const otpMode = Boolean(needsOtp && session);
+  const [captchaSiteKey, setCaptchaSiteKey] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaReset, setCaptchaReset] = useState(0);
   const sentFor = useRef(null);
   const [otpSent, setOtpSent] = useState(false),
     [otp, setOtp] = useState(''),
@@ -56,9 +61,13 @@ export default function LoginPage() {
   }, [resendAt]);
   const resendSeconds = Math.max(0, Math.ceil((resendAt - now) / 1000));
   async function sendOtp() {
-    if (loading || resendSeconds > 0) return;
+    if (loading || checkingServer || serverError || resendSeconds > 0) return;
     setError('');
     setErrorReference('');
+    if (captchaSiteKey && !hasLoginBotProof() && !captchaToken) {
+      setError('Complete the security check before continuing.');
+      return;
+    }
     const email = session?.user?.email || login.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
       setError('Enter a valid email address.');
@@ -66,7 +75,7 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      await requestOtp();
+      await requestOtp(captchaToken);
       setLogin(l => ({
         ...l,
         email
@@ -78,6 +87,8 @@ export default function LoginPage() {
       setError(e.message);
       setErrorReference(emailErrorReference(e));
     } finally {
+      setCaptchaToken('');
+      setCaptchaReset(current => current + 1);
       setLoading(false);
     }
   }
@@ -86,7 +97,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [errorReference,setErrorReference]=useState('');
   const [serverError, setServerError] = useState('');
-  const [checkingServer, setCheckingServer] = useState(false);
+  const [checkingServer, setCheckingServer] = useState(true);
   const [login, setLogin] = useState({
     email: '',
     password: ''
@@ -103,6 +114,7 @@ export default function LoginPage() {
     try {
       const result = await publicApi('/setup/status');
       setNeedsSetup(Boolean(result.needsSetup));
+      setCaptchaSiteKey(result.captcha?.siteKey || '');
     } catch (e) {
       setServerError(connectionMessage(e));
     } finally {
@@ -114,8 +126,12 @@ export default function LoginPage() {
   }, []);
   async function submitLogin(e) {
     e.preventDefault();
-    if (loading) return;
+    if (loading || checkingServer || serverError) return;
     setErrorReference('');
+    if (!otpMode && captchaSiteKey && !captchaToken) {
+      setError('Complete the security check before continuing.');
+      return;
+    }
     if (otpMode && !/^[0-9]{6}$/.test(otp)) {
       setError('Enter the 6 digit code from your email.');
       return;
@@ -125,19 +141,23 @@ export default function LoginPage() {
     try {
       const {
         error
-      } = otpMode ? await verifyOtp(login.email.trim(), otp) : await signIn(login.email.trim(), login.password);
-      if (error) setError(otpMode ? 'The code is incorrect or expired. Request a new code and try again.' : connectionMessage(error, 'sign-in service'));
+      } = otpMode ? await verifyOtp(login.email.trim(), otp) : await signIn(login.email.trim(), login.password, captchaToken || undefined);
+      if (error) setError(otpMode ? 'The code is incorrect or expired. Request a new code and try again.' : error.code === 'captcha_failed' ? 'Security check was not accepted. Please try the check again.' : connectionMessage(error, 'sign-in service'));
     } catch (e) {
       setError(e.status ? e.message : connectionMessage(e, 'sign-in service'));
     } finally {
+      if (!otpMode && captchaSiteKey) {
+        setCaptchaToken('');
+        setCaptchaReset(current => current + 1);
+      }
       setLoading(false);
     }
   }
   useEffect(() => {
-    if (!otpMode || sentFor.current === session.access_token) return;
+    if (checkingServer || serverError || !otpMode || sentFor.current === session.access_token || (captchaSiteKey && !hasLoginBotProof())) return;
     sentFor.current = session.access_token;
     sendOtp();
-  },[otpMode,session?.access_token]);
+  },[otpMode,session?.access_token,captchaSiteKey,checkingServer,serverError]);
   async function submitSetup(e) {
     e.preventDefault();
     setLoading(true);
@@ -196,10 +216,11 @@ export default function LoginPage() {
             <p id="login-otp-help" className="mt-3 text-sm leading-6 text-slate-600">{otpSent?t('Check your inbox and spam folder. Enter the code from your most recent email.'):t('Request a code first. If sending fails, check the message above.')}</p>
           </div> : <PasswordField id="login-password" value={login.password} onChange={e => setLogin({...login,password:e.target.value})} autoComplete="current-password" />}
 
-          <button disabled={loading || !storeConfigured || Boolean(apiConnectionIssue)} className="btn-primary min-h-14 w-full">{loading ? t('Signing in…') : otpMode ? t('Verify code and sign in') : t('Continue')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
+          {captchaSiteKey && (!otpMode || !hasLoginBotProof()) && <LoginBotCheck siteKey={captchaSiteKey} resetKey={captchaReset} onChange={setCaptchaToken} />}
+          <button disabled={loading || checkingServer || Boolean(serverError) || !storeConfigured || Boolean(apiConnectionIssue) || (!otpMode && captchaSiteKey && !captchaToken)} className="btn-primary min-h-14 w-full">{loading ? t('Signing in…') : otpMode ? t('Verify code and sign in') : t('Continue')}{!loading && <ArrowRight aria-hidden="true" size={19} />}</button>
 
           {otpMode && <div className="flex flex-wrap items-center justify-between gap-2">
-            <button type="button" className="min-h-11 rounded px-1 text-sm font-semibold text-red-700 underline underline-offset-4 disabled:cursor-not-allowed disabled:text-slate-500 disabled:no-underline" disabled={loading || resendSeconds > 0} onClick={sendOtp}>{resendSeconds ? t('Resend in {v0}s',{v0:resendSeconds}) : otpSent ? t('Resend code') : t('Send email code')}</button>
+            <button type="button" className="min-h-11 rounded px-1 text-sm font-semibold text-red-700 underline underline-offset-4 disabled:cursor-not-allowed disabled:text-slate-500 disabled:no-underline" disabled={loading || checkingServer || Boolean(serverError) || resendSeconds > 0 || (captchaSiteKey && !hasLoginBotProof() && !captchaToken)} onClick={sendOtp}>{resendSeconds ? t('Resend in {v0}s',{v0:resendSeconds}) : otpSent ? t('Resend code') : t('Send email code')}</button>
             <button type="button" className="min-h-11 rounded px-1 text-sm font-semibold text-slate-600 underline underline-offset-4 disabled:cursor-not-allowed disabled:opacity-50" disabled={loading} onClick={signOut}>{t('Use another account')}</button>
           </div>}
         </Form>}

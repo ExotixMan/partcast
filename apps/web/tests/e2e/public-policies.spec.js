@@ -100,3 +100,15 @@ test('public policies do not inspect or expose a saved staff session', async ({ 
   }
   expect(attempted).toEqual([]);
 });
+
+test('public-page sign-in links use the static entry when the host has no deep-route rewrite',async({page,context})=>{
+ await context.route('http://localhost:4173/login',route=>route.request().isNavigationRequest()?route.fulfill({status:404,contentType:'text/plain',body:'Not Found'}):route.continue());
+ await context.route('http://localhost:10000/**',route=>route.fulfill({headers:{'access-control-allow-origin':'*'},json:{needsSetup:false}}));
+ for(const path of ['/privacy.html','/terms.html','/about.html']){
+  await page.goto(path);
+  const signIn=page.getByRole('navigation',{name:'Public pages',exact:true}).getByRole('link',{name:/sign in/i});
+  await expect(signIn).toHaveAttribute('href','/');await signIn.click();
+  await expect(page.getByRole('heading',{name:'Sign in',exact:true})).toBeVisible();
+  await expect(page.getByText('Not Found',{exact:true})).toHaveCount(0);
+ }
+});

@@ -1,8 +1,8 @@
 import {t} from './LocaleContext.jsx';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, authStorageKey } from '../lib/supabase.js';
 import {verifiedCacheMatches} from '../lib/access.js';
-import { api, setApiSession } from '../lib/api.js';
+import { api, publicApi, setApiSession } from '../lib/api.js';
 import { clearAccount, queueItems } from '../lib/offline.js';
 const AuthContext = createContext(null);
 function savedSession() {
@@ -10,6 +10,7 @@ function savedSession() {
   try { return JSON.parse(localStorage.getItem(authStorageKey)); } catch { return null; }
 }
 export function AuthProvider({ children }) {
+  const botProof = useRef(null);
   const [session, setSession] = useState(savedSession);
   const [profile, setProfile] = useState(null), [loading, setLoading] = useState(true);
   const [needsOtp,setNeedsOtp] = useState(false);
@@ -47,8 +48,29 @@ export function AuthProvider({ children }) {
   },[profile?.verification_expires_at]);
   const value = useMemo(() => ({
     session,profile,loading,offlineAccess,needsOtp,
-    signIn: (email,password) => supabase.auth.signInWithPassword({email,password}),
-    requestOtp: () => api.post('/auth/otp/request',{}),
+    hasLoginBotProof: () => Boolean(botProof.current && botProof.current.expiresAt > Date.now()),
+    signIn: async (email,password,captchaToken) => {
+      botProof.current = null;
+      if (!captchaToken) return supabase.auth.signInWithPassword({email,password});
+      const result = await publicApi('/auth/password',{method:'POST',body:JSON.stringify({email,password,captchaToken})});
+      botProof.current = result.botProof;
+      const response = await supabase.auth.setSession(result.session);
+      if (response.error) botProof.current = null;
+      return response;
+    },
+    requestOtp: async captchaToken => {
+      const proof = botProof.current?.token;
+      try {
+        const result = await api.post('/auth/otp/request',{
+          ...(proof ? {botProof:proof} : {}), ...(captchaToken ? {captchaToken} : {})
+        });
+        if (result.botProof) botProof.current = result.botProof;
+        return result;
+      } catch (error) {
+        if (error.code?.startsWith('CAPTCHA_')) botProof.current = null;
+        throw error;
+      }
+    },
     verifyOtp: async (_email,code) => {
       await api.post('/auth/otp/verify',{code});
       const r = await api.get('/api/me');
@@ -56,6 +78,7 @@ export function AuthProvider({ children }) {
       return {error:null};
     },
     signOut: async () => {
+      botProof.current = null;
       const userId = session?.user?.id;
       if (userId && (await queueItems(userId)).length && !window.confirm(t('You have unsent changes. Signing out removes them from this device. Sign out anyway?'))) return;
       if (navigator.onLine && session) await api.post('/auth/logout',{}).catch(() => {});

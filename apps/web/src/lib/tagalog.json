@@ -1620,5 +1620,18 @@
   "Updates automatically": "Awtomatikong nag-a-update",
   "Checking for updates…": "Tinitingnan ang mga update…",
   "{v0} parts need more recent sales history.": "Kailangan ng {v0} piyesa ng mas bagong kasaysayan ng benta.",
-  "Field help": "Gabay sa field"
+  "Field help": "Gabay sa field",
+  "Security check": "Pagsusuri sa seguridad",
+  "Loading security check…": "Nilo-load ang pagsusuri sa seguridad…",
+  "Security check complete.": "Tapos na ang pagsusuri sa seguridad.",
+  "Security check expired. Please try again.": "Nag-expire ang pagsusuri sa seguridad. Subukan ulit.",
+  "Security check could not load. Check your connection and try again.": "Hindi ma-load ang pagsusuri sa seguridad. Tingnan ang koneksyon at subukan ulit.",
+  "Complete the security check below.": "Kumpletuhin ang pagsusuri sa seguridad sa ibaba.",
+  "Try security check again": "Ulitin ang pagsusuri sa seguridad",
+  "Complete the security check before continuing.": "Kumpletuhin ang pagsusuri sa seguridad bago magpatuloy.",
+  "Security check was not accepted. Please try the check again.": "Hindi tinanggap ang pagsusuri sa seguridad. Ulitin ito.",
+  "Security check is temporarily unavailable. Please try again.": "Pansamantalang hindi magamit ang pagsusuri sa seguridad. Subukan ulit.",
+  "Email or password is incorrect.": "Mali ang email o password.",
+  "The sign-in service is temporarily unavailable. Please try again.": "Pansamantalang hindi magamit ang pag-sign in. Subukan ulit.",
+  "Too many sign-in attempts. Wait before trying again.": "Masyadong maraming pagtatangkang mag-sign in. Maghintay bago subukan ulit."
 }

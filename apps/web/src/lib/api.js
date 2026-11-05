@@ -191,6 +191,6 @@ export async function publicApi(path, options = {}) {
   const res = await fetchApi(path, { ...options, signal: options.signal || AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
   if (!(res.headers.get('content-type') || '').includes('application/json')) throw new ApiError('The store server returned a web page instead of store data. Ask the store owner to check the server address.', 502);
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(body.error || `Request failed (${res.status})`, res.status);
+  if (!res.ok) throw Object.assign(new ApiError(body.error || `Request failed (${res.status})`, res.status),{code:body.code});
   return body;
 }
