@@ -66,6 +66,28 @@ test('planning prioritizes the part and chart while detailed explanations and me
  await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'/tmp/partcast-planning-organized-desktop.png'});
 });
 
+test('planning shows period-specific historical scores and labels direct daily averages without changing the layout',async({page,context})=>{
+ await fixture(context);
+ await context.route('http://localhost:10000/api/forecast/runs',route=>route.fulfill({headers:{'access-control-allow-origin':'*'},json:{data:[{id:'run',status:'completed',horizon_days:30,metrics:{daily_values_are_period_averages:true,mae:11.0704,rmse:15.7168,wape_percent:29.0984,horizon_validation:{horizon_days:30,status:'no_improvement_over_recent_average',window_count:269,tested_product_count:108,nonzero_window_count:269,model:{mae:11.0704,rmse:15.7168,r2:.1,wape_percent:29.0984,actual_recorded_units:10234,predicted_units:7973.9942},recent_average:{mae:7.3056}}}}]}}));
+ await page.goto('/forecast');await page.getByText('Sales data and update history',{exact:true}).click();
+ await expect(page.getByText('These errors compare complete 30-day estimates with recorded sales. They are not accuracy percentages.',{exact:true})).toBeVisible();
+ await expect(page.getByText(/The next-day average error/)).toHaveCount(0);
+ await page.getByText('30-day historical test results',{exact:true}).click();
+ await expect(page.getByText('15.7168 units',{exact:true})).toBeVisible();
+ await expect(page.getByText('71.8421%',{exact:true})).toHaveCount(0);
+ await expect(page.getByText('Daily chart values are expected averages of the XGBoost period total, not predictions of exact sale dates.',{exact:true})).toBeVisible();
+});
+
+test('a newly completed part run cannot leave the header or summary showing the older cached total',async({page,context})=>{
+ await fixture(context);
+ await context.route('http://localhost:10000/api/forecast/product/**',route=>route.fulfill({headers:{'access-control-allow-origin':'*'},json:{product:{id:partId,description:'Brake pad',current_stock:45},today:'2026-11-03',run:{id:'new-run'},data:[4,5].map(day=>({run_id:'new-run',forecast_date:`2026-11-0${day}`,predicted_quantity:10}))}}));
+ await page.goto('/forecast');
+ await expect(page.getByText('About 20 units',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Summary',exact:true}).click();
+ const summary=page.getByRole('article',{name:'Demand forecast summary'});
+ await expect(summary).toContainText('20');await expect(summary).toContainText('25');
+});
+
 test('help preserves an unfinished basket and stock limitations remain visible',async({page,context})=>{
  const store=await fixture(context,{limitations:true});await page.goto('/counter');
  await page.getByRole('button',{name:'Add Brake pad to basket',exact:true}).click();

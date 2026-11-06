@@ -15,10 +15,10 @@ test('real XGBoost training survives a copied Windows Python path and produces f
  const {result,modelBuffer}=await runForecastPython({observations,asOfDate,horizonDays:7});
  assert.equal(result.forecasts.length,14);assert.equal(new Set(result.forecasts.map(f=>f.product_id)).size,2);
  assert(result.forecasts.every(f=>f.forecast_date>asOfDate&&Number.isFinite(f.predicted_quantity)&&f.predicted_quantity>=0));
- assert.equal(result.metrics.evaluation,'chronological one-day-ahead holdout');assert(Number.isFinite(result.metrics.mae));assert(Number.isFinite(result.metrics.baseline_mae));
+ assert.equal(result.metrics.evaluation,'rolling-origin direct planning-period totals');assert(Number.isFinite(result.metrics.mae));assert(Number.isFinite(result.metrics.baseline_mae));
  assert.equal(result.metrics.horizon_validation.horizon_days,7);assert.equal(result.metrics.horizon_validation.origin_count,3);
  assert.equal(result.metrics.horizon_validation.tested_product_count,2);assert(Number.isFinite(result.metrics.horizon_validation.model.mae));
- assert.match(result.model_version,/^xgb-observed-events-/);
+ assert.match(result.model_version,/^xgb-direct-period-/);
  assert.match(result.metrics.recursive_event_handling,/observed sales only/);
  for(const method of ['croston_sba','tsb'])assert(Number.isFinite(result.metrics.horizon_validation[method].mae));
  assert(JSON.parse(modelBuffer.toString()).learner);assert.equal(result.training_date_max,asOfDate);

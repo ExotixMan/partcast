@@ -16,7 +16,9 @@ Current forecasting checks each part for at least five distinct sale days across
 
 The historical invoices and usable demand rows are different counts. Thousands of invoice rows may produce few usable observations if quantities, dates or exact inventory identities are absent. Keep recording every actual part and quantity through Sell or receive; each confirmed sale creates a demand observation automatically.
 
-The model uses daily lag, rolling and intermittent-demand features. Where the model constructs a daily timeline, missing dates can enter as zero demand under its recorded-history assumption; those dates are not independently confirmed zero-sales days. Metrics and coverage warnings must be read with that limitation. Stockouts and incomplete recording can hide real customer demand.
+Production XGBoost predicts the selected planning-period total directly from lag, rolling, calendar and intermittent-demand features. Expected daily chart values allocate that total across the period; they do not predict exact sale dates. Missing recent observations are an explicit gap feature, not recursively invented sales. Training examples use completed historical targets and are bounded before fitting. Where the model constructs an internal daily timeline, missing dates still enter as zero under the recorded-history assumption; those dates are not independently confirmed zero-sales days. Stockouts and incomplete recording can hide real customer demand.
+
+Production training excludes labelled simulated references and the later generated `training:<product_id>:<date>` convention, even if those rows were relabelled as imported training data. Referenced duplicate imports cannot double-count demand; distinct customer sales are preserved. Records are not deleted. Unknown provenance still requires review. See [forecast logic review](FORECAST_LOGIC_REVIEW.md) for the paper requirements, fixes and validation limits.
 
 ## Evaluation
 

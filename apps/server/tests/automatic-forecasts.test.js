@@ -112,6 +112,13 @@ test('worker startup resumes persisted work without a page visit and stop cancel
  worker.stop();assert.equal(cleared,10);await scheduled();assert.equal(db.calls.length,1);
 });
 
+test('startup preparation runs before the worker claims a job and is not repeated on every poll',async()=>{
+ const db=workerDb();db.setJob(null);let scheduled,prepared=0;
+ const worker=createForecastAutomation({db,train:()=>assert.fail('No job'),prepare:async()=>{assert.equal(db.calls.length,0);prepared++;},setTimer:fn=>{scheduled=fn;return 1;},clearTimer(){}});
+ worker.start();await new Promise(r=>setImmediate(r));assert.equal(prepared,1);assert.equal(db.calls[0].name,'claim_forecast_refresh');
+ await scheduled();assert.equal(prepared,1);worker.stop();
+});
+
 test('trainer respects data readiness and delegates publication to the database lease',async()=>{
  const observations=Array.from({length:60},(_,i)=>({product_id:'part',occurred_on:`2026-09-${String(i%30+1).padStart(2,'0')}`,quantity:1,source:'actual_sale'}));
  const writes=[],sources=[];let readiness=true,python=0,published;

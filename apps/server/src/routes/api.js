@@ -14,6 +14,7 @@ import { forecastingStatus,checkForecastReadiness } from '../utils/ml.js';
 import {getDataEnvironment} from '../services/dataEnvironment.js';
 import { createDemoJobs } from '../services/forecastDemo.js';
 import { getProductPlanning } from '../services/planning.js';
+import {forecastData} from '../utils/forecastData.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
 
 import storeRoutes from './store.js';
@@ -364,7 +365,7 @@ router.get('/forecast/products', async (req,res,next) => {
 router.get('/forecast/product/:id', async (req,res,next) => {
   try {
     const productId=z.string().uuid().parse(req.params.id);
-    res.json(await getProductPlanning(adminDb,productId,storeDay()));
+    res.json(await getProductPlanning(adminDb,productId,storeDay(),req.dataEnvironment));
   } catch(e){ next(e); }
 });
 
@@ -384,10 +385,11 @@ router.get('/forecast/demo/jobs/:id', rolesAdmin, (req,res,next)=>{
 });
 
 async function demandForForecast(environment) {
-  return fetchAll(() => adminDb.from('demand_observations')
-    .select('product_id,occurred_on,quantity,source,product:products(part_number,description,unit)')
+  const input = await fetchAll(() => adminDb.from('demand_observations')
+    .select('product_id,occurred_on,quantity,source,source_reference,product:products(part_number,description,unit)')
     .in('source', environment.sources)
     .order('occurred_on').order('id'));
+  return forecastData(input,environment.mode).observations;
 }
 router.get('/forecast/recorded-sales', rolesAdmin, async (req,res,next) => {
   try {

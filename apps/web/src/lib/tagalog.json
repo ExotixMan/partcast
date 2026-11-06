@@ -1633,5 +1633,10 @@
   "Security check is temporarily unavailable. Please try again.": "Pansamantalang hindi magamit ang pagsusuri sa seguridad. Subukan ulit.",
   "Email or password is incorrect.": "Mali ang email o password.",
   "The sign-in service is temporarily unavailable. Please try again.": "Pansamantalang hindi magamit ang pag-sign in. Subukan ulit.",
-  "Too many sign-in attempts. Wait before trying again.": "Masyadong maraming pagtatangkang mag-sign in. Maghintay bago subukan ulit."
+  "Too many sign-in attempts. Wait before trying again.": "Masyadong maraming pagtatangkang mag-sign in. Maghintay bago subukan ulit.",
+  "{v0}-day historical test results": "Resulta ng pagsusuri para sa {v0} araw",
+  "XGBoost estimates the whole planning period directly. The chart spreads that total into expected daily averages; it does not predict exact sale dates.": "Direktang tinataya ng XGBoost ang kabuuan para sa napiling panahon. Hinahati ito ng chart sa inaasahang daily average; hindi nito hinuhulaan ang eksaktong petsa ng benta.",
+  "Daily chart values are expected averages of the XGBoost period total, not predictions of exact sale dates.": "Ang daily values sa chart ay inaasahang average ng kabuuang pagtataya ng XGBoost, hindi hula sa eksaktong petsa ng benta.",
+  "These errors compare complete {v0}-day estimates with recorded sales. They are not accuracy percentages.": "Inihahambing ng mga error na ito ang buong pagtataya para sa {v0} araw at ang naitalang benta. Hindi ito accuracy percentage.",
+  "Excluded {v0} generated records from this forecast.": "Hindi isinama ang {v0} generated records sa pagtatayang ito."
 }

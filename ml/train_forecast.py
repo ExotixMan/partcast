@@ -377,6 +377,7 @@ def forecast(model, cols, series_by_product, product_codes, horizon_days, as_of_
 def total_errors(actual, predicted):
     actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
     wape = safe_wape(actual, predicted)
+    variance = float(np.sum((actual - actual.mean()) ** 2))
     return {
         "mae": round(float(np.abs(predicted - actual).mean()), 4),
         "rmse": round(float(np.sqrt(np.mean((predicted - actual) ** 2))), 4),
@@ -384,6 +385,7 @@ def total_errors(actual, predicted):
         "bias": round(float((predicted - actual).mean()), 4),
         "actual_recorded_units": round(float(actual.sum()), 4),
         "predicted_units": round(float(predicted.sum()), 4),
+        "r2": round(float(1 - np.sum((predicted - actual) ** 2) / variance), 4) if variance > 0 else None,
     }
 
 
@@ -415,7 +417,18 @@ def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_facto
             continue
         cols = feature_columns()
         if period_forecaster is not None:
-            estimates = period_forecaster(history, horizon_days, origin)
+            try:
+                estimates = period_forecaster(history, horizon_days, origin)
+            except ValueError as error:
+                if str(error).startswith('Not enough completed historical periods'):
+                    continue
+                raise
+            predicted_ids = {row['product_id'] for row in estimates}
+            if not predicted_ids.issubset(history):
+                raise ValueError('The period model returned an unknown product.')
+            history = {pid:values for pid,values in history.items() if pid in predicted_ids}
+            if not history:
+                continue
         else:
             model = (model_factory or make_model)()
             model.fit(features[cols], features["y"])
@@ -481,7 +494,16 @@ def main():
     observations = payload.get("observations", [])
     origin = pd.Timestamp(payload.get("asOfDate", pd.Timestamp.today().date().isoformat())).normalize()
     if args.check_data:
-        Path(args.output).write_text(json.dumps(assess_readiness(observations, origin)), encoding="utf-8")
+        report = assess_readiness(observations, origin)
+        if report['ready'] and 'horizonDays' in payload:
+            from period_forecast import check_period_history
+            series, _ = build_product_series(observations)
+            series, _ = select_fresh_series(series, origin)
+            period = check_period_history(series, horizon, origin)
+            report.update({key:value for key,value in period.items() if key != 'ready'})
+            if not period['ready']:
+                report.update(ready=False, status='insufficient_period_history', message='Not enough completed historical periods for this planning horizon. Use a shorter period or add verified dated sales.')
+        Path(args.output).write_text(json.dumps(report), encoding="utf-8")
         return
     if not args.model_out:
         parser.error("--model-out is required when training")
@@ -491,9 +513,24 @@ def main():
 
     series_by_product, skipped_products = build_product_series(observations)
     series_by_product, stale_products = select_fresh_series(series_by_product, origin)
-    features, product_codes = make_features(series_by_product)
-    model, metrics, cols = train_model(features)
-    forecasts = forecast(model, cols, series_by_product, product_codes, horizon, origin)
+    from period_forecast import fit_period, predict_period, direct_forecast
+    model, histories, gaps, period_codes, period_rows = fit_period(series_by_product, horizon, origin)
+    forecasts = predict_period(model, histories, gaps, period_codes, horizon, origin)
+    validation = evaluate_horizon(series_by_product, horizon, period_forecaster=direct_forecast)
+    period_metrics = validation.get('model', {})
+    windows = validation.get('windows', [])
+    metrics = {**period_metrics, 'evaluation':'rolling-origin direct planning-period totals',
+               'baseline_mae':validation.get('recent_average', {}).get('mae'),
+               'zero_baseline_mae':validation.get('zero_diagnostic', {}).get('mae'),
+               'train_rows':period_rows, 'test_rows':len(windows),
+               'evaluation_start':min((w['start'] for w in windows), default=None),
+               'evaluation_end':max((w['end'] for w in windows), default=None)}
+    metrics['forecast_strategy'] = 'direct_period_expected_daily_average'
+    metrics['period_training_rows'] = period_rows
+    metrics['daily_values_are_period_averages'] = True
+    metrics['forecast_product_count'] = len(period_codes)
+    metrics['excluded_insufficient_period_products'] = len(series_by_product) - len(period_codes)
+    metrics['history_gap_days'] = {pid:gaps[pid] for pid in period_codes}
     metrics["as_of_date"] = origin.date().isoformat()
     metrics["stale_product_count"] = len(stale_products)
     metrics["source_counts"] = {str(key): int(count) for key, count in pd.Series([x.get("source", "unspecified") for x in observations]).value_counts().items()}
@@ -501,19 +538,20 @@ def main():
 
     if any(x.get("source") != "actual_sale" for x in observations):
         metrics["coverage_warning"] = "Imported history may omit sales. Days without records are not verified zero demand; validate coverage before using estimates to order stock."
-    metrics["gap_handling"] = "Up to 31 unobserved days estimated recursively; stale products excluded."
-    metrics["recursive_event_handling"] = "Quantity lags include estimates; event counts and event age use observed sales only. Future event features are uncertain."
-    metrics["horizon_validation"] = evaluate_horizon(series_by_product, horizon)
+    metrics["gap_handling"] = "Unobserved gaps are supplied explicitly to the direct period model; no invented gap sales or prediction feedback. Stale products excluded."
+    metrics["recursive_event_handling"] = "No recursive quantity feedback; event features use observed sales only."
+    metrics["horizon_validation"] = validation
+    metrics['production_accuracy_established'] = False
     model.save_model(args.model_out)
 
-    source_dates = pd.to_datetime([x["occurred_on"] for x in observations if str(x.get("product_id")) in series_by_product], errors="coerce").dropna()
+    source_dates = pd.to_datetime([x["occurred_on"] for x in observations if str(x.get("product_id")) in period_codes], errors="coerce").dropna()
     output = {
-        "model_version": f"xgb-observed-events-{pd.Timestamp.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
+        "model_version": f"xgb-direct-period-{pd.Timestamp.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
         "metrics": metrics,
         "training_date_min": source_dates.min().date().isoformat() if len(source_dates) else None,
         "training_date_max": source_dates.max().date().isoformat() if len(source_dates) else None,
-        "forecast_product_count": len(series_by_product),
-        "skipped_product_count": len(skipped_products) + len(stale_products),
+        "forecast_product_count": len(period_codes),
+        "skipped_product_count": len(skipped_products) + len(stale_products) + len(series_by_product) - len(period_codes),
         "forecast_horizon_days": horizon,
         "forecasts": forecasts,
     }

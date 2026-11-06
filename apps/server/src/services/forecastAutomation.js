@@ -1,5 +1,5 @@
-export function createForecastAutomation({db,train,pollMs=2000,setTimer=setTimeout,clearTimer=clearTimeout,logger=console}){
- let busy=false,stopped=true,timer,lastWarning=0;
+export function createForecastAutomation({db,train,prepare,pollMs=2000,setTimer=setTimeout,clearTimer=clearTimeout,logger=console}){
+ let busy=false,stopped=true,timer,lastWarning=0,prepared=false;
  async function finish(token,outcome,result={}){
   const {data,error}=await db.rpc('finish_forecast_refresh',{p_token:token,p_outcome:outcome,p_result:result});
   if(error)throw error;
@@ -25,6 +25,12 @@ export function createForecastAutomation({db,train,pollMs=2000,setTimer=setTimeo
   }finally{busy=false;}
  }
  async function loop(){
+  if(stopped)return;
+  if(!prepared&&prepare){
+   try{await prepare();prepared=true;}catch{
+    if(Date.now()-lastWarning>60000){lastWarning=Date.now();logger.error('Forecast upgrade check is waiting to retry.');}
+   }
+  }
   if(stopped)return;
   await tick();
   if(!stopped){timer=setTimer(loop,pollMs);timer?.unref?.();}

@@ -64,7 +64,7 @@ test('forecast chart returns the entire latest run without mixing or truncating 
    assert.equal(table,'demand_forecasts');forecastReads++;
    return {data:rows.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v)).slice(0,limit)};
   };
-  return {select(){return this;},eq(k,v){filters[k]=v;return this;},gte(){return this;},gt(){return this;},lte(){return this;},range(){return this;},order(){return this;},limit(n){limit=n;return this;},single:async()=>result(),maybeSingle:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
+  return {select(){return this;},in(){return this;},eq(k,v){filters[k]=v;return this;},gte(){return this;},gt(){return this;},lte(){return this;},range(){return this;},order(){return this;},limit(n){limit=n;return this;},single:async()=>result(),maybeSingle:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
  };
  const app=express();app.use('/api',authenticate,router);app.use(errorHandler);
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
