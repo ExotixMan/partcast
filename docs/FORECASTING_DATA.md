@@ -26,7 +26,7 @@ Training and test periods are chronological. Evaluate complete planning periods 
 
 A lower WAPE on one small or simulated sample does not establish actual-store accuracy. If XGBoost is worse than the baseline, disclose that and use staff review before ordering. Confirm performance on later independent actual sales and across the parts the store will buy. Keep failed or weak periods in the report; do not edit real sales to improve a score.
 
-`ml/evaluate_forecast.py`, `ml/benchmark_raw_forecast.py` and `ml/compare_forecast_candidates.py` support reproducible offline review. Python tests cover time boundaries, quantities, sparse histories and validation isolation. See [Verification](VERIFICATION.md) for the limits of current checks.
+`ml/evaluate_forecast.py` uses the current direct-period XGBoost strategy and the production freshness gates for its `planning_period_validation` results. Its separate exploratory comparison, `ml/benchmark_raw_forecast.py` and `ml/compare_forecast_candidates.py` include legacy daily strategies for comparison; those are not the current production scores. Python tests cover time boundaries, quantities, sparse histories and validation isolation. See [Verification](VERIFICATION.md) for the limits of current checks.
 
 ## Purchasing
 
