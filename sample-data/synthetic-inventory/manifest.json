@@ -1,0 +1,13 @@
+{
+  "dataset_type": "SIMULATED_DEMO",
+  "production_accuracy_established": false,
+  "actual_sales_modified": false,
+  "product_rows": 100,
+  "demand_observation_rows": 190978,
+  "omitted_synthetic_zero_days": 174022,
+  "source": "simulated_demo",
+  "compatible_with_unmodified_production_source_constraint": false,
+  "forecast_runs_fabricated": false,
+  "forecast_rows_fabricated": false,
+  "inventory_sha256": "c5202feed0c5b0f024df7c545fef9d4d77a109bacef56b4ab22e1f5d23d26d33"
+}
