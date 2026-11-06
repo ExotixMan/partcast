@@ -397,6 +397,8 @@ def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_facto
     """
     end = max(series.index.max() for series in series_by_product.values())
     windows, actual, predicted, baseline, sba, tsb = [], [], [], [], [], []
+    daily_actual, daily_predicted, daily_uniform = [], [], []
+    daily_windows = 0
     for offset in range(max_origins, 0, -1):
         origin = end - timedelta(days=horizon_days * offset)
         period_end = origin + timedelta(days=horizon_days)
@@ -443,6 +445,14 @@ def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_facto
             simple = float(before.tail(28).mean()) * horizon_days
             sba_units = round(daily_rate(before.to_numpy(), "croston_sba"), 4) * horizon_days
             tsb_units = round(daily_rate(before.to_numpy(), "tsb"), 4) * horizon_days
+            matching = [row for row in estimates if row['product_id'] == pid]
+            expected_dates = pd.date_range(origin + timedelta(days=1), period_end, freq='D')
+            indexed = {row['forecast_date']:row['predicted_quantity'] for row in matching}
+            if len(matching) == horizon_days and len(indexed) == horizon_days and all(date.date().isoformat() in indexed for date in expected_dates):
+                daily_actual.extend(float(series_by_product[pid].loc[date]) for date in expected_dates)
+                daily_predicted.extend(float(indexed[date.date().isoformat()]) for date in expected_dates)
+                daily_uniform.extend([totals[pid] / horizon_days] * horizon_days)
+                daily_windows += 1
             actual.append(target); predicted.append(totals[pid]); baseline.append(simple)
             sba.append(sba_units); tsb.append(tsb_units)
             windows.append({"product_id": pid, "origin": origin.date().isoformat(),
@@ -469,6 +479,15 @@ def evaluate_horizon(series_by_product, horizon_days, max_origins=3, model_facto
     result["croston_sba"] = total_errors(actual, sba)
     result["tsb"] = total_errors(actual, tsb)
     result["zero_diagnostic"] = total_errors(actual, np.zeros(len(actual)))
+    if daily_actual:
+        result['daily_validation'] = {
+            'evaluation':'rolling-origin expected daily quantities', 'horizon_days':horizon_days,
+            'day_count':len(daily_actual), 'product_period_count':daily_windows,
+            'model':total_errors(daily_actual, daily_predicted),
+            'uniform_allocation':total_errors(daily_actual, daily_uniform),
+            'limitations':['Recorded-sales coverage and stockouts remain unverified.',
+                           'Expected quantities are not exact future transactions.']}
+
     if sum(actual) == 0:
         result["status"] = "no_recorded_test_demand"
     elif result["model"]["mae"] >= result["zero_diagnostic"]["mae"]:
@@ -513,10 +532,9 @@ def main():
 
     series_by_product, skipped_products = build_product_series(observations)
     series_by_product, stale_products = select_fresh_series(series_by_product, origin)
-    from period_forecast import fit_period, predict_period, direct_forecast
-    model, histories, gaps, period_codes, period_rows = fit_period(series_by_product, horizon, origin)
-    forecasts = predict_period(model, histories, gaps, period_codes, horizon, origin)
-    validation = evaluate_horizon(series_by_product, horizon, period_forecaster=direct_forecast)
+    from daily_pattern import fit_pattern_forecast, pattern_forecast, STRATEGY, MODEL_PREFIX
+    model, histories, gaps, period_codes, period_rows, forecasts, profile = fit_pattern_forecast(series_by_product, horizon, origin)
+    validation = evaluate_horizon(series_by_product, horizon, period_forecaster=pattern_forecast)
     period_metrics = validation.get('model', {})
     windows = validation.get('windows', [])
     metrics = {**period_metrics, 'evaluation':'rolling-origin direct planning-period totals',
@@ -525,9 +543,13 @@ def main():
                'train_rows':period_rows, 'test_rows':len(windows),
                'evaluation_start':min((w['start'] for w in windows), default=None),
                'evaluation_end':max((w['end'] for w in windows), default=None)}
-    metrics['forecast_strategy'] = 'direct_period_expected_daily_average'
+    metrics['forecast_strategy'] = STRATEGY
+    metrics['daily_profile'] = profile
+    metrics['daily_validation'] = validation.get('daily_validation')
     metrics['period_training_rows'] = period_rows
-    metrics['daily_values_are_period_averages'] = True
+    learned_profile = any(mode == 'learned_daily_profile' for mode in profile['product_modes'].values())
+    metrics['daily_values_are_period_averages'] = not learned_profile
+    metrics['daily_values_follow_learned_pattern'] = learned_profile
     metrics['forecast_product_count'] = len(period_codes)
     metrics['excluded_insufficient_period_products'] = len(series_by_product) - len(period_codes)
     metrics['history_gap_days'] = {pid:gaps[pid] for pid in period_codes}
@@ -546,7 +568,7 @@ def main():
 
     source_dates = pd.to_datetime([x["occurred_on"] for x in observations if str(x.get("product_id")) in period_codes], errors="coerce").dropna()
     output = {
-        "model_version": f"xgb-direct-period-{pd.Timestamp.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
+        "model_version": f"{MODEL_PREFIX}{pd.Timestamp.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
         "metrics": metrics,
         "training_date_min": source_dates.min().date().isoformat() if len(source_dates) else None,
         "training_date_max": source_dates.max().date().isoformat() if len(source_dates) else None,

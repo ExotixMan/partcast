@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from evaluate_forecast import planning_validation
-from period_forecast import direct_forecast
+from daily_pattern import pattern_forecast
 
 
 class AuditStrategyTests(unittest.TestCase):
@@ -14,7 +14,7 @@ class AuditStrategyTests(unittest.TestCase):
         self.assertEqual(evaluate.call_count, 4)
         for call, horizon in zip(evaluate.call_args_list, [14, 30, 60, 90]):
             self.assertEqual(call.args, (histories, horizon))
-            self.assertIs(call.kwargs['period_forecaster'], direct_forecast)
+            self.assertIs(call.kwargs['period_forecaster'], pattern_forecast)
 
     def test_audit_with_no_fresh_history_does_not_try_to_fit_a_model(self):
         with patch('evaluate_forecast.evaluate_horizon') as evaluate:

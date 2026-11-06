@@ -8,7 +8,7 @@ export const trainForecast=createForecastTrainer({db:adminDb,getEnvironment:getD
 export async function prepareForecastUpgrade(db=adminDb){
  const {data:latest,error}=await db.from('latest_completed_forecast_run').select('model_version').maybeSingle();
  if(error)throw error;
- if(latest?.model_version?.startsWith('xgb-direct-period-'))return;
+ if(latest?.model_version?.startsWith('xgb-pattern-period-'))return;
  const {data:state,error:stateError}=await db.from('forecast_refresh_state').select('status').eq('id',1).single();
  if(stateError)throw stateError;
  if(['queued','training'].includes(state?.status))return;
