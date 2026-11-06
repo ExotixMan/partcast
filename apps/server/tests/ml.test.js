@@ -52,6 +52,17 @@ test('concurrent identical history checks share one result and later checks use 
  assert.notStrictEqual(next,results[0]);
 });
 
+test('readiness checks for different planning horizons cannot share a less restrictive result',async()=>{
+ const short=observations.filter(row=>row.product_id==='synthetic-brake').slice(-80);
+ const [basic,period]=await Promise.all([
+  checkForecastReadiness({observations:short,asOfDate}),
+  checkForecastReadiness({observations:short,asOfDate,horizonDays:90})
+ ]);
+ assert.equal(basic.ready,true);
+ assert.equal(period.ready,false);assert.equal(period.status,'insufficient_period_history');
+ assert.notStrictEqual(basic,period);
+});
+
 test('forecast results cannot invent parts, repeat dates, shorten the horizon or claim false counts',()=>{
  const input={asOfDate:'2026-10-14',horizonDays:7,observations:[{product_id:'identified-part'},{product_id:'sparse-identified-part'}]};
  const valid={forecast_product_count:1,forecast_horizon_days:7,forecasts:Array.from({length:7},(_,i)=>({product_id:'identified-part',forecast_date:`2026-10-${15+i}`,predicted_quantity:0.25}))};

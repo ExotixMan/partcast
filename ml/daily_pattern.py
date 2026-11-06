@@ -1,6 +1,7 @@
 """Learn relative daily expectations from past sales; preserve XGBoost period totals."""
 from decimal import Decimal, localcontext
 import json
+from typing import NamedTuple
 import numpy as np
 import pandas as pd
 from train_forecast import feature_columns, row_for_next_date, MAX_FORECAST_GAP_DAYS
@@ -11,6 +12,18 @@ MODEL_PREFIX = 'xgb-pattern-period-'
 EXTRA_COLUMNS = ['forecast_gap_days', 'lead_days', 'cadence_days', 'cadence_consistency',
                  'cycle_distance', 'recent_event_size']
 COLUMNS = feature_columns() + EXTRA_COLUMNS
+
+
+class HistoryState(NamedTuple):
+    code: int
+    values: np.ndarray
+    gap: int
+    cadence: float
+    consistency: float
+    event_size: float
+    last: pd.Timestamp
+    features: dict
+    scale: float
 
 
 def history_state(code, source, origin):
@@ -26,18 +39,25 @@ def history_state(code, source, origin):
         return None
     intervals = np.diff(events[-13:])
     cadence = float(np.median(intervals))
-    return (code, observed, gap, cadence, float(np.mean(np.abs(intervals - cadence) <= 1)),
-            float(np.mean(values[events[-5:]])), last)
+    features = row_for_next_date(code, observed, last + pd.Timedelta(days=gap + 1), len(observed) + gap + 1)
+    return HistoryState(code, observed, gap, cadence, float(np.mean(np.abs(intervals - cadence) <= 1)),
+                        float(np.mean(values[events[-5:]])), last, features,
+                        max(1.0, float(np.mean(observed[-90:]))))
 
 
-def daily_features(state, lead):
-    code, values, gap, cadence, consistency, size, last = state
-    date = last + pd.Timedelta(days=gap + lead)
-    row = row_for_next_date(code, values, date, len(values) + gap + lead)
-    phase = (gap + lead) % cadence
-    row.update(forecast_gap_days=gap, lead_days=lead, cadence_days=cadence,
-               cadence_consistency=consistency, cycle_distance=min(phase, cadence - phase) / cadence,
-               recent_event_size=size)
+def daily_features(state, lead, calendar=None):
+    row = state.features.copy()
+    if calendar is None:
+        date = state.last + pd.Timedelta(days=state.gap + lead)
+        calendar = {'dow':date.dayofweek, 'dom':date.day, 'month':date.month,
+                    'week':int(date.isocalendar().week), 'is_weekend':int(date.dayofweek >= 5)}
+    row.update(calendar)
+    phase = (state.gap + lead) % state.cadence
+    row.update(days_from_start=len(state.values) + state.gap + lead,
+               forecast_gap_days=state.gap, lead_days=lead, cadence_days=state.cadence,
+               cadence_consistency=state.consistency,
+               cycle_distance=min(phase, state.cadence - phase) / state.cadence,
+               recent_event_size=state.event_size)
     return row
 
 
@@ -47,6 +67,9 @@ def fit_daily_profile(histories, codes, horizon):
     budget = max(1, MAX_TRAINING_ROWS // max(1, len(codes)))
     for pid in sorted(codes):
         series = histories[pid]
+        values = series.to_numpy(dtype=float)
+        calendar = [{'dow':int(dow), 'dom':int(dom), 'month':int(month), 'week':int(week), 'is_weekend':int(dow >= 5)}
+                    for dow,dom,month,week in zip(series.index.dayofweek, series.index.day, series.index.month, series.index.isocalendar().week)]
         origins = np.arange(35, len(series) - horizon, 3)
         combinations = len(origins) * horizon
         if not combinations:
@@ -60,8 +83,8 @@ def fit_daily_profile(histories, codes, horizon):
             state = states[position]
             if state is None:
                 continue
-            records.append(daily_features(state, lead))
-            targets.append(float(series.iloc[position + lead]) / max(1.0, float(np.mean(state[1][-90:]))))
+            records.append(daily_features(state, lead, calendar[position + lead]))
+            targets.append(float(values[position + lead]) / state.scale)
             part_ids.append(pid)
     if len(records) > MAX_TRAINING_ROWS:
         chosen = np.linspace(0, len(records) - 1, MAX_TRAINING_ROWS, dtype=int)

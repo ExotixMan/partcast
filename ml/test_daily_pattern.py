@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from daily_pattern import allocate_ticks, fit_pattern_forecast, history_state, daily_features
 from period_forecast import predict_period
-from train_forecast import evaluate_horizon
+from train_forecast import evaluate_horizon, row_for_next_date, feature_columns
 
 
 class CapturedModel:
@@ -65,6 +65,18 @@ class DailyPatternTests(unittest.TestCase):
         self.assertEqual(row['forecast_gap_days'], 3)
         self.assertEqual(row['cycle_distance'], 0)
         self.assertIsNone(history_state(0, source, origin + pd.Timedelta(days=40)))
+
+    def test_cached_history_features_match_full_computation_across_dates_and_leads(self):
+        source = self.series(421)
+        origin = source.index[-1] + pd.Timedelta(days=4)
+        state = history_state(3, source, origin)
+        unchanged = state.features.copy()
+        for lead in [1, 7, 30, 60, 90]:
+            date = origin + pd.Timedelta(days=lead)
+            expected = row_for_next_date(3, state.values, date, len(state.values) + state.gap + lead)
+            actual = daily_features(state, lead)
+            self.assertEqual({key:actual[key] for key in feature_columns()}, expected)
+        self.assertEqual(state.features, unchanged)
 
     def test_learned_weekly_timing_preserves_the_independently_estimated_total(self):
         source = self.series(421)

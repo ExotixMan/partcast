@@ -21,7 +21,7 @@ function processOutput(command, args, timeoutMs = 15000, timeoutMessage = 'Forec
     child.stdout.on('data',d=>{out=(out+d).slice(-8000);});
     child.stderr.on('data',d=>{err=(err+d).slice(-4000);});
     child.on('error',e=>{clearTimeout(timer);reject(e);});
-    child.on('close',(code,signal)=>{clearTimeout(timer);code===0?resolve(out):reject(Object.assign(new Error(err.trim()||'The forecasting process could not finish.'),{status:code===2?422:503,safe:code===2,exitCode:code,signal}));});
+    child.on('close',(code,signal)=>{clearTimeout(timer);code===0?resolve(out):reject(Object.assign(new Error(err.trim()||'The forecasting process could not finish.'),{status:code===2?422:503,safe:code===2,exitCode:code,signal,code:signal==='SIGKILL'?'FORECAST_RESOURCE_LIMIT':signal?'FORECAST_INTERRUPTED':code===2?'FORECAST_DATA_INVALID':'FORECAST_ENGINE_ERROR'}));});
   });
 }
 export async function resolveForecastRuntime() {
@@ -69,7 +69,7 @@ export async function forecastingStatus() {
   catch(e){return {ready:false,message:e.message,code:e.code};}
 }
 export async function checkForecastReadiness(payload) {
-  const key=createHash('sha256').update(JSON.stringify({asOfDate:payload.asOfDate,observations:payload.observations})).digest('hex');
+  const key=createHash('sha256').update(JSON.stringify({asOfDate:payload.asOfDate,horizonDays:payload.horizonDays??null,observations:payload.observations})).digest('hex');
   if(pendingReadiness.has(key))return pendingReadiness.get(key);
   const pending=runReadinessCheck(payload);
   pendingReadiness.set(key,pending);
@@ -90,7 +90,7 @@ async function runReadinessCheck(payload) {
   }
 }
 export function validateForecastResult(result,payload){
-  const invalid=()=>{throw Object.assign(new Error('The forecasting engine returned invalid estimates. Ask the Super Admin to check the forecasting installation.'),{status:503,safe:true});};
+  const invalid=()=>{throw Object.assign(new Error('The forecasting engine returned invalid estimates. Ask the Super Admin to check the forecasting installation.'),{status:503,safe:true,code:'FORECAST_OUTPUT_INVALID'});};
   const horizon=Math.min(90,Math.max(7,Math.trunc(Number(payload.horizonDays??30))));
   const known=new Set((payload.observations||[]).map(row=>row.product_id));
   const origin=new Date(payload.asOfDate+'T00:00:00Z');

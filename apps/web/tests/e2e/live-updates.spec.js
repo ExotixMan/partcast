@@ -4,12 +4,12 @@ const ExcelJS=createRequire(new URL('../../../server/package.json',import.meta.u
 const userId='11111111-1111-4111-8111-111111111111',p1='33333333-3333-4333-8333-333333333333',p2='99999999-9999-4999-8999-999999999999',project='ragdjkdcrvexqfadlqbf',supplier='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const sid='77777777-7777-4777-8777-777777777777';
 const token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({session_id:sid,amr:[{method:'password'}]})).toString('base64url')+'.test-only-signature';
-async function fixture(context,{role='owner',demandPerDay=2}={}){
+async function fixture(context,{role='owner',demandPerDay=2,failForecast=false}={}){
  await context.addInitScript(({userId,project,token})=>localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:token,refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}})),{userId,project,token});
  const reliability={status:'lower_error',test_periods:2,wape_percent:5,mae:1,rmse:1};
  const products=[{id:p1,part_number:'BP-001',description:'Toyota brake pad',brand:'Toyota',unit:'pcs',location:'Shelf A',current_stock:5,minimum_stock:1,safety_stock:1,selling_price:500,unit_cost:100,category:'parts',barcode:'123456789012',search_aliases:['pastilyas'],photo_paths:[],stock_status:'ok'},{id:p2,part_number:'OIL-001',description:'Engine oil',brand:'Brand',unit:'bottles',location:'Shelf B',current_stock:8,minimum_stock:2,selling_price:100,unit_cost:60,category:'lubricants',barcode:'987654321098',search_aliases:['langis ng makina'],photo_paths:[],stock_status:'ok'}];
  const batches=[],debts=[],payments=[],emails=[],productWrites=[],photoUploads=[],supplierLinks=[];let disconnected=false;const sales=[];const today='2026-10-31';let currentRun='run',prediction=demandPerDay,completed=0;let automation={status:'ready',horizon_days:30,last_run_id:currentRun};const manualTraining=[];
- function queueForecast(){automation={...automation,status:'queued'};setTimeout(()=>automation={...automation,status:'training'},50);setTimeout(()=>{currentRun=`automatic-${++completed}`;prediction++;automation={...automation,status:'ready',last_run_id:currentRun};},600);}const receipts=new Map();
+ function queueForecast(){automation={...automation,status:'queued'};setTimeout(()=>automation={...automation,status:'training'},50);setTimeout(()=>{if(failForecast){automation={...automation,status:'error'};return;}currentRun=`automatic-${++completed}`;prediction++;automation={...automation,status:'ready',last_run_id:currentRun};},600);}const receipts=new Map();
  await context.route('http://localhost:10000/**',async route=>{
  const req=route.request(),url=new URL(req.url()),headers={'access-control-allow-origin':'*'};
  if(disconnected){await route.abort('internetdisconnected');return;}
@@ -22,15 +22,15 @@ async function fixture(context,{role='owner',demandPerDay=2}={}){
  else if(url.pathname==='/api/forecast/train'){manualTraining.push(req.postDataJSON());body={queued:true};}
  else if(url.pathname==='/api/forecast/status')body={ready:true};
  else if(url.pathname==='/api/data-quality')body={actualDemandRows:sales.length};
- else if(url.pathname==='/api/forecast/runs')body={data:[{id:currentRun,status:'completed',started_at:today}]};
+ else if(url.pathname==='/api/forecast/runs')body={data:[...(automation.status==='error'?[{id:'failed-run',status:'failed',horizon_days:30,started_at:today,metrics:{failure:{code:'FORECAST_TIMEOUT',stage:'training',elapsed_seconds:120}}}]:[]),{id:currentRun,status:'completed',started_at:today}]};
  else if(url.pathname==='/api/forecast/products')body={run:{id:currentRun},data:products.map(p=>({...p,product_id:p.id,predicted_total:prediction*2,forecast_days:2,reliability}))};
- else if(url.pathname.startsWith('/api/forecast/product/')){const product=products.find(p=>p.id===url.pathname.split('/').at(-1));body={product,reliability,today,run:{id:currentRun},actualSales:sales,data:[{run_id:currentRun,forecast_date:'2026-11-01',predicted_quantity:prediction},{run_id:currentRun,forecast_date:'2026-11-02',predicted_quantity:prediction}]};}
+ else if(url.pathname.startsWith('/api/forecast/product/')){const product=products.find(p=>p.id===url.pathname.split('/').at(-1));body={product,reliability,today,run:{id:currentRun},actualSales:sales.filter(row=>row.product_id===product.id),data:[{run_id:currentRun,forecast_date:'2026-11-01',predicted_quantity:prediction},{run_id:currentRun,forecast_date:'2026-11-02',predicted_quantity:prediction}]};}
  else if(url.pathname==='/api/products'&&req.method()==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category');const data=products.filter(p=>`${p.part_number} ${p.description} ${p.barcode} ${p.search_aliases.join(' ')}`.toLowerCase().includes(q)&&(!category||category==='all'||p.category===category));body={data,count:data.length};}
  else if(url.pathname==='/api/products'&&req.method()==='POST'){const payload=req.postDataJSON();productWrites.push(payload);body={product:{...payload,id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'}};}
  else if(url.pathname.startsWith('/api/products/')&&req.method()==='PATCH'){const changes=req.postDataJSON();productWrites.push(changes);const product=products.find(p=>p.id===url.pathname.split('/').at(-1));Object.assign(product,changes);body={product};}
  else if(url.pathname==='/api/inventory/batch'){
  const b=req.postDataJSON();const replay=batches.find(previous=>previous.client_operation_id===b.client_operation_id);if(replay)expect(b).toEqual(replay);batches.push(b);
- if(!receipts.has(b.client_operation_id)){for(const l of b.lines){products.find(p=>p.id===l.product_id).current_stock+=(b.tx_type==='sale'?-1:1)*l.quantity;if(b.tx_type==='sale')sales.push({occurred_on:today,quantity:l.quantity});}
+ if(!receipts.has(b.client_operation_id)){for(const l of b.lines){products.find(p=>p.id===l.product_id).current_stock+=(b.tx_type==='sale'?-1:1)*l.quantity;if(b.tx_type==='sale')sales.push({product_id:l.product_id,occurred_on:today,quantity:l.quantity});}
  const total=b.lines.reduce((s,l)=>s+Math.round(l.quantity*l.unit_price*100),0)/100;
  if(b.is_credit&&total>b.paid_amount)debts.push({id:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',customer_name:b.customer_name,principal:total-b.paid_amount,paid_amount:0,balance:total-b.paid_amount,due_date:b.due_date,occurred_at:b.occurred_at,status:'open'});
  if(b.tx_type==='sale')queueForecast();
@@ -124,4 +124,34 @@ test('a missing prediction is explained instead of becoming a zero-demand chart'
  await expect(page.getByText('No current estimate for this part.',{exact:true})).toBeVisible();
  await expect(page.getByRole('img',{name:/Estimated daily sales for/})).toHaveCount(0);
  await expect(page.getByText('About 0 units',{exact:false})).toHaveCount(0);
+});
+
+
+test('planning refreshes stock without a websocket event or a same-browser mutation message',async({page,context})=>{
+ const api=await fixture(context);await page.goto('/forecast');
+ await expect(page.getByText('On hand: 5 units',{exact:true})).toBeVisible();
+ const stock=page.locator('.recharts-line').last().locator('path.recharts-line-curve');const before=await stock.getAttribute('d');
+ api.products[0].current_stock=6;
+ await expect(page.getByText('On hand: 6 units',{exact:true})).toBeVisible({timeout:10000});
+ await expect.poll(()=>stock.getAttribute('d')).not.toBe(before);
+ expect(api.manualTraining).toEqual([]);
+});
+
+test('a failed recalculation still refreshes real sales and stock and keeps the last completed predictions',async({page,context})=>{
+ const api=await fixture(context,{failForecast:true});const counter=await context.newPage();
+ await page.goto('/forecast');await expect(page.getByText('On hand: 5 units',{exact:true})).toBeVisible();
+ const actual=page.locator('.recharts-line').first().locator('path.recharts-line-curve');const before=await actual.getAttribute('d');
+ await counter.goto('/counter');await expect(counter.getByText(/Inventory saved/)).toBeVisible();
+ await counter.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();
+ await counter.getByRole('button',{name:'3. Confirm sale'}).click();
+ await expect(page.getByText('On hand: 4 units',{exact:true})).toBeVisible();
+ await expect.poll(()=>actual.getAttribute('d')).not.toBe(before);
+ await expect.poll(()=>api.automation().status).toBe('error');
+ await expect(page.getByText('Update delayed. Retrying automatically.',{exact:true})).toBeVisible({timeout:10000});
+ await page.getByRole('button',{name:'Daily list',exact:true}).click();
+ await expect(page.getByText('About 4 units',{exact:false})).toBeVisible();
+ await expect(page.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('2');
+ await page.getByText('Sales data and update history',{exact:true}).click();
+ await expect(page.getByText('Reference: FORECAST_TIMEOUT · TRAINING · 120s',{exact:true})).toBeVisible({timeout:10000});
+ expect(api.completed()).toBe(0);expect(api.manualTraining).toEqual([]);
 });

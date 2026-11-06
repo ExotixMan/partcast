@@ -1,3 +1,5 @@
+import {forecastFailure} from '../utils/forecastFailure.js';
+
 export function createForecastAutomation({db,train,prepare,pollMs=2000,setTimer=setTimeout,clearTimer=clearTimeout,logger=console}){
  let busy=false,stopped=true,timer,lastWarning=0,prepared=false;
  async function finish(token,outcome,result={}){
@@ -20,7 +22,7 @@ export function createForecastAutomation({db,train,prepare,pollMs=2000,setTimer=
    if(job)try{await finish(job.lock_token,'error');}catch{/* Expired workers must not release another worker's lease. */}
    if(Date.now()-lastWarning>60000){
     lastWarning=Date.now();
-    logger.error('Automatic forecasting is waiting to retry.',{code:error.code||'FORECAST_WORKER_ERROR'});
+    logger.error('Automatic forecasting is waiting to retry.',forecastFailure(error));
    }
   }finally{busy=false;}
  }

@@ -1678,5 +1678,19 @@
   "Daily larger-error measure (RMSE)": "Sukat ng mas malaking daily error (RMSE)",
   "Daily quantity error (WAPE)": "Daily quantity error (WAPE)",
   "Uniform allocation MAE / RMSE": "MAE / RMSE ng pantay na paghahati",
-  "The chart follows timing patterns from recorded sales while preserving the total estimate. When timing history is insufficient, the total is spread evenly.": "Sinusunod ng chart ang pattern mula sa dating benta habang pinananatili ang kabuuang pagtataya. Kung kulang ang history para rito, pantay ang paghahati ng kabuuan."
+  "The chart follows timing patterns from recorded sales while preserving the total estimate. When timing history is insufficient, the total is spread evenly.": "Sinusunod ng chart ang pattern mula sa dating benta habang pinananatili ang kabuuang pagtataya. Kung kulang ang history para rito, pantay ang paghahati ng kabuuan.",
+  "The forecast took too long to finish. Automatic retry is pending.": "Masyadong matagal ang pagkalkula ng forecast. Nakatakdang subukan muli.",
+  "The host stopped the forecasting process. Automatic retry is pending.": "Itinigil ng host ang pagkalkula ng forecast. Nakatakdang subukan muli.",
+  "The forecasting process was interrupted. Automatic retry is pending.": "Naantala ang pagkalkula ng forecast. Nakatakdang subukan muli.",
+  "The forecasting engine could not use the supplied sales history.": "Hindi magamit ng forecasting engine ang ibinigay na sales history.",
+  "The forecasting engine returned incomplete or invalid estimates.": "Kulang o hindi wasto ang ibinalik na pagtataya ng forecasting engine.",
+  "The forecasting engine could not finish the calculation.": "Hindi natapos ng forecasting engine ang pagkalkula.",
+  "The forecasting engine is not installed correctly.": "Hindi maayos ang pagkaka-install ng forecasting engine.",
+  "The forecasting engine took too long to start.": "Masyadong matagal bago nagsimula ang forecasting engine.",
+  "The model file could not be saved.": "Hindi na-save ang model file.",
+  "The forecast quantities could not be saved.": "Hindi na-save ang mga dami sa forecast.",
+  "The forecast update could not be published.": "Hindi nailathala ang bagong forecast.",
+  "The forecast update could not finish.": "Hindi natapos ang pag-update ng forecast.",
+  "This update could not finish. Automatic retry is pending.": "Hindi natapos ang update na ito. Nakatakdang subukan muli.",
+  "Parts shown": "Mga ipinapakitang piyesa"
 }

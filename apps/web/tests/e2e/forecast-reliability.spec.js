@@ -3,7 +3,7 @@ import {partReliability,reliabilityForPart,forecastReliabilityPolicy} from '../.
 const userId='11111111-1111-4111-8111-111111111111',sessionId='77777777-7777-4777-8777-777777777777',project='ragdjkdcrvexqfadlqbf';
 const ids=['33333333-3333-4333-8333-333333333333','44444444-4444-4444-8444-444444444444','55555555-5555-4555-8555-555555555555','66666666-6666-4666-8666-666666666666'];
 const token=`e30.${Buffer.from(JSON.stringify({session_id:sessionId,amr:[{method:'password'}]})).toString('base64url')}.test-only-signature`;
-async function fixture(context,{empty=false,race=false,language='en',mobile=false,learned=false}={}){
+async function fixture(context,{empty=false,race=false,language='en',mobile=false,learned=false,failed=false}={}){
  await context.addInitScript(({token,userId,project,language,mobile})=>{
   localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:token,refresh_token:'test-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'owner@example.test',aud:'authenticated'}}));
   localStorage.setItem('partcast-language',language);if(mobile){localStorage.setItem('partcast-text-size','large');localStorage.setItem('partcast-theme','dark');}
@@ -26,7 +26,7 @@ async function fixture(context,{empty=false,race=false,language='en',mobile=fals
   else if(path==='/api/forecast/status')body={ready:true};
   else if(path==='/api/forecast/automation')body={status:'ready',horizon_days:30};
   else if(path==='/api/data-quality')body={actualDemandRows:100};
-  else if(path==='/api/forecast/runs')body={data:[run()]};
+  else if(path==='/api/forecast/runs')body={data:[...(failed?[{id:'failed',status:'failed',horizon_days:90,training_rows:731,product_count:27,started_at:'2026-11-07T00:01:00+08:00',error_message:'fixture-secret-token',metrics:{failure:{code:'FORECAST_TIMEOUT',stage:'training',elapsed_seconds:120}}},{id:'legacy-failed',status:'failed',horizon_days:90,error_message:'fixture-secret-token'}]:[]),run()]};
   else if(path==='/api/forecast/products'){
    lists++;const current=run(),assessments=partReliability(current.metrics,current.horizon_days);
    body={run:current,reliability_policy:forecastReliabilityPolicy,data:products.map(p=>({...p,reliability:reliabilityForPart(assessments,p.id)}))};
@@ -47,7 +47,7 @@ test('planning keeps the error rule behind the scenes and preserves the full tes
  await expect(choice.locator('option').filter({hasText:'Brake pad'})).toHaveCount(1);
  await expect(choice.locator('option').filter({hasText:'Fuel filter'})).toHaveCount(0);
  await expect(choice.locator('option').filter({hasText:'Engine oil'})).toHaveCount(0);
- await expect(page.getByRole('button',{name:/Lower-error forecasts|All parts|Summary/})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:/Summary/})).toHaveCount(0);
  await expect(page.getByRole('region',{name:'Forecast review status'})).toHaveCount(0);
  await expect(page.getByText('Lower historical error',{exact:true})).toHaveCount(0);
  await expect(page.getByText(/Lower-error view: WAPE/)).toHaveCount(0);
@@ -68,7 +68,7 @@ test('no qualifying forecasts explains the condition without exposing weak estim
  await fixture(context,{empty:true});await page.goto('/forecast');
  await expect(page.getByRole('heading',{name:'No estimates ready for planning'})).toBeVisible();
  await expect(page.getByRole('img',{name:/Estimated daily sales for/})).toHaveCount(0);
- await expect(page.getByRole('button',{name:/View all parts|All parts|Summary/})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:/Summary/})).toHaveCount(0);
  await page.getByText('Sales data and update history',{exact:true}).click();
  await expect(page.getByRole('region',{name:'How dependable is this estimate?',exact:true})).toBeVisible();
 });
@@ -85,7 +85,7 @@ test('the simplified planning page fits a large-text Tagalog dark phone',async({
  await fixture(context,{language:'fil',mobile:true});await page.setViewportSize({width:320,height:740});await page.goto('/forecast');
  await expect(page.locator('#forecast-part-choice').locator('option')).toHaveCount(2);
  await expect(page.locator('.panel-header').getByRole('group').getByRole('button')).toHaveCount(2);
- await expect(page.getByRole('button',{name:/Lahat ng piyesa|Mga pagtatayang mas mababa ang error|Buod/})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:/Buod/})).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:'/tmp/partcast-planning-simplified-phone.png',fullPage:true});
 });
@@ -107,4 +107,32 @@ test('learned daily profiles keep period errors labelled correctly and disclose 
  await expect(page.getByText('Uniform allocation MAE / RMSE',{exact:true}).locator('..')).toContainText('0.8 / 1.5 units');
  await expect(page.getByText('Daily quantity error (WAPE)',{exact:true}).locator('..')).toContainText('30%');
  await page.screenshot({path:'/tmp/partcast-planning-daily-validation.png',fullPage:true});
+});
+
+
+test('failed runs show a safe diagnostic reference without presenting failed training as measured accuracy',async({page,context})=>{
+ await fixture(context,{failed:true});await page.goto('/forecast');
+ await page.getByText('Sales data and update history',{exact:true}).click();
+ await expect(page.getByRole('status').filter({hasText:'The forecast took too long to finish. Automatic retry is pending.'})).toBeVisible();
+ await expect(page.getByText('Reference: FORECAST_TIMEOUT · TRAINING · 120s',{exact:true})).toBeVisible();
+ await expect(page.getByText('This update could not finish. Automatic retry is pending.',{exact:true})).toBeVisible();
+ await expect(page.getByText('90-day historical test results',{exact:true})).toHaveCount(0);
+ await expect(page.getByText('30-day historical test results',{exact:true})).toHaveCount(1);
+ await expect(page.getByText('fixture-secret-token',{exact:false})).toHaveCount(0);
+ await expect(page.getByRole('img',{name:/Estimated daily sales for Brake pad/})).toBeVisible();
+});
+
+
+test('All parts restores every inventory choice without inventing missing forecasts or bringing back Summary',async({page,context})=>{
+ await fixture(context);await page.goto('/forecast');
+ const choice=page.getByLabel('Choose a part',{exact:true});await expect(choice.locator('option')).toHaveCount(2);
+ await page.getByRole('button',{name:'All parts (4)',exact:true}).click();
+ await expect(choice.locator('option')).toHaveCount(5);
+ await choice.selectOption(ids[1]);await expect(page.getByRole('img',{name:/Estimated daily sales for Fuel filter/})).toBeVisible();
+ await choice.selectOption(ids[2]);await expect(page.getByRole('img',{name:/Estimated daily sales for Engine oil/})).toBeVisible();
+ await choice.selectOption(ids[3]);await expect(page.getByText('No current estimate for this part.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('img',{name:/Estimated daily sales for/})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Summary',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Lower-error forecasts (1)',exact:true}).click();
+ await expect(choice.locator('option')).toHaveCount(2);await expect(page.getByRole('img',{name:/Estimated daily sales for Brake pad/})).toBeVisible();
 });
