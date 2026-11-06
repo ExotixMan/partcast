@@ -6,6 +6,7 @@ async function fixture(context,{language='en',large=false,dark=false,limitations
   localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:token,refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'owner@example.test',aud:'authenticated'}}));
   localStorage.setItem('partcast-language',language);localStorage.setItem('partcast-text-size',large?'large':'standard');localStorage.setItem('partcast-theme',dark?'dark':'light');
  },{project,userId,token,language,large,dark});
+ const reliability={status:'lower_error',test_periods:2,wape_percent:5,mae:1,rmse:1};
  const writes=[],product={id:partId,part_number:'BP-001',description:'Brake pad',unit:'pcs',category:'parts',current_stock:45,minimum_stock:1,safety_stock:1,selling_price:100,unit_cost:60,photo_paths:[],search_aliases:[],stock_status:'ok'};
  await context.route('http://localhost:10000/**',async route=>{
   const req=route.request(),url=new URL(req.url()),headers={'access-control-allow-origin':'*'};
@@ -18,8 +19,8 @@ async function fixture(context,{language='en',large=false,dark=false,limitations
   else if(url.pathname==='/api/suppliers')body={data:[{id:supplierId,name:'Parts supplier',email:'supplier@example.test'}]};
   else if(url.pathname==='/api/reorder')body={data:[{...product,product_id:partId,supplier_id:supplierId,supplier_name:'Parts supplier',supplier_email:'supplier@example.test',recommended_quantity:2,predicted_quantity:32,status:'low_stock'}]};
   else if(url.pathname==='/api/forecast/runs')body={data:[{id:'run',status:'completed',completed_at:'2026-11-03T00:00:00Z',metrics:{mae:0.0177,coverage_warning:limitations,stale_product_count:limitations?3:0,horizon_validation:{status:limitations?'no_improvement_over_zero':'improvement_observed',model:{mae:2,wape_percent:5,actual_recorded_units:32,predicted_units:30},window_count:2,horizon_days:30,tested_product_count:1,nonzero_window_count:2}}}]};
-  else if(url.pathname==='/api/forecast/products')body={run:{id:'run'},data:[{...product,product_id:partId,predicted_total:32,forecast_days:2}]};
-  else if(url.pathname.startsWith('/api/forecast/product/'))body={product,today:'2026-11-03',actualSales:[],run:{id:'run'},data:[4,5].map(day=>({run_id:'run',forecast_date:`2026-11-0${day}`,predicted_quantity:16}))};
+  else if(url.pathname==='/api/forecast/products')body={run:{id:'run'},data:[{...product,product_id:partId,predicted_total:32,forecast_days:2,reliability}]};
+  else if(url.pathname.startsWith('/api/forecast/product/'))body={product,reliability,today:'2026-11-03',actualSales:[],run:{id:'run'},data:[4,5].map(day=>({run_id:'run',forecast_date:`2026-11-0${day}`,predicted_quantity:16}))};
   else if(url.pathname==='/api/forecast/automation')body={status:'ready',horizon_days:30,last_run_id:'run'};
   else if(url.pathname==='/api/forecast/status')body={ready:true};
   else if(url.pathname==='/api/data-quality')body={actualDemandRows:20,importedTrainingRows:50};
@@ -80,7 +81,7 @@ test('planning shows period-specific historical scores and labels direct daily a
 
 test('a newly completed part run cannot leave the header or summary showing the older cached total',async({page,context})=>{
  await fixture(context);
- await context.route('http://localhost:10000/api/forecast/product/**',route=>route.fulfill({headers:{'access-control-allow-origin':'*'},json:{product:{id:partId,description:'Brake pad',current_stock:45},today:'2026-11-03',run:{id:'new-run'},data:[4,5].map(day=>({run_id:'new-run',forecast_date:`2026-11-0${day}`,predicted_quantity:10}))}}));
+ await context.route('http://localhost:10000/api/forecast/product/**',route=>route.fulfill({headers:{'access-control-allow-origin':'*'},json:{reliability:{status:'lower_error',test_periods:2,wape_percent:5},product:{id:partId,description:'Brake pad',current_stock:45},today:'2026-11-03',run:{id:'new-run'},data:[4,5].map(day=>({run_id:'new-run',forecast_date:`2026-11-0${day}`,predicted_quantity:10}))}}));
  await page.goto('/forecast');
  await expect(page.getByText('About 20 units',{exact:false})).toBeVisible();
  await page.getByRole('button',{name:'Summary',exact:true}).click();

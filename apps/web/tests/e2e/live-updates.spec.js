@@ -6,6 +6,7 @@ const sid='77777777-7777-4777-8777-777777777777';
 const token=Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({session_id:sid,amr:[{method:'password'}]})).toString('base64url')+'.test-only-signature';
 async function fixture(context,{role='owner',demandPerDay=2}={}){
  await context.addInitScript(({userId,project,token})=>localStorage.setItem(`sb-${project}-auth-token`,JSON.stringify({access_token:token,refresh_token:'test-only-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:userId,email:'staff@example.test',aud:'authenticated'}})),{userId,project,token});
+ const reliability={status:'lower_error',test_periods:2,wape_percent:5,mae:1,rmse:1};
  const products=[{id:p1,part_number:'BP-001',description:'Toyota brake pad',brand:'Toyota',unit:'pcs',location:'Shelf A',current_stock:5,minimum_stock:1,safety_stock:1,selling_price:500,unit_cost:100,category:'parts',barcode:'123456789012',search_aliases:['pastilyas'],photo_paths:[],stock_status:'ok'},{id:p2,part_number:'OIL-001',description:'Engine oil',brand:'Brand',unit:'bottles',location:'Shelf B',current_stock:8,minimum_stock:2,selling_price:100,unit_cost:60,category:'lubricants',barcode:'987654321098',search_aliases:['langis ng makina'],photo_paths:[],stock_status:'ok'}];
  const batches=[],debts=[],payments=[],emails=[],productWrites=[],photoUploads=[],supplierLinks=[];let disconnected=false;const sales=[];const today='2026-10-31';let currentRun='run',prediction=demandPerDay,completed=0;let automation={status:'ready',horizon_days:30,last_run_id:currentRun};const manualTraining=[];
  function queueForecast(){automation={...automation,status:'queued'};setTimeout(()=>automation={...automation,status:'training'},50);setTimeout(()=>{currentRun=`automatic-${++completed}`;prediction++;automation={...automation,status:'ready',last_run_id:currentRun};},600);}const receipts=new Map();
@@ -22,8 +23,8 @@ async function fixture(context,{role='owner',demandPerDay=2}={}){
  else if(url.pathname==='/api/forecast/status')body={ready:true};
  else if(url.pathname==='/api/data-quality')body={actualDemandRows:sales.length};
  else if(url.pathname==='/api/forecast/runs')body={data:[{id:currentRun,status:'completed',started_at:today}]};
- else if(url.pathname==='/api/forecast/products')body={run:{id:currentRun},data:products.map(p=>({...p,product_id:p.id,predicted_total:prediction*2,forecast_days:2}))};
- else if(url.pathname.startsWith('/api/forecast/product/')){const product=products.find(p=>p.id===url.pathname.split('/').at(-1));body={product,today,run:{id:currentRun},actualSales:sales,data:[{run_id:currentRun,forecast_date:'2026-11-01',predicted_quantity:prediction},{run_id:currentRun,forecast_date:'2026-11-02',predicted_quantity:prediction}]};}
+ else if(url.pathname==='/api/forecast/products')body={run:{id:currentRun},data:products.map(p=>({...p,product_id:p.id,predicted_total:prediction*2,forecast_days:2,reliability}))};
+ else if(url.pathname.startsWith('/api/forecast/product/')){const product=products.find(p=>p.id===url.pathname.split('/').at(-1));body={product,reliability,today,run:{id:currentRun},actualSales:sales,data:[{run_id:currentRun,forecast_date:'2026-11-01',predicted_quantity:prediction},{run_id:currentRun,forecast_date:'2026-11-02',predicted_quantity:prediction}]};}
  else if(url.pathname==='/api/products'&&req.method()==='GET'){const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category');const data=products.filter(p=>`${p.part_number} ${p.description} ${p.barcode} ${p.search_aliases.join(' ')}`.toLowerCase().includes(q)&&(!category||category==='all'||p.category===category));body={data,count:data.length};}
  else if(url.pathname==='/api/products'&&req.method()==='POST'){const payload=req.postDataJSON();productWrites.push(payload);body={product:{...payload,id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'}};}
  else if(url.pathname.startsWith('/api/products/')&&req.method()==='PATCH'){const changes=req.postDataJSON();productWrites.push(changes);const product=products.find(p=>p.id===url.pathname.split('/').at(-1));Object.assign(product,changes);body={product};}
@@ -102,14 +103,14 @@ test('summary card matches forecast coverage and refreshes after a sale in anoth
  await page.setViewportSize({width:560,height:950});await page.goto('/forecast');
  await page.getByRole('button',{name:'Summary',exact:true}).click();
  const summary=page.getByRole('article',{name:'Demand forecast summary'});
- await expect(summary).toContainText('71.1%');await expect(summary).toContainText('Sufficient stock');
+ await expect(summary).toContainText('100%');await expect(summary).toContainText('Sufficient stock');
  await expect(summary.locator('div').filter({has:page.getByText('Remaining after demand',{exact:true})}).first()).toContainText('13');
  await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toHaveCSS('color','rgb(241, 245, 249)');
  const counter=await context.newPage();await counter.goto('/counter');await expect(counter.getByText(/Inventory saved/)).toBeVisible();
  await counter.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await counter.getByLabel('Quantity',{exact:true}).fill('20');
  await counter.getByRole('button',{name:'3. Confirm sale'}).click();
  await expect(summary).toContainText('Restocking needed');await expect(summary).toContainText('Short by');
- await expect(summary.getByRole('progressbar')).toHaveAttribute('aria-valuenow','100');
+ await expect(summary.getByRole('progressbar',{name:'Stock coverage'})).toHaveAttribute('aria-valuenow','73.5');
  await expect(summary).toContainText('at least 9 units');
  await expect(page.getByRole('button',{name:'Summary',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.setViewportSize({width:320,height:740});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -117,7 +118,7 @@ test('summary card matches forecast coverage and refreshes after a sale in anoth
 
 test('summary avoids a sufficient-stock recommendation when no prediction exists',async({page,context})=>{
  await fixture(context);
- await context.route('http://localhost:10000/api/forecast/product/*',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({headers:{'access-control-allow-origin':'*'},json:{product:{id:p1,current_stock:45},today:'2026-10-31',actualSales:[],run:null,data:[]}}));
+ await context.route('http://localhost:10000/api/forecast/product/*',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({headers:{'access-control-allow-origin':'*'},json:{reliability:{status:'lower_error',test_periods:2,wape_percent:5},product:{id:p1,current_stock:45},today:'2026-10-31',actualSales:[],run:null,data:[]}}));
  await page.goto('/forecast');await page.getByRole('button',{name:'Summary',exact:true}).click();
  await expect(page.getByText('No demand estimate is available for this part yet.',{exact:true})).toBeVisible();
  await expect(page.getByText('Sufficient stock',{exact:true})).toHaveCount(0);

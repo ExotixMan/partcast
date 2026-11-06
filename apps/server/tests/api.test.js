@@ -112,3 +112,46 @@ test('HTTP basket and customer routes validate before RPC and pass the staff tok
   active=false;assert.equal((await post('/api/inventory/batch',batch)).status,403);assert.equal(requests.length,5);
  }finally{globalThis.fetch=previous.fetch;adminDb.auth.getUser=previous.auth;adminDb.from=previous.from;await new Promise(resolve=>server.close(resolve));}
 });
+
+test('forecast list and selected part expose the same per-part evidence while retaining full-model errors',async()=>{
+ const previous={auth:adminDb.auth.getUser,from:adminDb.from};
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
+ const add=days=>new Date(Date.parse(today)+days*86400000).toISOString().slice(0,10);
+ const ids=['33333333-3333-4333-8333-333333333333','99999999-9999-4999-8999-999999999999'];
+ const products=ids.map((id,index)=>({id,description:index?'Weak item':'Lower-error item',part_number:`PART-${index}`,current_stock:5}));
+ const runId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ const windows=ids.flatMap((product_id,index)=>[-120,-90].map((offset,testIndex)=>({product_id,origin:add(offset),start:add(offset+1),end:add(offset+30),actual_recorded_units:10,predicted_units:index?(testIndex?0:30):11})));
+ const metrics={as_of_date:today,horizon_validation:{horizon_days:30,windows,model:{mae:8,wape_percent:80}}};
+ const snapshot=JSON.stringify(metrics),run={id:runId,horizon_days:30,metrics};
+ const rows=ids.flatMap(product_id=>Array.from({length:30},(_,i)=>({product_id,run_id:runId,forecast_date:add(i+1),predicted_quantity:1})));
+ adminDb.auth.getUser=async()=>({data:{user:{id:'11111111-1111-4111-8111-111111111111',email:'owner@example.test'}}});
+ adminDb.from=table=>{
+  const filters={};let first=0,last=999,limit=1000;
+  const result=()=>{
+   if(table==='profiles')return {data:{id:'11111111-1111-4111-8111-111111111111',active:true,role:'owner'}};
+   if(table==='login_verifications')return {data:{expires_at:'2099-01-01T00:00:00Z'}};
+   if(table==='latest_completed_forecast_run')return {data:run};
+   if(table==='products')return {data:filters.id?products.find(p=>p.id===filters.id):products};
+   if(table==='demand_observations')return {data:[]};
+   assert.equal(table,'demand_forecasts');
+   return {data:rows.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v)).slice(first,Math.min(last+1,first+limit))};
+  };
+  return {select(){return this;},in(){return this;},eq(k,v){filters[k]=v;return this;},gte(){return this;},gt(){return this;},lte(){return this;},order(){return this;},range(a,b){first=a;last=b;return this;},limit(n){limit=n;return this;},single:async()=>result(),maybeSingle:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
+ };
+ const app=express();app.use('/api',authenticate,router);app.use(errorHandler);
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
+ const url=`http://127.0.0.1:${server.address().port}/api/forecast`,headers={Authorization:`Bearer ${testToken}`};
+ try{
+  const response=await fetch(url+'/products',{headers});assert.equal(response.status,200);const list=await response.json();
+  assert.equal(list.data.length,2);assert.equal(list.run.metrics.horizon_validation.model.wape_percent,80);
+  assert.equal(list.reliability_policy.max_wape_percent,20);
+  for(const [index,id] of ids.entries()){
+   const product=list.data.find(p=>p.product_id===id);
+   assert.equal(product.reliability.status,index?'needs_review':'lower_error');assert.equal(product.forecast_days,30);
+   const selected=await fetch(url+'/product/'+id,{headers});assert.equal(selected.status,200);
+   const part=await selected.json();assert.deepEqual(part.reliability,product.reliability);
+   assert.equal(part.data.length,30);assert.equal(part.run.metrics.horizon_validation.model.wape_percent,80);
+  }
+  assert.equal(JSON.stringify(metrics),snapshot);
+ }finally{adminDb.auth.getUser=previous.auth;adminDb.from=previous.from;await new Promise(resolve=>server.close(resolve));}
+});

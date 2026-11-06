@@ -15,6 +15,7 @@ import {getDataEnvironment} from '../services/dataEnvironment.js';
 import { createDemoJobs } from '../services/forecastDemo.js';
 import { getProductPlanning } from '../services/planning.js';
 import {forecastData} from '../utils/forecastData.js';
+import {partReliability,reliabilityForPart,forecastReliabilityPolicy} from '../utils/forecastReliability.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
 
 import storeRoutes from './store.js';
@@ -342,7 +343,7 @@ router.get('/forecast/runs', async (req,res,next) => {
 
 router.get('/forecast/products', async (req,res,next) => {
   try {
-    const { data: latest, error: latestError } = await adminDb.from('latest_completed_forecast_run').select('id,horizon_days,completed_at').maybeSingle();
+    const { data: latest, error: latestError } = await adminDb.from('latest_completed_forecast_run').select('id,horizon_days,completed_at,metrics').maybeSingle();
     if (latestError) throw latestError;
     const products=await fetchAll(()=>adminDb.from('products').select('id,part_number,description,brand,current_stock').eq('active',true).order('id'));
     const rows = latest ? await fetchAll(() => adminDb.from('demand_forecasts')
@@ -356,9 +357,10 @@ router.get('/forecast/products', async (req,res,next) => {
       current.forecast_days += 1;
       grouped.set(row.product_id, current);
     }
-    const data = [...grouped.values()].map(x => ({ ...x, predicted_total: Number(x.predicted_total.toFixed(2)) }))
+    const reliability=partReliability(latest?.metrics,latest?.horizon_days);
+    const data = [...grouped.values()].map(x => ({ ...x, predicted_total: Number(x.predicted_total.toFixed(2)), reliability:reliabilityForPart(reliability,x.product_id) }))
       .sort((a,b) => b.predicted_total - a.predicted_total || a.description.localeCompare(b.description));
-    res.json({ run: latest, data });
+    res.json({ run: latest, data, reliability_policy:forecastReliabilityPolicy });
   } catch(e){ next(e); }
 });
 

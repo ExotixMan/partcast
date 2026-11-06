@@ -31,3 +31,13 @@ A lower WAPE on one small or simulated sample does not establish actual-store ac
 ## Purchasing
 
 Demand estimates guide the next stock review. Restock also includes active parts at or below their stock limit, independently of forecasting. The owner's buying policy limits suggested purchases to one or two units per part at a time. Review actual shelves, recent sales, supplier delivery time and the edited supplier email before ordering. A predicted fractional daily quantity is an average, not a fractional physical purchase.
+
+## Default lower-error display
+
+Demand planning defaults to current forecasts whose **per-part historical WAPE is at most 20% across at least two complete, distinct, non-overlapping test periods** from that same completed run and planning horizon. This is an owner-selected visibility rule, not a scientifically established accuracy guarantee. Every available test window for the part is included; a favorable subset is never selected. Missing, conflicting, overlapping, future or invalid tests, and zero total recorded test demand, cannot establish eligibility.
+
+The server derives these assessments from the run's stored `horizon_validation.windows`. No database migration or model retraining is needed to classify existing complete results. Parts with insufficient evidence, higher error, or no current estimate remain accessible through **All parts** with review labels. If no part qualifies, the default view explains that condition instead of silently showing weaker estimates or raising the limit. Per-part responses carry their own assessment so a newly completed run cannot expose a now-disqualified chart under the default filter.
+
+This changes presentation only. Training inputs, forecast outputs, stored historical windows, baseline comparisons and full-model MAE/RMSE/WAPE/R² remain unchanged. The overall results explicitly cover all tested parts, including those outside the default view; the system does not relabel a filtered subset's score as full-model accuracy. Historical results still depend on recorded-sales coverage and do not guarantee future sales.
+
+The stock-summary percentage is **stock coverage**: `min(100, current stock / predicted demand × 100)` when predicted demand is positive. For example, 2 units on hand against about 37.2 estimated units gives about 5.4% coverage and about 35.2 units short. This replaces the former demand-to-stock ratio, which could legitimately exceed 1,000% but was difficult to interpret as “consumption.” Coverage is independent of forecast error and does not indicate predictive accuracy. Zero estimated demand has no coverage ratio, so the interface shows a plain explanation instead of inventing a percentage.
