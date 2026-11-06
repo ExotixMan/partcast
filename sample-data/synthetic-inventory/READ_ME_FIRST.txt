@@ -14,8 +14,10 @@ These are the exported columns, not a full clone of every product-table column.
 Do not import this snapshot over changing production stock.
 
 demand_observations.csv -> demand_observations
-product_id,occurred_on,quantity,source
+product_id,occurred_on,quantity,source,source_reference
 190,978 generated positive-quantity records. Every source is simulated_demo.
+Every source_reference is SIMULATED:<product_id>:<occurred_on>.
+References label generated rows, not actual invoices or transactions.
 Product IDs match products.csv. Dates are 2016-11-09 through 2026-11-06.
 The 174,022 generated zero days are omitted because the current demand table
 requires quantity > 0. They remain in the earlier full daily-calendar package.

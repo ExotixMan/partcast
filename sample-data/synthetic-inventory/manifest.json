@@ -9,5 +9,15 @@
   "compatible_with_unmodified_production_source_constraint": false,
   "forecast_runs_fabricated": false,
   "forecast_rows_fabricated": false,
-  "inventory_sha256": "c5202feed0c5b0f024df7c545fef9d4d77a109bacef56b4ab22e1f5d23d26d33"
+  "inventory_sha256": "c5202feed0c5b0f024df7c545fef9d4d77a109bacef56b4ab22e1f5d23d26d33",
+  "demand_observation_columns": [
+    "product_id",
+    "occurred_on",
+    "quantity",
+    "source",
+    "source_reference"
+  ],
+  "source_reference_format": "SIMULATED:<product_id>:<occurred_on>",
+  "unique_source_references": 190978,
+  "demand_observations_sha256": "f0aa12608ee8f49d6ab1f342197ab11bded39d9dc8d3951557afe2985a37f09e"
 }

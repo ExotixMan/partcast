@@ -14,10 +14,12 @@ Open a file below, then select **Download raw file** in GitHub. Downloading the 
 
 | File | Columns |
 |---|---|
-| `demand_observations.csv` | `product_id, occurred_on, quantity, source` |
+| `demand_observations.csv` | `product_id, occurred_on, quantity, source, source_reference` |
 | `products.csv` | `id, part_number, description, active, current_stock` |
 
 Every generated observation has `source = simulated_demo`. The dates cover November 9, 2016 through November 6, 2026. Product identifiers match the supplied catalog. Generated zero days are excluded because the current observations table requires positive quantities.
+
+Each `source_reference` has the format `SIMULATED:<product_id>:<occurred_on>`. It uniquely labels an item/date within this file and is not a real invoice or transaction reference.
 
 ## Intended use
 
