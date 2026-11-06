@@ -79,14 +79,14 @@ test('planning shows period-specific historical scores and labels direct daily a
  await expect(page.getByText('Daily chart values are expected averages of the XGBoost period total, not predictions of exact sale dates.',{exact:true})).toBeVisible();
 });
 
-test('a newly completed part run cannot leave the header or summary showing the older cached total',async({page,context})=>{
+test('a newly completed part run cannot leave the header or daily list showing the older cached total',async({page,context})=>{
  await fixture(context);
  await context.route('http://localhost:10000/api/forecast/product/**',route=>route.fulfill({headers:{'access-control-allow-origin':'*'},json:{reliability:{status:'lower_error',test_periods:2,wape_percent:5},product:{id:partId,description:'Brake pad',current_stock:45},today:'2026-11-03',run:{id:'new-run'},data:[4,5].map(day=>({run_id:'new-run',forecast_date:`2026-11-0${day}`,predicted_quantity:10}))}}));
  await page.goto('/forecast');
  await expect(page.getByText('About 20 units',{exact:false})).toBeVisible();
- await page.getByRole('button',{name:'Summary',exact:true}).click();
- const summary=page.getByRole('article',{name:'Demand forecast summary'});
- await expect(summary).toContainText('20');await expect(summary).toContainText('25');
+ await page.getByRole('button',{name:'Daily list',exact:true}).click();
+ await expect(page.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('10');
+ await expect(page.getByRole('button',{name:'Summary',exact:true})).toHaveCount(0);
 });
 
 test('help preserves an unfinished basket and stock limitations remain visible',async({page,context})=>{

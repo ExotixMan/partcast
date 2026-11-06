@@ -97,29 +97,31 @@ test('selling automatically replaces XGBoost predictions in two tabs without man
  expect(api.manualTraining).toEqual([]);
 });
 
-test('summary card matches forecast coverage and refreshes after a sale in another tab',async({page,context})=>{
+test('part totals and the daily list refresh after a sale in another tab',async({page,context})=>{
  const api=await fixture(context,{demandPerDay:16});api.products[0].current_stock=45;
  await context.addInitScript(()=>localStorage.setItem('partcast-theme','dark'));
  await page.setViewportSize({width:560,height:950});await page.goto('/forecast');
- await page.getByRole('button',{name:'Summary',exact:true}).click();
- const summary=page.getByRole('article',{name:'Demand forecast summary'});
- await expect(summary).toContainText('100%');await expect(summary).toContainText('Sufficient stock');
- await expect(summary.locator('div').filter({has:page.getByText('Remaining after demand',{exact:true})}).first()).toContainText('13');
+ await expect(page.getByText('On hand: 45 units',{exact:true})).toBeVisible();
+ await expect(page.getByText('About 32 units',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Daily list',exact:true}).click();
+ const list=page.getByRole('table').filter({hasText:'Estimated units sold'});
+ await expect(list).toContainText('16');
  await expect(page.getByRole('heading',{name:'Plan ahead',exact:true})).toHaveCSS('color','rgb(241, 245, 249)');
  const counter=await context.newPage();await counter.goto('/counter');await expect(counter.getByText(/Inventory saved/)).toBeVisible();
  await counter.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await counter.getByLabel('Quantity',{exact:true}).fill('20');
  await counter.getByRole('button',{name:'3. Confirm sale'}).click();
- await expect(summary).toContainText('Restocking needed');await expect(summary).toContainText('Short by');
- await expect(summary.getByRole('progressbar',{name:'Stock coverage'})).toHaveAttribute('aria-valuenow','73.5');
- await expect(summary).toContainText('at least 9 units');
- await expect(page.getByRole('button',{name:'Summary',exact:true})).toHaveAttribute('aria-pressed','true');
+ await expect(page.getByText('On hand: 25 units',{exact:true})).toBeVisible();
+ await expect(page.getByText('About 34 units',{exact:false})).toBeVisible();await expect(list).toContainText('17');
+ await expect(page.getByRole('button',{name:'Daily list',exact:true})).toHaveAttribute('aria-pressed','true');
+ await expect(page.getByRole('button',{name:'Summary',exact:true})).toHaveCount(0);
  await page.setViewportSize({width:320,height:740});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-test('summary avoids a sufficient-stock recommendation when no prediction exists',async({page,context})=>{
+test('a missing prediction is explained instead of becoming a zero-demand chart',async({page,context})=>{
  await fixture(context);
  await context.route('http://localhost:10000/api/forecast/product/*',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({headers:{'access-control-allow-origin':'*'},json:{reliability:{status:'lower_error',test_periods:2,wape_percent:5},product:{id:p1,current_stock:45},today:'2026-10-31',actualSales:[],run:null,data:[]}}));
- await page.goto('/forecast');await page.getByRole('button',{name:'Summary',exact:true}).click();
- await expect(page.getByText('No demand estimate is available for this part yet.',{exact:true})).toBeVisible();
- await expect(page.getByText('Sufficient stock',{exact:true})).toHaveCount(0);
+ await page.goto('/forecast');
+ await expect(page.getByText('No current estimate for this part.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('img',{name:/Estimated daily sales for/})).toHaveCount(0);
+ await expect(page.getByText('About 0 units',{exact:false})).toHaveCount(0);
 });

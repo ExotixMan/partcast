@@ -1663,5 +1663,11 @@
   "No demand is estimated for this period.": "Walang tinatayang demand para sa panahong ito.",
   "{v0} of {v1} estimated units covered by current stock.": "Kaya ng kasalukuyang stock ang {v0} sa {v1} tinatayang unit.",
   "Stock coverage shows how much estimated demand your current stock can cover.": "Ipinapakita ng stock coverage kung gaano kalaking bahagi ng tinatayang demand ang kaya ng kasalukuyang stock.",
-  "Overall results need review": "Kailangang suriin ang kabuuang resulta"
+  "Overall results need review": "Kailangang suriin ang kabuuang resulta",
+  "Choose Chart or Daily list to review its demand and stock.": "Piliin ang Chart o Bawat araw para tingnan ang demand at stock.",
+  "Parts appear in the list after passing the historical error checks. Full test results include every tested part.": "Lumalabas sa listahan ang mga piyesang pasado sa pagsusuri ng dating error. Kasama sa buong resulta ang lahat ng sinuring piyesa.",
+  "This estimate needs review. The list will update automatically.": "Kailangang suriin ang pagtatayang ito. Awtomatikong mag-a-update ang listahan.",
+  "No estimates ready for planning": "Wala pang handang pagtataya para sa pagpaplano",
+  "Available forecasts need review. Open Sales data and update history for the full test results.": "Kailangang suriin ang mga pagtataya. Buksan ang Mga benta at dating update para sa buong resulta ng pagsusuri.",
+  "These overall results include all tested parts, including those outside the planning list.": "Kasama sa kabuuang resultang ito ang lahat ng sinuring piyesa, pati ang mga wala sa listahan ng pagpaplano."
 }
