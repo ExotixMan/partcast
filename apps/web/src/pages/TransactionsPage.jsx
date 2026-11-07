@@ -52,14 +52,14 @@ export default function TransactionsPage({salesOnly=false,embedded=false}) {
   useLiveRefresh(()=>setRefresh(value=>value+1),['inventory_transactions','products']);
   return <>
     {!embedded&&<PageHeader title={salesOnly?t('Sales'):t("Stock history")} subtitle={salesOnly?t('Review parts sold, customers and amounts.'):t("Review sales, deliveries and stock corrections.")} actions={refreshButton} />}
-    <section className="panel overflow-hidden" aria-label={salesOnly?t('Counter sales'):t('Stock history')} aria-busy={loading}>
+    <section className="panel overflow-hidden" aria-label={salesOnly?t('Recorded transactions'):t('Stock history')} aria-busy={loading}>
       <div className="panel-header flex flex-wrap items-end justify-between gap-3">
         {!salesOnly&&<label className="block w-full sm:w-60" htmlFor="history-type"><span className="label">{t("Show stock changes")}</span>
           <select id="history-type" className="input" value={type} onChange={event => {
             setType(event.target.value);
             setPage(1);
           }}>
-            <option value="all">{t("All stock changes")}</option><option value="stock_in">{t("Parts received")}</option><option value="stock_out">{t("Parts removed")}</option><option value="sale">{t("Parts sold")}</option><option value="initial">{t("Starting stock")}</option>
+            <option value="all">{t("All stock changes")}</option><option value="stock_in">{t("Parts received")}</option><option value="stock_out">{t("Parts removed")}</option><option value="sale">{t("Parts sold")}</option><option value="initial">{t("Opening stock")}</option>
           </select>
         </label>}
         {!loading && !error && <p className="text-sm text-slate-600">{salesOnly?t('Sales entries: {v0}',{v0:count.toLocaleString()}):<>{count.toLocaleString()} {count===1?t('saved change'):t('saved changes')}</>}</p>}

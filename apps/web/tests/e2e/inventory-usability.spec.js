@@ -56,12 +56,12 @@ test('new parts reject fractional stock and thresholds while retaining centavo p
  await dialog.getByLabel('Part name *',{exact:true}).fill('Phone holder');
  await dialog.getByLabel('Category',{exact:true}).selectOption('accessories');
  await dialog.getByLabel('Selling price per unit',{exact:true}).fill('12.50');
- await dialog.getByLabel('Starting quantity *',{exact:true}).fill('0.5');
+ await dialog.getByLabel('Opening stock quantity *',{exact:true}).fill('0.5');
  await page.getByRole('button',{name:'Save part',exact:true}).click();
  await expect(dialog.locator('#current_stock')).toHaveAttribute('aria-invalid','true');
  await expect(dialog.locator('#current_stock-message')).toContainText('whole number');
  expect(fixture.writes).toHaveLength(0);
- await dialog.getByLabel('Starting quantity *',{exact:true}).fill('2');
+ await dialog.getByLabel('Opening stock quantity *',{exact:true}).fill('2');
  await dialog.locator('summary').filter({hasText:'Stock alerts'}).click();
  await dialog.getByLabel('Alert me when stock reaches *',{exact:true}).fill('1.5');
  await page.getByRole('button',{name:'Save part',exact:true}).click();

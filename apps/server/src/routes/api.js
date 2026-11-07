@@ -1,3 +1,4 @@
+import {MAX_PLANNING_DAYS} from '../utils/forecastPolicy.js';
 import {automaticForecasts} from '../services/automaticForecasts.js';
 import { Router } from 'express';
 import multer from 'multer';
@@ -14,6 +15,8 @@ import { forecastingStatus,checkForecastReadiness } from '../utils/ml.js';
 import {getDataEnvironment} from '../services/dataEnvironment.js';
 import { createDemoJobs } from '../services/forecastDemo.js';
 import { getProductPlanning } from '../services/planning.js';
+import {forecastData} from '../utils/forecastData.js';
+import {partReliability,reliabilityForPart,forecastReliabilityPolicy} from '../utils/forecastReliability.js';
 import { answerAssistant, assistantMode } from '../services/assistant.js';
 
 import storeRoutes from './store.js';
@@ -122,13 +125,19 @@ router.get('/products', async (req, res, next) => {
 
 router.get('/products/:id', async (req, res, next) => {
   try {
+    const id=z.string().uuid().parse(req.params.id);
     const [product, suppliers, tx, forecasts] = await Promise.all([
-      adminDb.from('products').select('*').eq('id', req.params.id).single(),
-      adminDb.from('product_suppliers').select('*,supplier:suppliers(*)').eq('product_id', req.params.id),
-      adminDb.from('inventory_transactions').select('*').eq('product_id', req.params.id).order('occurred_at',{ascending:false}).limit(50),
-      adminDb.from('demand_forecasts').select('forecast_date,predicted_quantity,run_id').eq('product_id', req.params.id).gte('forecast_date', storeDay()).order('forecast_date').limit(90)
+      adminDb.from('products').select('*').eq('id', id).single(),
+      adminDb.from('product_suppliers').select('*,supplier:suppliers(*)').eq('product_id', id),
+      adminDb.from('inventory_transactions').select('*').eq('product_id', id).order('occurred_at',{ascending:false}).limit(50),
+      (async()=>{
+        const latest=await adminDb.from('latest_completed_forecast_run').select('id,horizon_days').maybeSingle();
+        if(latest.error)throw latest.error;
+        if(!latest.data||Number(latest.data.horizon_days)>MAX_PLANNING_DAYS)return {data:[]};
+        return adminDb.from('demand_forecasts').select('forecast_date,predicted_quantity,run_id').eq('product_id',id).eq('run_id',latest.data.id).gt('forecast_date',storeDay()).order('forecast_date').limit(MAX_PLANNING_DAYS);
+      })()
     ]);
-    if (product.error) throw product.error;
+    for(const result of [product,suppliers,tx,forecasts])if(result.error)throw result.error;
     res.json({ product: product.data, suppliers: suppliers.data || [], transactions: tx.data || [], forecasts: forecasts.data || [] });
   } catch (e) { next(e); }
 });
@@ -341,7 +350,8 @@ router.get('/forecast/runs', async (req,res,next) => {
 
 router.get('/forecast/products', async (req,res,next) => {
   try {
-    const { data: latest, error: latestError } = await adminDb.from('latest_completed_forecast_run').select('id,horizon_days,completed_at').maybeSingle();
+    const { data: savedRun, error: latestError } = await adminDb.from('latest_completed_forecast_run').select('id,horizon_days,completed_at,metrics').maybeSingle();
+    const latest=Number(savedRun?.horizon_days)>MAX_PLANNING_DAYS?null:savedRun;
     if (latestError) throw latestError;
     const products=await fetchAll(()=>adminDb.from('products').select('id,part_number,description,brand,current_stock').eq('active',true).order('id'));
     const rows = latest ? await fetchAll(() => adminDb.from('demand_forecasts')
@@ -355,16 +365,17 @@ router.get('/forecast/products', async (req,res,next) => {
       current.forecast_days += 1;
       grouped.set(row.product_id, current);
     }
-    const data = [...grouped.values()].map(x => ({ ...x, predicted_total: Number(x.predicted_total.toFixed(2)) }))
+    const reliability=partReliability(latest?.metrics,latest?.horizon_days);
+    const data = [...grouped.values()].map(x => ({ ...x, predicted_total: Number(x.predicted_total.toFixed(2)), reliability:reliabilityForPart(reliability,x.product_id) }))
       .sort((a,b) => b.predicted_total - a.predicted_total || a.description.localeCompare(b.description));
-    res.json({ run: latest, data });
+    res.json({ run: latest, data, reliability_policy:forecastReliabilityPolicy });
   } catch(e){ next(e); }
 });
 
 router.get('/forecast/product/:id', async (req,res,next) => {
   try {
     const productId=z.string().uuid().parse(req.params.id);
-    res.json(await getProductPlanning(adminDb,productId,storeDay()));
+    res.json(await getProductPlanning(adminDb,productId,storeDay(),req.dataEnvironment));
   } catch(e){ next(e); }
 });
 
@@ -384,10 +395,11 @@ router.get('/forecast/demo/jobs/:id', rolesAdmin, (req,res,next)=>{
 });
 
 async function demandForForecast(environment) {
-  return fetchAll(() => adminDb.from('demand_observations')
-    .select('product_id,occurred_on,quantity,source,product:products(part_number,description,unit)')
+  const input = await fetchAll(() => adminDb.from('demand_observations')
+    .select('product_id,occurred_on,quantity,source,source_reference,product:products(part_number,description,unit)')
     .in('source', environment.sources)
     .order('occurred_on').order('id'));
+  return forecastData(input,environment.mode).observations;
 }
 router.get('/forecast/recorded-sales', rolesAdmin, async (req,res,next) => {
   try {
@@ -411,11 +423,11 @@ router.get('/forecast/readiness', rolesAdmin, async (req,res,next) => {
 
 router.get('/forecast/automation',async(req,res,next)=>{try{res.json(await automaticForecasts.status());}catch(e){next(e);}});
 router.post('/forecast/automation',rolesAdmin,async(req,res,next)=>{
- try{const {horizonDays}=z.object({horizonDays:settingsInteger(7,90)}).parse(req.body);res.status(202).json(await automaticForecasts.request(horizonDays));}catch(e){next(e);}
+ try{const {horizonDays}=z.object({horizonDays:settingsInteger(7,MAX_PLANNING_DAYS)}).parse(req.body);res.status(202).json(await automaticForecasts.request(horizonDays));}catch(e){next(e);}
 });
 router.post('/forecast/train',rolesAdmin,async(req,res,next)=>{
  try{
-  const body=z.object({horizonDays:settingsInteger(7,90).optional(),includeProxy:z.boolean().default(false)}).parse(req.body||{});
+  const body=z.object({horizonDays:settingsInteger(7,MAX_PLANNING_DAYS).optional(),includeProxy:z.boolean().default(false)}).parse(req.body||{});
   if(body.includeProxy)throw Object.assign(new Error('Forecasting requires actual sold quantities. Use the separate demo for simulated demand.'),{status:422});
   res.status(202).json(await automaticForecasts.request(body.horizonDays));
  }catch(e){next(e);}

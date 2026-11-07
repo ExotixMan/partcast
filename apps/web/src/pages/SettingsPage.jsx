@@ -18,7 +18,7 @@ const fields = [{
   key: 'forecast_horizon_days',
   label: 'Plan stock for the next (days)',
   min: 7,
-  max: 90,
+  max: 60,
   fallback: 30,
   help: 'The number of days used when estimating future demand.'
 }];

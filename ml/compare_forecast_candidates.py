@@ -109,8 +109,8 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--horizon', type=int, default=30)
     args = parser.parse_args()
-    if not 7 <= args.horizon <= 90:
-        parser.error('Choose a horizon between 7 and 90 days.')
+    if not 7 <= args.horizon <= 60:
+        parser.error('Choose a horizon between 7 and 60 days.')
     result = compare(args.csv, args.horizon)
     output = Path(args.output); output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2), encoding='utf-8')

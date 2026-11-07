@@ -15,10 +15,16 @@ export default function useForecastAutomation(enabled=true){
   const id=query.data?.last_run_id;
   if(id&&completed.current!==id){completed.current=id;invalidateData(['forecast_runs'],false);}
  },[query.data?.last_run_id]);
+ const failed=useRef(null);
+ useEffect(()=>{
+  if(query.data?.status!=='error'){failed.current=null;return;}
+  const attempt=query.data.next_attempt_at||'error';
+  if(failed.current!==attempt){failed.current=attempt;invalidateData(['forecast_runs'],false);}
+ },[query.data?.status,query.data?.next_attempt_at]);
  const pending=['queued','training'].includes(query.data?.status);
  useEffect(()=>{
   if(!enabled)return;
-  const timer=setInterval(()=>{if(document.visibilityState==='visible'&&navigator.onLine)query.refresh();},pending?2000:15000);
+  const timer=setInterval(()=>{if(document.visibilityState==='visible'&&navigator.onLine)query.refresh();},pending?2000:5000);
   return()=>clearInterval(timer);
  },[enabled,pending,query.refresh]);
  return query;

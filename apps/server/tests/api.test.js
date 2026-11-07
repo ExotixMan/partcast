@@ -46,9 +46,9 @@ test('spreadsheet detection is based on headers, preserving all three import typ
 test('forecast chart returns the entire latest run without mixing or truncating earlier forecasts',async()=>{
  const previous={auth:adminDb.auth.getUser,from:adminDb.from};
  const product='33333333-3333-4333-8333-333333333333',current='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
- let role='owner',hasRun=true,forecastReads=0;
+ let role='owner',hasRun=true,forecastReads=0,horizonDays=60;
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
- const rows=[];for(let i=1;i<=90;i++){
+ const rows=[];for(let i=1;i<=60;i++){
   const date=new Date(today+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+i);
   for(const run_id of ['bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',current])rows.push({product_id:product,run_id,forecast_date:date.toISOString().slice(0,10),predicted_quantity:run_id===current?0.5:99});
  }
@@ -58,21 +58,22 @@ test('forecast chart returns the entire latest run without mixing or truncating 
   const result=()=>{
    if(table==='profiles')return {data:{id:'11111111-1111-4111-8111-111111111111',active:true,role}};
    if(table==='login_verifications')return {data:{expires_at:'2099-01-01T00:00:00Z'}};
-   if(table==='latest_completed_forecast_run')return {data:hasRun?{id:current}:null};
+   if(table==='latest_completed_forecast_run')return {data:hasRun?{id:current,horizon_days:horizonDays}:null};
    if(table==='products')return {data:{id:filters.id,current_stock:5}};
    if(table==='demand_observations')return {data:[{occurred_on:today,quantity:2}]};
    assert.equal(table,'demand_forecasts');forecastReads++;
    return {data:rows.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v)).slice(0,limit)};
   };
-  return {select(){return this;},eq(k,v){filters[k]=v;return this;},gte(){return this;},gt(){return this;},lte(){return this;},range(){return this;},order(){return this;},limit(n){limit=n;return this;},single:async()=>result(),maybeSingle:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
+  return {select(){return this;},in(){return this;},eq(k,v){filters[k]=v;return this;},gte(){return this;},gt(){return this;},lte(){return this;},range(){return this;},order(){return this;},limit(n){limit=n;return this;},single:async()=>result(),maybeSingle:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
  };
  const app=express();app.use('/api',authenticate,router);app.use(errorHandler);
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
  const url=`http://127.0.0.1:${server.address().port}/api/forecast/product/`,headers={Authorization:`Bearer ${testToken}`};
  try{
   let response=await fetch(url+product,{headers});assert.equal(response.status,200);
-  let body=await response.json();assert.equal(body.data.length,90);assert(body.data.every(r=>r.run_id===current&&r.predicted_quantity===0.5));assert.equal(body.run.id,current);assert.equal(body.product.current_stock,5);assert.equal(body.actualSales.length,1);
+  let body=await response.json();assert.equal(body.data.length,60);assert(body.data.every(r=>r.run_id===current&&r.predicted_quantity===0.5));assert.equal(body.run.id,current);assert.equal(body.product.current_stock,5);assert.equal(body.actualSales.length,1);
   response=await fetch(url+'99999999-9999-4999-8999-999999999999',{headers});assert.deepEqual((await response.json()).data,[]);
+  horizonDays=90;response=await fetch(url+product,{headers});body=await response.json();assert.equal(body.run,null);assert.deepEqual(body.data,[]);horizonDays=60;
   hasRun=false;const reads=forecastReads;response=await fetch(url+product,{headers});body=await response.json();assert.equal(body.run,null);assert.deepEqual(body.data,[]);assert.equal(forecastReads,reads);
   assert.equal((await fetch(url+'invalid',{headers})).status,400);
   role='cashier';assert.equal((await fetch(url+product,{headers})).status,403);
@@ -111,4 +112,47 @@ test('HTTP basket and customer routes validate before RPC and pass the staff tok
   assert.equal((await post('/api/inventory/movement',{...movement,tx_type:'stock_in',unit_price:0,unit_cost:0})).status,201);assert.equal(requests[4].body.p_payload.unit_cost,0);
   active=false;assert.equal((await post('/api/inventory/batch',batch)).status,403);assert.equal(requests.length,5);
  }finally{globalThis.fetch=previous.fetch;adminDb.auth.getUser=previous.auth;adminDb.from=previous.from;await new Promise(resolve=>server.close(resolve));}
+});
+
+test('forecast list and selected part expose the same per-part evidence while retaining full-model errors',async()=>{
+ const previous={auth:adminDb.auth.getUser,from:adminDb.from};
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date());
+ const add=days=>new Date(Date.parse(today)+days*86400000).toISOString().slice(0,10);
+ const ids=['33333333-3333-4333-8333-333333333333','99999999-9999-4999-8999-999999999999'];
+ const products=ids.map((id,index)=>({id,description:index?'Weak item':'Lower-error item',part_number:`PART-${index}`,current_stock:5}));
+ const runId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ const windows=ids.flatMap((product_id,index)=>[-120,-90].map((offset,testIndex)=>({product_id,origin:add(offset),start:add(offset+1),end:add(offset+30),actual_recorded_units:10,predicted_units:index?(testIndex?0:30):11})));
+ const metrics={as_of_date:today,horizon_validation:{horizon_days:30,windows,model:{mae:8,wape_percent:80}}};
+ const snapshot=JSON.stringify(metrics),run={id:runId,horizon_days:30,metrics};
+ const rows=ids.flatMap(product_id=>Array.from({length:30},(_,i)=>({product_id,run_id:runId,forecast_date:add(i+1),predicted_quantity:1})));
+ adminDb.auth.getUser=async()=>({data:{user:{id:'11111111-1111-4111-8111-111111111111',email:'owner@example.test'}}});
+ adminDb.from=table=>{
+  const filters={};let first=0,last=999,limit=1000;
+  const result=()=>{
+   if(table==='profiles')return {data:{id:'11111111-1111-4111-8111-111111111111',active:true,role:'owner'}};
+   if(table==='login_verifications')return {data:{expires_at:'2099-01-01T00:00:00Z'}};
+   if(table==='latest_completed_forecast_run')return {data:run};
+   if(table==='products')return {data:filters.id?products.find(p=>p.id===filters.id):products};
+   if(table==='demand_observations')return {data:[]};
+   assert.equal(table,'demand_forecasts');
+   return {data:rows.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v)).slice(first,Math.min(last+1,first+limit))};
+  };
+  return {select(){return this;},in(){return this;},eq(k,v){filters[k]=v;return this;},gte(){return this;},gt(){return this;},lte(){return this;},order(){return this;},range(a,b){first=a;last=b;return this;},limit(n){limit=n;return this;},single:async()=>result(),maybeSingle:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject);}};
+ };
+ const app=express();app.use('/api',authenticate,router);app.use(errorHandler);
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
+ const url=`http://127.0.0.1:${server.address().port}/api/forecast`,headers={Authorization:`Bearer ${testToken}`};
+ try{
+  const response=await fetch(url+'/products',{headers});assert.equal(response.status,200);const list=await response.json();
+  assert.equal(list.data.length,2);assert.equal(list.run.metrics.horizon_validation.model.wape_percent,80);
+  assert.equal(list.reliability_policy.max_wape_percent,20);
+  for(const [index,id] of ids.entries()){
+   const product=list.data.find(p=>p.product_id===id);
+   assert.equal(product.reliability.status,index?'needs_review':'lower_error');assert.equal(product.forecast_days,30);
+   const selected=await fetch(url+'/product/'+id,{headers});assert.equal(selected.status,200);
+   const part=await selected.json();assert.deepEqual(part.reliability,product.reliability);
+   assert.equal(part.data.length,30);assert.equal(part.run.metrics.horizon_validation.model.wape_percent,80);
+  }
+  assert.equal(JSON.stringify(metrics),snapshot);
+ }finally{adminDb.auth.getUser=previous.auth;adminDb.from=previous.from;await new Promise(resolve=>server.close(resolve));}
 });

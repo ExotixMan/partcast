@@ -1,3 +1,4 @@
+import {MAX_PLANNING_DAYS} from '../utils/forecastPolicy.js';
 import {integrationStatuses,saveIntegration,getIntegration,integrationReady} from '../utils/integrations.js';
 import {checkGmailConnection} from '../utils/gmail.js';
 import {forecastingStatus} from '../utils/ml.js';
@@ -100,7 +101,7 @@ router.patch('/settings/:key', requireRole('owner'), async(req,res,next)=>{
     const key=z.enum(['forecast_horizon_days','auto_supplier_email_enabled','supplier_email_cooldown_days','backup_retention_days','include_legacy_proxy_by_default']).parse(req.params.key);
     let value;
     if(key==='auto_supplier_email_enabled' || key==='include_legacy_proxy_by_default') value=z.boolean().parse(req.body?.value);
-    else if(key==='forecast_horizon_days') value=settingsInteger(7,90).parse(req.body?.value);
+    else if(key==='forecast_horizon_days') value=settingsInteger(7,MAX_PLANNING_DAYS).parse(req.body?.value);
     else if(key==='supplier_email_cooldown_days') value=settingsInteger(1,30).parse(req.body?.value);
     else value=settingsInteger(1,365).parse(req.body?.value);
     if(['auto_supplier_email_enabled','include_legacy_proxy_by_default'].includes(key)&&value===true)throw Object.assign(new Error('This option is unavailable. Review supplier requests manually and use actual sold quantities for store forecasts.'),{status:422});

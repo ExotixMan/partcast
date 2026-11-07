@@ -638,7 +638,7 @@ test('counter sales have their own dated, paginated list and preserve fractional
   await route.fulfill({status:fail?503:200,json:fail?{error:'Sales server unavailable.'}:{data,count:range?1:26},headers:{'access-control-allow-origin':'*'}});
  });
  await page.setViewportSize({width:390,height:844});await page.goto('/sales?source=counter');
- let panel=page.getByRole('region',{name:'Counter sales',exact:true});
+ let panel=page.getByRole('region',{name:'Recorded transactions',exact:true});
  await expect(panel.getByText('Sales entries: 26')).toBeVisible();await expect(panel.getByRole('article')).toHaveCount(25);
  await expect(panel.getByRole('article').first()).toContainText('1.25 L');await expect(panel.getByRole('article').first()).toContainText('125.50');await expect(panel.getByRole('article').first()).toContainText('Juan');
  await panel.getByRole('button',{name:'Next',exact:true}).click();await expect(panel.getByRole('article')).toHaveCount(1);expect(queries.at(-1).page).toBe('2');
@@ -647,7 +647,7 @@ test('counter sales have their own dated, paginated list and preserve fractional
  await panel.getByRole('button',{name:'Clear filters'}).click();await expect(panel.getByText('Sales entries: 26')).toBeVisible();expect(queries.at(-1)).toEqual({page:'1',pageSize:'25',type:'sale'});
  fail=true;await panel.getByRole('button',{name:'Refresh history'}).click();await expect(panel.getByRole('heading',{name:'Sales could not be loaded'})).toBeVisible();await expect(panel.getByRole('article')).toHaveCount(0);
  fail=false;await panel.getByRole('button',{name:'Try again'}).click();await expect(panel.getByText('Sales entries: 26')).toBeVisible();
- await page.getByLabel('Website language').selectOption('fil');panel=page.getByRole('region',{name:'Benta sa counter',exact:true});await expect(panel.getByText('Mga tala ng benta: 26')).toBeVisible();
+ await page.getByLabel('Website language').selectOption('fil');panel=page.getByRole('region',{name:'Mga naitalang transaksyon',exact:true});await expect(panel.getByText('Mga tala ng benta: 26')).toBeVisible();
  for(const width of [320,768,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),String(width)).toBe(true);}
  await expect(panel.getByRole('table')).toContainText('1.25 L');
  expect(queries.every(query=>query.type==='sale')).toBe(true);
@@ -656,7 +656,7 @@ test('counter sales have their own dated, paginated list and preserve fractional
 test('inventory staff can read counter sales but cannot request manager-only sales sources or the demo',async({page,context})=>{
  await fixture(context,{role:'inventory_staff'});const protectedCalls=[];
  page.on('request',request=>{if(/\/api\/(imports\/sales|forecast\/(recorded-sales|demo))/.test(request.url()))protectedCalls.push(request.url());});
- for(const path of ['/sales','/sales?source=imported']){await page.goto(path);await expect(page.getByRole('region',{name:'Counter sales',exact:true})).toBeVisible();await expect(page.getByRole('navigation',{name:'Sales sources'})).toHaveCount(0);}
+ for(const path of ['/sales','/sales?source=imported']){await page.goto(path);await expect(page.getByRole('region',{name:'Recorded transactions',exact:true})).toBeVisible();await expect(page.getByRole('navigation',{name:'Sales sources'})).toHaveCount(0);}
  await page.goto('/forecast-demo');await expect(page).toHaveURL(/\/$/);expect(protectedCalls).toEqual([]);
 });
 

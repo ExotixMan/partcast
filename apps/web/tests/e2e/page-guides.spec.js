@@ -94,9 +94,9 @@ test('inventory field hints appear while editing and required-field errors stay 
  await page.getByRole('button',{name:'Add a new part',exact:true}).click();const dialog=page.getByRole('dialog');
  const help=dialog.getByRole('note',{name:'Field help'}),nameHint='Use a name staff will recognize, such as Toyota brake pad.',quantityHint='Enter how many you have now. Use 0 if there is no stock yet.';
  await dialog.getByLabel('Part name *',{exact:true}).focus();await expect(help).toContainText(nameHint);await expect(help).not.toContainText(quantityHint);await page.screenshot({path:'/tmp/partcast-inventory-field-tip.png'});
- await dialog.getByLabel('Starting quantity *',{exact:true}).focus();await expect(help).toContainText(quantityHint);await expect(help).not.toContainText(nameHint);
+ await dialog.getByLabel('Opening stock quantity *',{exact:true}).focus();await expect(help).toContainText(quantityHint);await expect(help).not.toContainText(nameHint);
  await dialog.getByRole('button',{name:'Save part',exact:true}).click();await expect(dialog.getByLabel('Part name *',{exact:true})).toHaveAttribute('aria-invalid','true');await expect(dialog.locator('#description-message')).toBeVisible();
- await dialog.getByLabel('Starting quantity *',{exact:true}).focus();await expect(dialog.locator('#description-message')).toBeVisible();await expect(dialog.getByRole('alert').first()).toBeVisible();expect(store.writes).toEqual([]);
+ await dialog.getByLabel('Opening stock quantity *',{exact:true}).focus();await expect(dialog.locator('#description-message')).toBeVisible();await expect(dialog.getByRole('alert').first()).toBeVisible();expect(store.writes).toEqual([]);
 });
 
 test('read-only inventory guides show only the tasks available to a cashier',async({page,context})=>{

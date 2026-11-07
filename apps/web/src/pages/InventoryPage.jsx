@@ -391,9 +391,8 @@ export default function InventoryPage() {
       const payload = {product_id:move.product_id,tx_type:move.tx_type,quantity,notes:move.notes.trim()};
       const result = await api.post('/api/inventory/movement', payload);
       setMoveModal(false);
-      const activity = move.tx_type === 'stock_in' ? 'received' : move.tx_type === 'sale' ? 'sold' : 'removed';
       setToast({
-        message: result.queued ? 'Saved on this device. It will send automatically when your connection returns.' : t('{v0} {v1} {v2}. Stock updated.',{v0:formatQuantity(quantity),v1:selected?.unit||t('units'),v2:t(activity)})
+        message: result.queued ? 'Saved on this device. It will send automatically when your connection returns.' : t('Stock count corrected. The reason is saved in Stock history.')
       });
       load();
     } catch (error) {
@@ -490,7 +489,7 @@ export default function InventoryPage() {
         <div className="grid gap-5 sm:grid-cols-2">
           <label><span className="label">{t("Category")}</span><select aria-label={t("Category")} className="input" value={product.category} onChange={e => updateProduct('category', e.target.value)}>{categories.filter(([id]) => id !== 'all').map(([id, label]) => <option value={id} key={id}>{t(label)}</option>)}</select></label>
           <Field name="selling_price" label={t("Selling price per unit")} errors={productErrors}><input {...fieldProps('selling_price',productErrors)} className="input" type="number" inputMode="decimal" min="0" step="0.01" value={product.selling_price} onChange={event => updateProduct('selling_price',event.target.value)} /></Field>
-          {!editingId && <Field name="current_stock" label={t("Starting quantity *")} errors={productErrors} hint={t("Enter how many you have now. Use 0 if there is no stock yet.")}><input {...fieldProps('current_stock', productErrors, true)} className="input" type="number" inputMode="numeric" min="0" max="999999999999" step="1" required value={product.current_stock} onChange={event => updateProduct('current_stock', event.target.value)} /></Field>}
+          {!editingId && <Field name="current_stock" label={t("Opening stock quantity *")} errors={productErrors} hint={t("Enter how many you have now. Use 0 if there is no stock yet.")}><input {...fieldProps('current_stock', productErrors, true)} className="input" type="number" inputMode="numeric" min="0" max="999999999999" step="1" required value={product.current_stock} onChange={event => updateProduct('current_stock', event.target.value)} /></Field>}
         </div>
         <details className="group rounded-xl border border-slate-200 p-4">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 font-semibold text-slate-700">{t('Stock alerts')}<ChevronDown size={18} className="shrink-0 group-open:rotate-180" aria-hidden="true" /></summary>
@@ -529,7 +528,7 @@ export default function InventoryPage() {
       <Form id="inventory-adjust-form" onFocusCapture={showFieldHint} onBlurCapture={leaveFieldHint} onSubmit={saveMovement} noValidate className="space-y-5">
         {formError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800">{t(formError)}</p>}
         <h3 className="font-bold">{selected?.description}</h3>
-        <label className="block"><span className="label">{t("What needs correcting?")}</span><select className="input" value={move.tx_type} onChange={e=>updateMove('tx_type',e.target.value)}><option value="stock_out">{t("Remove stock")}</option><option value="stock_in">{t("Add stock")}</option></select></label>
+        <label className="block"><span className="label">{t("What needs correcting?")}</span><select className="input" value={move.tx_type} onChange={e=>updateMove('tx_type',e.target.value)}><option value="stock_out">{t("Reduce stock count")}</option><option value="stock_in">{t("Increase stock count")}</option></select></label>
         <Field name="quantity" label={t("Quantity *")} errors={moveErrors}><input {...fieldProps('quantity',moveErrors)} className="input" type="number" inputMode="numeric" min="1" max="999999999999" step="1" required value={move.quantity} onChange={e=>updateMove('quantity',e.target.value)} /></Field>
         <Field name="notes" label={t("Reason for correction *")} errors={moveErrors} hint={t("For example, damaged part or shelf count corrected.")}><textarea {...fieldProps('notes',moveErrors,true)} className="input" minLength={2} maxLength={1000} required value={move.notes} onChange={e=>updateMove('notes',e.target.value)} /></Field>
         <div className={`rounded-xl p-4 ${insufficientStock?'bg-red-50 text-red-800':'bg-slate-50 text-slate-700'}`}><p>{t("Available now: {v0}",{v0:formatQuantity(selected?.current_stock)})}</p><p className="mt-1 font-bold">{t("After correction: {v0}",{v0:stockAfter===null?'—':formatQuantity(stockAfter)})}</p></div>

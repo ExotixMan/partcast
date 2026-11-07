@@ -8,7 +8,7 @@ const guides={
   ],
   inventory:[
     {title:'Find a part',steps:['Search by name, part number or barcode.','Use category and stock filters to narrow the list.','Open Part details for shelf location and other information.']},
-    {title:'Keep stock correct',edit:true,text:['Use Sell or receive for sales and deliveries. Use Correct stock only to fix an incorrect shelf count.']}
+    {title:'Keep stock correct',edit:true,text:['Use Sell or receive for sales and deliveries. Use Adjust stock only to correct a shelf count. Do not enter the same delivery twice.']}
   ],
   balances:[
     {title:'Record a payment',steps:['Find a customer, choose Record payment, then enter the amount received.','Use View payments to check saved payment history.']},
@@ -23,7 +23,7 @@ const guides={
   ],
   sales:[
     {title:'Find sales',text:['Choose a sales source, then use dates or a part name to find records.']},
-    {title:'Sales sources',text:['Counter sales show sales recorded in PartCast. Imported invoices show uploaded past bills.','Only saved quantities are counted. Missing days remain unknown.']}
+    {title:'Sales sources',text:['Recorded transactions show sales completed in PartCast. Imported invoices show uploaded past bills.','Only saved quantities are counted. Missing days remain unknown.']}
   ],
   'counter-sales':[
     {title:'Find sales',text:['Choose dates and select Find sales to review recorded sales.']}

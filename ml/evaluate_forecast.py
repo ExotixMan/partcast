@@ -6,7 +6,16 @@ import json
 from pathlib import Path
 import pandas as pd
 from train_forecast import build_product_series, select_fresh_series, evaluate_horizon
+from daily_pattern import pattern_forecast, STRATEGY
 from benchmark_raw_forecast import benchmark
+
+
+def planning_validation(series_by_product):
+    return {
+        str(horizon): evaluate_horizon(series_by_product, horizon, period_forecaster=pattern_forecast)
+        if series_by_product else {'status': 'insufficient_history', 'horizon_days': horizon, 'window_count': 0}
+        for horizon in [14, 30, 60]
+    }
 
 
 def audit(csv_path, as_of_date):
@@ -40,8 +49,9 @@ def audit(csv_path, as_of_date):
              'last_sale': s.index.max().date().isoformat(), 'recorded_units': float(s.sum())}
             for pid, s in series.items()
         ],
+        'forecast_strategy': STRATEGY,
         'exploratory_comparison': benchmark(csv_path),
-        'planning_period_validation': {str(h): evaluate_horizon(series, h) for h in [14, 30, 60, 90]},
+        'planning_period_validation': planning_validation(fresh),
         'production_accuracy_established': False,
         'limitations': [
             'The extract has actual quantities for accepted lines but does not establish complete sales coverage.',
@@ -49,6 +59,7 @@ def audit(csv_path, as_of_date):
             'Stockout periods and missed customer requests were not supplied.',
             'Only parts meeting the history threshold before each validation origin are tested.',
             'Method comparison is exploratory; do not tune on these tests and reuse them as independent evidence.',
+            'The exploratory comparison contains legacy daily strategies; planning_period_validation uses the current production strategy and freshness gates.',
             'Synthetic runtime tests prove software behavior, not accuracy on the store data.'
         ]
     }

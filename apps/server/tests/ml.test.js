@@ -15,13 +15,19 @@ test('real XGBoost training survives a copied Windows Python path and produces f
  const {result,modelBuffer}=await runForecastPython({observations,asOfDate,horizonDays:7});
  assert.equal(result.forecasts.length,14);assert.equal(new Set(result.forecasts.map(f=>f.product_id)).size,2);
  assert(result.forecasts.every(f=>f.forecast_date>asOfDate&&Number.isFinite(f.predicted_quantity)&&f.predicted_quantity>=0));
- assert.equal(result.metrics.evaluation,'chronological one-day-ahead holdout');assert(Number.isFinite(result.metrics.mae));assert(Number.isFinite(result.metrics.baseline_mae));
+ assert.equal(result.metrics.evaluation,'rolling-origin direct planning-period totals');assert(Number.isFinite(result.metrics.mae));assert(Number.isFinite(result.metrics.baseline_mae));
  assert.equal(result.metrics.horizon_validation.horizon_days,7);assert.equal(result.metrics.horizon_validation.origin_count,3);
  assert.equal(result.metrics.horizon_validation.tested_product_count,2);assert(Number.isFinite(result.metrics.horizon_validation.model.mae));
- assert.match(result.model_version,/^xgb-observed-events-/);
+ assert.match(result.model_version,/^xgb-pattern-period-/);
+ assert.equal(result.metrics.forecast_strategy,'direct_period_with_learned_daily_profile');
+ assert.equal(result.metrics.daily_validation.product_period_count,result.metrics.horizon_validation.window_count);
+ assert.equal(result.metrics.daily_validation.day_count,result.metrics.horizon_validation.window_count*7);
+ assert.equal(result.metrics.daily_validation.model.predicted_units,result.metrics.horizon_validation.model.predicted_units);
+ assert(Number.isFinite(result.metrics.daily_validation.uniform_allocation.mae));
  assert.match(result.metrics.recursive_event_handling,/observed sales only/);
  for(const method of ['croston_sba','tsb'])assert(Number.isFinite(result.metrics.horizon_validation[method].mae));
- assert(JSON.parse(modelBuffer.toString()).learner);assert.equal(result.training_date_max,asOfDate);
+ const learner=JSON.parse(modelBuffer.toString()).learner;
+ assert(learner);assert(JSON.parse(learner.attributes.daily_profile_model).learner);assert.equal(result.training_date_max,asOfDate);
 });
 test('old or insufficient sales data returns an actionable validation error without fabricated estimates',async()=>{
  await assert.rejects(runForecastPython({observations:[observations[0]],asOfDate,horizonDays:7}),e=>e.status===422&&/enough usable history/.test(e.message));
@@ -44,6 +50,17 @@ test('concurrent identical history checks share one result and later checks use 
  const next=await checkForecastReadiness({observations:[],asOfDate});
  assert.equal(next.record_count,0);assert.equal(next.status,'no_observations');
  assert.notStrictEqual(next,results[0]);
+});
+
+test('readiness checks for different planning horizons cannot share a less restrictive result',async()=>{
+ const short=observations.filter(row=>row.product_id==='synthetic-brake').slice(-80);
+ const [basic,period]=await Promise.all([
+  checkForecastReadiness({observations:short,asOfDate}),
+  checkForecastReadiness({observations:short,asOfDate,horizonDays:60})
+ ]);
+ assert.equal(basic.ready,true);
+ assert.equal(period.ready,false);assert.equal(period.status,'insufficient_period_history');
+ assert.notStrictEqual(basic,period);
 });
 
 test('forecast results cannot invent parts, repeat dates, shorten the horizon or claim false counts',()=>{

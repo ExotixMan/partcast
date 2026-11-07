@@ -1,5 +1,8 @@
-export function createForecastAutomation({db,train,pollMs=2000,setTimer=setTimeout,clearTimer=clearTimeout,logger=console}){
- let busy=false,stopped=true,timer,lastWarning=0;
+import {forecastFailure} from '../utils/forecastFailure.js';
+import {validatePlanningHorizon} from '../utils/forecastPolicy.js';
+
+export function createForecastAutomation({db,train,prepare,pollMs=2000,setTimer=setTimeout,clearTimer=clearTimeout,logger=console}){
+ let busy=false,stopped=true,timer,lastWarning=0,prepared=false;
  async function finish(token,outcome,result={}){
   const {data,error}=await db.rpc('finish_forecast_refresh',{p_token:token,p_outcome:outcome,p_result:result});
   if(error)throw error;
@@ -20,11 +23,17 @@ export function createForecastAutomation({db,train,pollMs=2000,setTimer=setTimeo
    if(job)try{await finish(job.lock_token,'error');}catch{/* Expired workers must not release another worker's lease. */}
    if(Date.now()-lastWarning>60000){
     lastWarning=Date.now();
-    logger.error('Automatic forecasting is waiting to retry.',{code:error.code||'FORECAST_WORKER_ERROR'});
+    logger.error('Automatic forecasting is waiting to retry.',forecastFailure(error));
    }
   }finally{busy=false;}
  }
  async function loop(){
+  if(stopped)return;
+  if(!prepared&&prepare){
+   try{await prepare();prepared=true;}catch{
+    if(Date.now()-lastWarning>60000){lastWarning=Date.now();logger.error('Forecast upgrade check is waiting to retry.');}
+   }
+  }
   if(stopped)return;
   await tick();
   if(!stopped){timer=setTimer(loop,pollMs);timer?.unref?.();}
@@ -34,6 +43,7 @@ export function createForecastAutomation({db,train,pollMs=2000,setTimer=setTimeo
   start(){if(!stopped)return;stopped=false;void loop();},
   stop(){stopped=true;clearTimer(timer);},
   async request(horizonDays){
+   if(horizonDays!=null)validatePlanningHorizon(horizonDays);
    const {error}=await db.rpc('request_forecast_refresh',{p_horizon:horizonDays??null});
    if(error)throw error;
    return {queued:true};
