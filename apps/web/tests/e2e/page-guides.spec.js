@@ -59,7 +59,7 @@ test('planning prioritizes the part and chart while detailed explanations and me
  const heading=page.getByRole('heading',{name:'Look up a part',exact:true});expect((await heading.boundingBox()).y).toBeLessThan(450);
  await page.getByRole('button',{name:'Quick guide',exact:true}).click();
  const guide=page.getByRole('dialog',{name:'Quick guide: Plan ahead'});
- await expect(guide.getByText('Projected stock assumes no future deliveries.',{exact:true})).toBeVisible();
+ await expect(guide.getByText('The stock summary assumes no future deliveries.',{exact:true})).toBeVisible();
  await page.keyboard.press('Escape');await page.getByText('Sales data and update history',{exact:true}).click();
  await expect(page.getByRole('region',{name:'How dependable is this estimate?'})).toBeVisible();
  await page.getByText('Sales data and update history',{exact:true}).click();

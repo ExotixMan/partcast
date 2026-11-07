@@ -30,8 +30,6 @@ export default function ForecastAccuracy({metrics}){
    </>}
   </div>
   {metrics.data_quality?.excluded_generated_rows>0&&<p className="mt-3 text-sm leading-6 text-slate-600">{t('Excluded {v0} generated records from this forecast.',{v0:number(metrics.data_quality.excluded_generated_rows)})}</p>}
-  {metrics.daily_values_are_period_averages&&<p className="mt-3 text-sm leading-6 text-slate-600">{t('Daily chart values are expected averages of the XGBoost period total, not predictions of exact sale dates.')}</p>}
-  {metrics.daily_values_follow_learned_pattern&&<p className="mt-3 text-sm leading-6 text-slate-600">{t('Daily estimates follow patterns learned from past sales while preserving the period total. They are expected quantities, not guaranteed transactions.')}</p>}
   <p className="mt-3 text-sm leading-6 text-slate-600">{t('Past test results do not guarantee future sales. Check that sales records are complete and review stock before purchasing.')}</p>
  </section>;
 }

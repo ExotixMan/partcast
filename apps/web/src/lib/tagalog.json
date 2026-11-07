@@ -1656,15 +1656,8 @@
   "Sample / forecast units in historical tests": "Dami sa halimbawa / forecast sa mga dating pagsusuri",
   "Recorded / forecast units in historical tests": "Naitalang dami / forecast sa mga dating pagsusuri",
   "Daily forecasts are expected quantities. A decimal such as 0.4 does not mean selling part of an item. Actual sales can be whole units on occasional days.": "Inaasahang dami ang daily forecast. Ang decimal na 0.4 ay hindi pagbebenta ng bahagi ng piyesa. Maaaring buong piyesa ang mabenta sa ilang araw.",
-  "Recorded sales, estimated demand and projected stock": "Naitalang benta, tinatayang demand at matitirang stock",
   "No current estimate for this part.": "Walang kasalukuyang pagtataya para sa piyesang ito.",
   "{v0}-day historical test results": "Resulta ng pagsusuri para sa {v0} araw",
-  "Daily timing test": "Pagsusuri ng daily pattern",
-  "Compared {v0} part-days in the same historical test periods. Daily errors differ from whole-period errors.": "Inihambing ang {v0} araw-piyesa sa parehong dating test period. Magkaiba ang error bawat araw at ang error sa kabuuang panahon.",
-  "Daily average error (MAE)": "Average na daily error (MAE)",
-  "Daily larger-error measure (RMSE)": "Sukat ng mas malaking daily error (RMSE)",
-  "Daily quantity error (WAPE)": "Daily quantity error (WAPE)",
-  "Uniform allocation MAE / RMSE": "MAE / RMSE ng pantay na paghahati",
   "The forecast took too long to finish. Automatic retry is pending.": "Masyadong matagal ang pagkalkula ng forecast. Nakatakdang subukan muli.",
   "The host stopped the forecasting process. Automatic retry is pending.": "Itinigil ng host ang pagkalkula ng forecast. Nakatakdang subukan muli.",
   "The forecasting process was interrupted. Automatic retry is pending.": "Naantala ang pagkalkula ng forecast. Nakatakdang subukan muli.",
@@ -1687,5 +1680,7 @@
   "Daily estimates follow patterns learned from past sales while preserving the period total. They are expected quantities, not guaranteed transactions.": "Sinusunod ng daily estimate ang pattern mula sa dating benta habang pinananatili ang kabuuang pagtataya. Inaasahang dami ito, hindi garantisadong transaksyon.",
   "All dates": "Lahat ng petsa",
   "Stock added": "Nadagdag na stock",
-  "Opening stock": "Panimulang stock"
+  "Opening stock": "Panimulang stock",
+  "Recorded sales and estimated demand": "Naitalang benta at tinatayang demand",
+  "The stock summary assumes no future deliveries.": "Walang kasamang inaasahang delivery sa buod ng stock."
 }

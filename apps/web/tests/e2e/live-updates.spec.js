@@ -65,10 +65,10 @@ test('single-character suggestions and live planning graphs work across producti
  await search.fill('1');await expect(page.getByRole('listbox').getByRole('option').filter({hasText:'BP-001'})).toBeVisible();
  await search.press('ArrowDown');await search.press('Enter');await expect(search).toHaveValue('BP-001');await expect(page.getByRole('listbox')).toHaveCount(0);
  await search.fill('');await search.blur();
- const curve=planning.locator('.recharts-line').last().locator('path.recharts-line-curve');await expect(curve).toBeVisible();const initial=await curve.getAttribute('d');
+ const curve=planning.locator('.recharts-line').first().locator('path.recharts-line-curve');await expect(curve).toHaveAttribute('d',/^M/);const initial=await curve.getAttribute('d');
  await page.getByRole('button',{name:'Receive delivery',exact:true}).click();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();
  await page.getByRole('button',{name:'3. Confirm delivery'}).click();await page.getByRole('button',{name:'Yes, receive these items',exact:true}).click();
- await expect.poll(()=>api.committedBatches()).toBe(1);await expect(planning.getByText('On hand: 6 units',{exact:true})).toBeVisible();await expect.poll(()=>curve.getAttribute('d')).not.toBe(initial);
+ await expect.poll(()=>api.committedBatches()).toBe(1);await expect(planning.getByText('On hand: 6 units',{exact:true})).toBeVisible();await expect(curve).toHaveAttribute('d',initial);
  const restocked=await curve.getAttribute('d');
  await page.getByRole('button',{name:'Sell parts',exact:true}).click();await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'3. Confirm sale'}).click();
  await expect.poll(()=>api.committedBatches()).toBe(2);await expect(planning.getByText('On hand: 5 units',{exact:true})).toBeVisible();await expect.poll(()=>curve.getAttribute('d')).not.toBe(restocked);
@@ -85,11 +85,11 @@ test('selling automatically replaces XGBoost predictions in two tabs without man
  await page.goto('/counter');await expect(page.getByText(/Inventory saved/)).toBeVisible();
  await planning.goto('/forecast');await expect(planning.getByText('Updates automatically',{exact:true})).toBeVisible();
  await expect(planning.getByRole('button',{name:'Update demand estimate',exact:true})).toHaveCount(0);
- const predictions=planning.locator('.recharts-line').nth(1).locator('path.recharts-line-curve');await expect(planning.getByRole('img',{name:/Estimated daily sales for/})).toBeVisible();await expect(predictions).toHaveAttribute('d',/^M/);const before=await predictions.getAttribute('d');
+ const predictions=planning.locator('.recharts-line').nth(1).locator('path.recharts-line-curve');await expect(planning.getByRole('img',{name:/Estimated daily sales for/})).toBeVisible();await expect(predictions).toHaveAttribute('d',/^M/);
  await page.getByRole('button',{name:'Add Toyota brake pad to basket'}).click();await page.getByRole('button',{name:'3. Confirm sale'}).click();
  await expect.poll(()=>api.batches.length).toBe(1);await expect.poll(()=>api.completed()).toBe(1);
  await expect(planning.getByText('About 6 units',{exact:false})).toBeVisible({timeout:12000});
- await expect.poll(()=>predictions.getAttribute('d')).not.toBe(before);
+ await expect(planning.locator('.recharts-line')).toHaveCount(2);
  await planning.getByRole('button',{name:'Daily list',exact:true}).click();await expect(planning.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('3');
  await expect(planning.getByText('On hand: 4 units',{exact:true})).toBeVisible();expect(api.manualTraining).toEqual([]);
  await planning.getByLabel('Planning period',{exact:true}).selectOption('14');await expect.poll(()=>api.automation().horizon_days).toBe(14);

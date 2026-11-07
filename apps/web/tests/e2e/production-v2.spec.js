@@ -11,7 +11,7 @@ async function fixture(context){
  const products=[{id:part,product_id:part,part_number:'TEST-001',description:'Fixture filter',current_stock:2,forecast_days:14,predicted_total:39.728,unit:'pc',category:'parts',selling_price:100,unit_cost:60,minimum_stock:1,safety_stock:1,photo_paths:[],search_aliases:[],stock_status:'ok'},
  {id:empty,product_id:empty,part_number:'TEST-002',description:'Fixture without history',current_stock:0,forecast_days:0,predicted_total:0,unit:'pc',category:'parts',photo_paths:[],search_aliases:[],stock_status:'out'}];
  const validation={horizon_days:14,status:'no_improvement_over_recent_average',window_count:209,tested_product_count:10,nonzero_window_count:209,model:{mae:4.4703,rmse:7,r2:.7,wape_percent:26.7934,actual_recorded_units:3487,predicted_units:3068.006},recent_average:{mae:4}};
- const run={id:'fixture-run',status:'completed',horizon_days:14,started_at:'2026-11-06T16:01:00Z',completed_at:'2026-11-06T16:02:00Z',metrics:{daily_values_follow_learned_pattern:true,horizon_validation:validation}};
+ const run={id:'fixture-run',status:'completed',horizon_days:14,started_at:'2026-11-06T16:01:00Z',completed_at:'2026-11-06T16:02:00Z',metrics:{daily_values_follow_learned_pattern:true,daily_validation:{day_count:900,model:{mae:.0957,rmse:.4974,wape_percent:20.3081},uniform_allocation:{mae:.8223,rmse:2.0517}},horizon_validation:validation}};
  let total=9;const writes=[];
  await context.route('http://localhost:10000/**',async route=>{
   const request=route.request(),url=new URL(request.url()),headers={'access-control-allow-origin':'*'};
@@ -86,4 +86,20 @@ test('inventory separates opening quantities from increases and reductions used 
  await dialog.getByRole('button',{name:'Confirm correction',exact:true}).click();
  await expect(dialog.getByText('Enter a reason for this stock correction.',{exact:true})).toBeVisible();
  expect(api.writes).toEqual([]);
+});
+
+
+test('chart omits projected stock and saved daily timing diagnostics are not rendered',async({page,context})=>{
+ await fixture(context);await page.goto('/forecast');
+ const chart=page.getByRole('img',{name:/Estimated daily sales for/});await expect(chart).toBeVisible();
+ await expect(chart.locator('.recharts-line')).toHaveCount(2);
+ await expect(chart.locator('.recharts-legend-wrapper')).toContainText('Recorded sales');
+ await expect(chart.locator('.recharts-legend-wrapper')).toContainText('Estimated demand');
+ await expect(chart.getByText('Projected stock',{exact:true})).toHaveCount(0);
+ await page.getByText('Sales data and update history',{exact:true}).click();
+ await page.getByText('14-day historical test results',{exact:true}).click();
+ await expect(page.getByText('Daily timing test',{exact:true})).toHaveCount(0);
+ await expect(page.getByText('Uniform allocation MAE / RMSE',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Summary',exact:true}).click();
+ await expect(page.getByRole('article',{name:'Demand forecast summary'})).toContainText('Projected remaining stock');
 });

@@ -1,16 +1,16 @@
 # Production v2: changes and system-review answers
 
-This branch starts from `b56be6d40627b7edc76287e1341c96c8ae410a0d`. It retains that version's Chart, Daily list, Summary and complete active-part selector. Targeted forecasting correctness, source separation, refresh and failure-diagnostic fixes are carried forward. No sales are generated or inserted by these changes.
+This branch starts from `b56be6d40627b7edc76287e1341c96c8ae410a0d`. It retains that version's Chart, Daily list, Summary and complete active-part selector. The entire `ml` directory is restored byte for byte from that commit. Application-level source separation, refresh, validation and failure diagnostics remain in place. No sales are generated or inserted by these changes.
 
 ## What changed?
 
-- The planning selector offers 14, 30 and 60 days. Advanced settings and the API accept whole planning horizons from 7 through 60; an existing custom value in that range is displayed correctly. New 90-day requests are rejected by API, settings validation, the trainer and Python CLI.
+- The planning selector offers 14, 30 and 60 days. Advanced settings and the API accept whole planning horizons from 7 through 60; an existing custom value in that range is displayed correctly. New 90-day application requests are rejected by API, settings validation, the trainer and runtime adapter before Python starts. The standalone ML scripts retain their original internal range because their source is restored exactly.
 - At API startup, an older saved 90-day setting is replaced with 60 using the durable refresh queue. An already-running job is not duplicated or cancelled; the replacement remains pending under the existing lease rules. This requires no database migration. Historical 90-day runs remain in update history; they are not relabelled as 60-day tests or served as current planning forecasts.
 - Sales labels use **Total sold**, **Recorded transactions**, and **Days with recorded sales**. Counts, quantities and data-source labels keep their separate meanings. Generated demo data remains labelled as samples.
 - Inventory uses **Opening stock quantity** and **Increase/Reduce stock count**. Corrections report that the stock count was corrected rather than claiming that a supplier delivery arrived.
 - The Summary bar uses **Stock coverage**, bounded from 0 to 100%. Small shortages are retained to four decimals. A period's estimated shortfall is not presented as the next supplier order.
-- Chart, Daily list, Summary and the selected run's metrics use the same run. Missing forecasts are unavailable, not zero-demand forecasts. Current stock and recorded sales refresh independently of forecasting; the selected part has a five-second online/visible fallback when live events are missed.
-- Forecast totals use direct period XGBoost plus a learned daily allocation model, rather than feeding predicted quantities back into the sales history. Source rules exclude declared/generated records and de-duplicate referenced imports without deleting database records. Failed updates retain a safe stage/reference; they do not display fabricated accuracy results or replace a completed forecast.
+- Chart, Daily list, Summary and the selected run's metrics use the same run. Missing forecasts are unavailable, not zero-demand forecasts. Current stock and recorded sales refresh independently of forecasting; the selected part has a five-second online/visible fallback when live events are missed. The chart contains Recorded sales and Estimated demand only. Projected stock has been removed from chart data, tooltip and legend; Summary still shows current stock, projected remaining stock, coverage and shortfall.
+- Forecasting uses the original recursive daily XGBoost implementation from `b56be6d`. The additional Daily timing test panel and learned daily-allocation implementation have been removed. Source rules exclude declared/generated records and de-duplicate referenced imports without deleting database records. Failed updates retain a safe stage/reference; they do not display fabricated accuracy results or replace a completed forecast.
 
 ## Why can stock be added in both Inventory and Sell or receive?
 
@@ -42,9 +42,7 @@ A feature is an input to the model. An error metric is a result used to evaluate
 | Sales frequency | Yes | Positive-sale counts and rates over 7, 28 and 90 historical days. |
 | Calendar | Yes | Day of week, day of month, month, ISO week and weekend indicator. |
 | Product identity | Yes | A numeric code identifies the product within the pooled model. It does not derive the brand from the SKU. |
-| History timing | Yes | Days from the beginning of the history, days since observed demand and the explicit gap to the forecast origin. |
-| Relative future-day timing | Yes, daily allocation model | Forecast lead, median of recent sale intervals, interval consistency, position within that cycle and recent positive-sale sizes. |
-| Historical volume scale | Yes, normalization | Period targets are divided by the mean of up to 90 preceding observed days times the horizon, with a minimum scale of one. Predictions are converted back to units. |
+| History timing | Yes | Days from the beginning of the history and days since observed demand. Unobserved recent gaps are projected recursively up to the original 31-day freshness limit. |
 | Weather | No | No weather service or weather variables are used. |
 | Brand | No | Stored for inventory/search; absent from the forecast feature matrices. |
 | Selling price / cost | No | Used for sales amounts, valuation and purchase costs, not demand prediction. |
@@ -53,7 +51,7 @@ A feature is an input to the model. An error metric is a result used to evaluate
 
 Removing the 90-day **forecast option** does not remove the 90-day **historical lookback**. A historical feature window is past evidence, not a request to forecast 90 future days.
 
-The first XGBoost model predicts the full planning-period total. A second XGBoost model estimates relative daily weights using past-only information and known future calendar dates. Those weights distribute the same total to four decimal places. Both fixed models use 200 trees, maximum depth 3, learning rate 0.04 and regularization. Neither treats its predictions as newly observed sales. If daily timing targets are insufficient, uniform allocation is explicitly recorded as a fallback. A flat expectation can therefore still occur; the code does not add random fluctuations to make a chart look more realistic.
+The restored production model predicts daily quantities using XGBoost with 320 trees, maximum depth 5, learning rate 0.04, subsample/column sample 0.9, regularization alpha 0.08 and lambda 1.2, and the Tweedie regression objective. It projects future days recursively: earlier predicted quantities enter later quantity lags and rolling features. Future event counts and event age use observed-sale history rather than declaring predicted quantities to be observed sales. The original recursive behavior, including its sensitivity to earlier predictions, is restored without adding random fluctuations.
 
 ## Which metrics measure the results?
 
@@ -67,7 +65,9 @@ For each tested product-period, let `A` be recorded units, `F` forecast units, a
 
 The same part tested in two different historical periods contributes two product-periods. Repeating an already saved test does not create a new independent period.
 
-The model is refitted before each historical test period. Sales in the tested period are not used to fit the model being tested. Daily timing errors are reported separately on the same complete historical periods; they are not interchangeable with whole-period errors. All eligible test windows remain in the report, including poor results. The recent-sales-average comparison is retained.
+The model is refitted before each historical test period. Sales in the tested period are not used to fit the model being tested. The original top-level metrics come from the chronological one-day-ahead holdout. The planning-period panel uses complete-period recursive validation. They measure different horizons and must not be mixed. The additional Daily timing test comparison is no longer shown. All eligible test windows remain in the report, including poor results. The recent-sales-average comparison is retained.
+
+The original one-day holdout can have the same scores for several requested forecast horizons when its historical training/test data is unchanged. Whole-period errors can differ because those tests evaluate the chosen horizon. The engine also retains its original MAPE and bias diagnostics.
 
 In the supplied screenshot, `4.4703` means about 4.47 units of average absolute error per tested product-period. `26.7934%` is WAPE, not a 73.2066% accuracy claim. `3,487 / 3,068.006` means 3,487 recorded units and 3,068.006 forecast units in those tests. The rounded screenshot alone does not supply the original error pairs or test count needed to independently recompute every value. The UI now uses Philippine number formatting, so decimal points and thousands separators do not depend on an unrelated browser locale.
 
@@ -77,7 +77,7 @@ In the supplied screenshot, `4.4703` means about 4.47 units of average absolute 
 
 Using the displayed example of 39.7 estimated units and 2 on hand, coverage is approximately `2 / 39.7 × 100 = 5.0%`. The earlier roughly 1,986% figure represented demand relative to stock; it was not forecast error or a usable percentage-filled stock bar. Exact calculations use unrounded estimates.
 
-`remaining stock = max(0, current stock − cumulative future estimated demand)`.
+`remaining stock = max(0, current stock − cumulative future estimated demand)`. This remains a Summary calculation; it is not a chart series.
 
 `period shortfall = max(0, estimated demand − current stock)`; the whole-unit planning gap rounds this shortfall upward. This is the period's expected gap. The next order still follows the store's small-purchase policy and staff review in Restock. No future deliveries are assumed.
 
@@ -91,9 +91,7 @@ Historical test scores describe the recorded sample. Missing sales and stockouts
 
 ## Code references
 
-- Forecast input columns, policy, error formulas and chronological tests: `ml/train_forecast.py`.
-- Period targets and volume normalization: `ml/period_forecast.py`.
-- Learned daily timing, preserved totals and cached past-only features: `ml/daily_pattern.py`.
+- Original forecast input columns, recursive prediction, error formulas and chronological tests: `ml/train_forecast.py`.
 - Source selection: `apps/server/src/utils/forecastData.js`.
 - Stock coverage and shortfall: `apps/web/src/lib/forecastSummary.js`.
 - Sales terminology and source counts: `apps/web/src/components/SalesSummary.jsx`.

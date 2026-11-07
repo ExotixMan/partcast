@@ -43,6 +43,15 @@ test('an older model already training receives one follow-up upgrade through the
  assert.deepEqual(calls,[['request_forecast_refresh',{p_horizon:null}]]);
 });
 
+test('startup replaces the period model and then recognizes a completed b56be6d forecast',async()=>{
+ const {prepareForecastUpgrade}=await import('../src/services/automaticForecasts.js');
+ for(const [version,quality,requests] of [['xgb-pattern-period-current',{},1],['xgb-observed-events-old',null,1],['xgb-observed-events-restored',{},0]]){
+  const calls=[];
+  const db={from(){return {select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{model_version:version,metrics:{data_quality:quality}}}),single:async()=>({data:{status:'ready',horizon_days:30}})};},rpc:async(name,args)=>{calls.push([name,args]);return {};}};
+  await prepareForecastUpgrade(db);assert.equal(calls.length,requests);
+ }
+});
+
 test('HTTP training, automatic refresh and settings refuse 90 days before any write',async()=>{
  const {adminDb}=await import('../src/supabase.js');
  const {authenticate}=await import('../src/middleware/auth.js');
