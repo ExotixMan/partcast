@@ -244,9 +244,9 @@ test('part photos validate upload and show saved images',async({page,context})=>
  await page.locator('input[type=file]').setInputFiles({name:'bad.txt',mimeType:'text/plain',buffer:Buffer.from('not an image')});await expect(page.getByRole('alert')).toContainText('JPEG');expect(api.photoUploads).toHaveLength(0);
  await page.locator('input[type=file]').setInputFiles({name:'part.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});await expect.poll(()=>api.photoUploads.length).toBe(1);await expect(page.getByRole('dialog').locator('img')).toBeVisible();await page.getByRole('button',{name:'Remove photo'}).click();await expect(page.getByRole('dialog').locator('img')).toHaveCount(0);
 });
-test('imports guide a simulated workbook to an open demo and treat timeouts as unconfirmed',async({page,context})=>{
+test('imports guide a simulated workbook to an open demo and stop before importing if its review times out',async({page,context})=>{
  await fixture(context);await page.setViewportSize({width:390,height:844});let failNetwork=false,uploads=0;
- await context.route('http://localhost:10000/api/imports/spreadsheet',async route=>{
+ await context.route('http://localhost:10000/api/imports/spreadsheet/preview',async route=>{
   if(route.request().method()==='OPTIONS')return route.fallback();
   uploads++;
   if(failNetwork)return route.abort('timedout');
@@ -264,8 +264,8 @@ test('imports guide a simulated workbook to an open demo and treat timeouts as u
  await page.goto('/imports');failNetwork=true;
  await page.getByLabel('Choose spreadsheet files').setInputFiles({name:'actual-sales.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('stubbed-upload')});
  await page.getByRole('button',{name:'Import 1 file',exact:true}).click();
- await expect(page.getByRole('region',{name:'Latest import results'})).toContainText('Import status unconfirmed:');
- await expect(page.getByRole('region',{name:'Latest import results'})).toContainText('Check Past imports');
+ await expect(page.getByRole('region',{name:'Latest import results'})).toContainText('No import was requested.');
+ await expect(page.getByRole('region',{name:'Latest import results'})).not.toContainText('Import status unconfirmed:');
  expect(uploads).toBe(2);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
@@ -412,9 +412,9 @@ test('separate sales page works without the Python engine, filter dates and rema
  expect(queries.at(-1)).toEqual({from:'2026-10-12',to:'2026-10-12'});
  await panel.getByLabel('From date',{exact:true}).fill('2026-10-11');await panel.getByLabel('To date',{exact:true}).fill('2026-10-11');
  await panel.getByRole('button',{name:'Show sales',exact:true}).click();
- await expect(panel.getByText('No quantities were recorded in these dates.',{exact:true})).toBeVisible();
+ await expect(panel.getByText('No sales records were found for these dates.',{exact:true})).toBeVisible();
  await expect(panel.getByText('This does not mean there were no sales.',{exact:true})).toBeVisible();
- await panel.getByRole('button',{name:'All saved dates',exact:true}).click();
+ await panel.getByRole('button',{name:'All dates',exact:true}).click();
  await expect(panel.getByRole('article').filter({hasText:'BP-001'})).toContainText('55 pcs');
  await page.evaluate(async()=>{await navigator.serviceWorker.ready;});
  offline=true;api.disconnect(true);await context.setOffline(true);await page.reload();
@@ -670,12 +670,12 @@ test('a separate demo database uses the usual planning page while keeping genera
  await intercept('/api/forecast/readiness**',route=>route.fulfill({json:{ready:true,status:'ready',record_count:778,current_part_count:9,products:[],requirements:{sale_days:5,calendar_days:35,maximum_age_days:31}},headers}));
  await intercept('/api/forecast/runs',route=>route.fulfill({json:{data:trained?[{id:'run-demo',status:'completed',completed_at:'2026-10-17T00:00:00Z',metrics:{data_mode:'simulated_demo',production_accuracy_established:false}}]:[]},headers}));
  await intercept('/api/forecast/products',route=>route.fulfill({json:{run:trained?{id:'run-demo'}:null,data:trained?[{product_id:p1,part_number:'23303-64010',description:'FUEL FILTER',predicted_total:8,forecast_days:30}]:[]},headers}));
- await intercept('/api/forecast/product/*',route=>route.fulfill({json:{data:[{run_id:'run-demo',forecast_date:'2026-10-18',predicted_quantity:0.25}]},headers}));
+ await intercept('/api/forecast/product/*',route=>route.fulfill({json:{product:{id:p1,part_number:'23303-64010',description:'FUEL FILTER',current_stock:0},run:{id:'run-demo',horizon_days:14},today:'2026-11-07',actualSales:[],data:[{run_id:'run-demo',forecast_date:'2026-11-08',predicted_quantity:0.25}]},headers}));
  await intercept('/api/forecast/automation',route=>{if(route.request().method()==='POST'){expect(route.request().postDataJSON()).toEqual({horizonDays:14});trained=true;return route.fulfill({json:{queued:true},headers});}return route.fulfill({json:{status:trained?'ready':'queued',horizon_days:trained?14:30,last_run_id:trained?'run-demo':null},headers});});
  await intercept('/api/forecast/recorded-sales**',route=>route.fulfill({json:{mode:'simulated_demo',record_count:778,part_count:9,last_sale_date:'2026-10-16',data:[{product_id:p1,part_number:'23303-64010',description:'FUEL FILTER',unit:'pcs',recorded_quantity:12,demo_records:40,actual_records:0,imported_records:0,sale_days:40,first_sale_date:'2024-10-17',last_sale_date:'2026-10-16'}]},headers}));
  await page.goto('/forecast');await expect(page.getByText('Practice data — not actual store sales',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Quick guide',exact:true}).click();await expect(page.getByRole('dialog').getByText(/walkthrough estimates demand from generated quantities/)).toBeVisible();await page.getByRole('button',{name:'Close guide',exact:true}).click();await page.getByText('Sales data and update history',{exact:true}).click();await expect(page.getByText('Demo demand records',{exact:true}).first()).toBeVisible();await expect(page.getByText('778',{exact:true}).first()).toBeVisible();
  await expect(page.getByText('Actual quantities from imported sales',{exact:true})).toHaveCount(0);
- await page.getByLabel('Planning period',{exact:true}).selectOption('14');await expect(page.getByLabel('Choose a part')).toContainText('23303-64010');await page.getByRole('button',{name:'Daily list',exact:true}).click();await expect(page.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('0.3');
+ await page.getByLabel('Planning period',{exact:true}).selectOption('14');await expect(page.getByLabel('Choose a part')).toContainText('23303-64010');await page.getByRole('button',{name:'Daily list',exact:true}).click();await expect(page.getByRole('table').filter({hasText:'Estimated units sold'})).toContainText('0.25');
  await page.goto('/sales');await expect(page.getByText('Generated sample records: 40',{exact:true}).filter({visible:true})).toBeVisible();await expect(page.getByText('Generated sample quantities in the separate demo database.')).toBeVisible();
  for(const width of [320,768,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),String(width)).toBe(true);}
  await page.getByLabel('Website language').selectOption('fil');await expect(page.getByText('Mga ginawang halimbawang dami sa hiwalay na demo database.')).toBeVisible();
@@ -741,7 +741,7 @@ async function restockFixture(context){
 
 test('restock search and filters preserve quantities, distinguish no matches and work with saved offline records',async({page,context})=>{
  const api=await restockFixture(context);await page.setViewportSize({width:390,height:844});await page.goto('/reorder');await expect(page.getByText(/Inventory saved/)).toBeVisible();await expect(page.getByRole('article')).toHaveCount(4);
- await expect(page.locator('details.page-help')).not.toHaveAttribute('open');
+ await expect(page.getByRole('button',{name:'Quick guide',exact:true})).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);
  await page.getByLabel('Search parts to restock').fill('BP-001');await page.getByRole('button',{name:'Search',exact:true}).click();await expect(page.getByRole('article')).toHaveCount(1);await expect(page.getByRole('article')).toContainText('Toyota brake pad');await expect(page.getByText('1 of 4 parts')).toBeVisible();
  await page.getByRole('button',{name:'Refresh list'}).click();await expect(page.getByText('1 of 4 parts')).toBeVisible();await expect(page.getByLabel('Search parts to restock')).toHaveValue('BP-001');
  await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.getByRole('button',{name:'Filters',exact:true}).click();await page.getByLabel('Stock status',{exact:true}).selectOption('out_of_stock');await expect(page.getByRole('article')).toHaveCount(2);
@@ -780,7 +780,7 @@ test('external settings submit uses field validation and failed pages recover wi
  await fixture(context);let writes=0;
  await context.route('http://localhost:10000/api/admin/settings/*',route=>{if(route.request().method()==='OPTIONS')return route.fallback();writes++;return route.fulfill({json:{data:{}},headers:{'access-control-allow-origin':'*'}});});
  await page.goto('/settings');await page.getByLabel('Keep backup copies for (days)').fill('0');await page.getByRole('button',{name:'Save settings',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Enter 1 or more');await expect(page.getByLabel('Keep backup copies for (days)')).toBeFocused();expect(writes).toBe(0);
- await page.getByLabel('Keep backup copies for (days)').fill('30');await page.getByLabel('Plan stock for the next (days)').fill('91');await page.getByRole('button',{name:'Save settings',exact:true}).click();await expect(page.getByRole('alert')).toContainText('90');expect(writes).toBe(0);
+ await page.getByLabel('Keep backup copies for (days)').fill('30');await page.getByLabel('Plan stock for the next (days)').fill('61');await page.getByRole('button',{name:'Save settings',exact:true}).click();await expect(page.getByRole('alert')).toContainText('60');expect(writes).toBe(0);
  await page.getByLabel('Plan stock for the next (days)').fill('30');await page.getByRole('button',{name:'Save settings',exact:true}).click();await expect.poll(()=>writes).toBe(2);
  let broken=true;await context.route('http://localhost:10000/api/debts',route=>route.request().method()==='OPTIONS'?route.fallback():route.fulfill({json:{data:broken?{}:[]},headers:{'access-control-allow-origin':'*'}}));
  await page.setViewportSize({width:390,height:844});await page.goto('/debts');await expect(page.getByRole('heading',{name:'This page could not open'})).toBeVisible();await expect(page.getByRole('navigation',{name:'Quick navigation'})).toBeVisible();broken=false;await page.getByRole('button',{name:'Try again',exact:true}).click();await expect(page.getByRole('heading',{name:'Customer balances',exact:true})).toBeVisible();
@@ -791,7 +791,7 @@ test('compact restock stays readable with larger Tagalog text on phone tablet an
  await expect(page.getByRole('heading',{name:'Oorderin',exact:true})).toBeVisible();await expect(page.getByRole('article').filter({hasText:'Toyota brake pad'}).getByText('Paubos na',{exact:true})).toBeVisible();
  for(const width of [320,768,1440]){await page.setViewportSize({width,height:1000});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${width}px`).toBe(true);}
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/partcast-restock-compact-phone.png',fullPage:false});
- await page.getByText('Tulong sa pag-order',{exact:true}).click();await expect(page.getByText(/Nagsisimula sa 1–2 bawat piyesa/)).toBeVisible();
+ await page.getByRole('button',{name:'Maikling gabay',exact:true}).click();await expect(page.getByRole('dialog').getByText(/Nagsisimula sa 1–2 bawat piyesa/)).toBeVisible();await page.getByRole('button',{name:'Isara ang gabay',exact:true}).click();
  api.setLoadFailure(true);await page.getByRole('button',{name:'I-refresh ang listahan',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Hindi ma-refresh');api.setLoadFailure(false);await page.getByRole('button',{name:'Subukan ulit',exact:true}).click();await expect(page.getByText('4 sa 4 piyesa')).toBeVisible();
 });
 

@@ -33,7 +33,7 @@ const guides={
     {title:'Report details',text:['Reports use the latest saved store data and need an internet connection. They download as Excel files (.xlsx).','Leave dates blank for all records. Dates follow Philippines time. Inventory quantities are current; its stock changes sheet uses your dates. Restock suggestions use current stock. Customer balances use the debt date and include payments recorded so far.']}
   ],
   imports:[
-    {title:'Import spreadsheets',steps:['Choose one or more Excel or CSV files.','Choose automatically if you are unsure. PartCast checks the column names to find stock records, sales, or forecasting quantities.','Review the results and import notes before trying the same file again.']},
+    {title:'Import spreadsheets',steps:['Choose Excel or CSV files. For forecasting history, choose one complete file.','Choose automatically if you are unsure. PartCast checks the column names to find stock records, sales, or forecasting quantities.','For forecasting history, review the replacement counts and confirm before saving.','Review the results and import notes before trying the same file again.']},
     {title:'For better forecasts:',text:['Import inventory first, then past sales, then your prepared forecasting spreadsheet. Use actual quantities sold, dates, and matching part numbers.']}
   ]
 };

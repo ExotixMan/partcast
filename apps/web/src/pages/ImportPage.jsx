@@ -1,7 +1,7 @@
 import PageInstructions from '../components/PageInstructions.jsx';
 import useLiveRefresh from '../hooks/useLiveRefresh.js';
 import { t, useLocale } from "../context/LocaleContext.jsx";
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileSpreadsheet, UploadCloud, TriangleAlert, CheckCircle2 } from 'lucide-react';
 import {Link} from 'react-router-dom';
 import { api } from '../lib/api.js';
@@ -29,6 +29,7 @@ export default function ImportPage() {
   const [historyError, setHistoryError] = useState('');
   const [toast, setToast] = useState(null);
   const [results, setResults] = useState([]);
+  const pendingReviews=useRef(new WeakMap());
   async function load() {
     setHistoryLoading(true);
     setHistoryError('');
@@ -50,25 +51,51 @@ export default function ImportPage() {
     setResults([]);
     const done = [];
     try {
-      for (const file of files) {
+      const checked=[];
+      for(const file of files){
+        const previous=pendingReviews.current.get(file);
+        if(previous){checked.push({file,review:previous});continue;}
+        if(!['auto','demand-training'].includes(kind)){checked.push({file,review:null});continue;}
+        const data=new FormData();data.append('file',file);data.append('kind',kind);data.append('preview','true');
+        try{
+          const review=await api.post('/api/imports/spreadsheet/preview',data);
+          if(!['inventory','legacy-sales','demand-training'].includes(review?.detectedType)||typeof review.requiresConfirmation!=='boolean'||review.detectedType==='demand-training'&&(!review.requiresConfirmation||typeof review.previewToken!=='string'||!Number.isInteger(review.rowsImported)||!Number.isInteger(review.existingImportedRows)))throw new Error(t('The import review could not be confirmed. No import was requested.'));
+          checked.push({file,review});
+        }
+        catch(cause){done.push({file:file.name,ok:false,error:cause.message+' '+t('No import was requested.'),code:cause.code,unconfirmed:false});}
+      }
+      const hasHistory=checked.some(item=>item.review?.requiresConfirmation);
+      if(hasHistory&&files.length!==1){
+        setResults([{file:files.map(file=>file.name).join(', '),ok:false,error:t('Choose one complete forecasting history file at a time. No files were imported.')}]);
+        return;
+      }
+      if(hasHistory&&done.length){setResults(done);return;}
+      for (const {file,review} of checked) {
+        if(review?.requiresConfirmation&&!pendingReviews.current.has(file)){
+          if(!window.confirm(t('Replace {v0} imported history rows with {v1} daily quantities from {v2}? The {v3} recorded sales rows and stock balances will stay unchanged. Use a complete history file.',{v0:review.existingImportedRows,v1:review.rowsImported,v2:file.name,v3:review.existingActualSaleRows}))){done.push({file:file.name,ok:false,error:t('Import cancelled. No history was changed.')});continue;}
+          pendingReviews.current.set(file,review);
+        }
         const data = new FormData();
         data.append('file', file);
         data.append('kind', kind);
         data.append('useProxy', String(useProxy));
+        if(review?.requiresConfirmation)data.append('previewToken',review.previewToken);
         try {
           const result = await api.post('/api/imports/spreadsheet', data);
+          pendingReviews.current.delete(file);
           done.push({
             file: file.name,
             ok: true,
             ...result
           });
         } catch (cause) {
+          if(['IMPORT_HISTORY_CHANGED','IMPORT_PREVIEW_EXPIRED','IMPORT_REVIEW_REQUIRED','IMPORT_VALIDATION_FAILED'].includes(cause.code))pendingReviews.current.delete(file);
           done.push({
             file: file.name,
             ok: false,
             error: cause.message,
             code: cause.code,
-            unconfirmed: (!cause.status || cause.status>=500) && cause.code !== 'configuration'
+            unconfirmed: (!cause.status || cause.status>=500) && cause.code !== 'configuration' && cause.code !== 'IMPORT_SETUP_REQUIRED'
           });
         }
       }
@@ -98,7 +125,7 @@ export default function ImportPage() {
 
         {kind==='legacy-sales'&&<p className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-slate-700">{t('Past invoices appear on the Sales page. They do not change stock or add actual sold quantities for forecasting. Import dated part quantities separately.')}</p>}
         {(kind==='inventory'||kind==='auto')&&<p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t('Inventory imports replace saved stock counts with spreadsheet quantities. Use current shelf counts and back up first. Import sales quantities separately for forecasting.')}</p>}
-        {(kind==='demand-training'||kind==='auto')&&<p className="text-sm leading-6 text-slate-600">{t('A forecasting import replaces previously imported training history. Include the full history you want to keep.')}</p>}
+        {(kind==='demand-training'||kind==='auto')&&<p className="text-sm leading-6 text-slate-600">{t('A forecasting import replaces previously imported training history. Use one complete file. You will review the row counts before confirming; invalid rows stop the replacement.')}</p>}
         <p className="text-sm text-slate-600">{t("Review files before importing. Internet is required.")}</p>
         <button className="btn-primary w-full" disabled={!files.length || busy} onClick={send}><UploadCloud size={17} aria-hidden="true" />{busy ? t('Importing your files…') : t("Import {v0} {v1}", {
               v0: files.length || t('selected'),

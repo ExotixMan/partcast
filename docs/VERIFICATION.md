@@ -1,4 +1,26 @@
-# Verification — 20 October 2026
+# Verification
+
+## Atomic forecasting imports — 7 November 2026
+
+The `production-v2` update passes 228 backend tests, 33 website unit tests, the
+production Vite/PWA build and 20 targeted Chromium scenarios. PostgreSQL tests
+cover complete rollback following an injected mid-insert failure, a 701-row
+commit, preserved actual sales and stock, one refresh request per replacement,
+safe receipt replay, stale/expired reviews, invalid rows and denied direct writes.
+HTTP tests check verified manager access, read-only previews, required review
+tokens and conflict codes. Browser checks cover confirmation, cancellation,
+interrupted responses, repeated requests, multiple-file rejection, invalid previews
+and missing migrations. Older browser fixtures were updated to the existing
+60-day limit, current help dialogs and precise quantity display.
+
+Migration 0015 is included in the repeatable installer and has been exercised
+against PostgreSQL through PGlite. It has not been applied to the live database
+from this workspace; the available REST connection cannot install SQL functions.
+Apply the migration and deploy both services from `production-v2` before relying
+on the live protection. No live history was replaced during verification.
+The `ml` tree remains identical to `b56be6d`. See [safe forecasting imports](SAFE_FORECAST_IMPORTS.md).
+
+## Earlier verification — 20 October 2026
 
 The final local run passed **302 automated checks**: 138 server/database tests, 26 website unit tests, 85 Chromium browser scenarios and 53 Python forecasting tests. The production Vite/PWA build passed. Both application runtime dependency audits reported zero known vulnerabilities at audit time; dependency declarations and lockfiles were unchanged.
 

@@ -21,6 +21,7 @@ export function invalidateData(tables = LIVE_TABLES, notifyTabs = true) {
 }
 
 export function mutationTables(path) {
+  if(path==='/api/imports/spreadsheet/preview')return [];
   if (path.startsWith('/api/assistant/')) return [];
   if (path.startsWith('/api/debts')) return ['customer_debts','debt_payments'];
   if (path.startsWith('/api/imports')) return ['products', 'inventory_transactions', 'demand_observations', 'legacy_sales', 'import_batches','forecast_refresh_state'];

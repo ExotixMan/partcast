@@ -30,8 +30,15 @@ begin
   if to_regprocedure('public.issue_email_challenge(uuid,uuid,text)') is null
      or to_regprocedure('public.verify_email_challenge(uuid,uuid,text)') is null
      or to_regprocedure('public.sync_store_operation(uuid,jsonb)') is null
-     or to_regprocedure('public.save_product_supplier(uuid,uuid,numeric,integer,boolean,text)') is null then
+     or to_regprocedure('public.save_product_supplier(uuid,uuid,numeric,integer,boolean,text)') is null
+     or to_regprocedure('public.demand_import_snapshot()') is null
+     or to_regprocedure('public.replace_imported_demand(uuid,uuid,text,text,text,text,timestamptz,jsonb,integer,integer,jsonb)') is null then
     raise exception 'Required login or stock-operation functions are missing.';
+  end if;
+  if has_table_privilege('service_role','public.demand_observations','DELETE')
+     or has_table_privilege('service_role','public.demand_observations','INSERT')
+     or has_function_privilege('authenticated','public.replace_imported_demand(uuid,uuid,text,text,text,text,timestamptz,jsonb,integer,integer,jsonb)','EXECUTE') then
+    raise exception 'Atomic demand-import permissions are not installed.';
   end if;
   if has_function_privilege('authenticated','public.issue_email_challenge(uuid,uuid,text)','EXECUTE')
      or has_function_privilege('authenticated','public.verify_email_challenge(uuid,uuid,text)','EXECUTE') then

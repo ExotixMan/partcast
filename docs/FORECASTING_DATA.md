@@ -4,7 +4,7 @@ Demand means the quantity customers bought for an identified part on a known dat
 
 ## Import
 
-Import a reviewed current inventory snapshot first so sales can match exact part numbers. Import past invoices through the historical-sales option. Import actual dated part quantities through the demand/training option, or use automatic detection when the workbook headers match. Read the result counts and unmatched-part warnings. A successful historical invoice import does not imply that usable quantity observations were added.
+Import a reviewed current inventory snapshot first so sales can match exact part numbers. Import past invoices through the historical-sales option. Import actual dated part quantities through the demand/training option, or use automatic detection when the workbook headers match. Forecasting imports require one complete file, reject invalid/unmatched rows, and show the replacement counts before confirmation. Migration 0015 saves the replacement and its receipt atomically, preserves existing actual-sale rows, and safely handles retries. See [safe forecasting imports](SAFE_FORECAST_IMPORTS.md). A successful historical invoice import does not imply that usable quantity observations were added.
 
 The importer recognizes reviewed training tables such as `Daily_B_Usable` and supported dated-demand columns. Keep source dates, quantities, identifiers and document references. A reference number does not establish a sale date. Do not shift old dates to today, assume missing quantities, merge similar identifiers by guessing, or count the same sale in imported demand and new counter transactions.
 

@@ -4,6 +4,8 @@ import { loadSpreadsheet } from '../utils/spreadsheet.js';
 import { containsSimulatedDemand } from './forecastDemo.js';
 import { simulatedDemandError } from '../utils/simulationData.js';
 import { isDemandQuantityHeader } from '../utils/demandHeaders.js';
+import {demandImportDate,demandImportCents,demandImportDay,MAX_DEMAND_IMPORT_ROWS,MAX_DEMAND_CENTS} from '../utils/demandImport.js';
+import {reviewDemandImport,commitDemandImport} from './atomicDemandImport.js';
 
 import { adminDb } from '../supabase.js';
 import { cleanText, excelDate, numberOr, fetchAll } from '../utils/helpers.js';
@@ -2213,381 +2215,52 @@ function bestDemandSheet(
     )[0];
 }
 
-export async function importDemandTrainingWorkbook(
-  buffer,
-  fileName,
-  userId,
-  parsedWorkbook = null
-) {
-  const fileSha256 =
-    spreadsheetHash(
-      buffer
-    );
-
-  const workbook =
-    parsedWorkbook ?? await loadSpreadsheet(
-      buffer,
-      fileName,
-      {rejectSimulated:true}
-    );
-
-  if (containsSimulatedDemand(workbook)) {
-    throw simulatedDemandError();
-  }
-
-  const selected =
-    bestDemandSheet(
-      workbook
-    );
-
-  if (!selected) {
-    const error =
-      new Error(
-        'No demand-training table was found. Expected Date, Part Number, and Demand Quantity columns.'
-      );
-
-    error.status = 422;
-
-    throw error;
-  }
-
-  const batch =
-    await createBatch(
-      fileName,
-      fileSha256,
-      'demand_training',
-      userId
-    );
-
-  let read = 0;
-  let imported = 0;
-  let skipped = 0;
-
-  const warnings = [];
-
-  try {
-    const products =
-      await fetchAll(
-        () =>
-          adminDb
-            .from(
-              'products'
-            )
-            .select(
-              'id,part_number,description'
-            )
-            .eq(
-              'active',
-              true
-            )
-      );
-
-    const lookup =
-      new Map();
-
-    for (
-      const product
-      of products
-    ) {
-      const key =
-        normalizePartKey(
-          product.part_number
-        );
-
-      if (
-        key &&
-        !lookup.has(key)
-      ) {
-        lookup.set(
-          key,
-          product
-        );
-      }
-    }
-
-    const aggregate =
-      new Map();
-
-    const unmatched =
-      new Set();
-
-    for (
-      let rowNumber =
-        selected.header.row +
-        1;
-
-      rowNumber <=
-        selected.ws.rowCount;
-
-      rowNumber++
-    ) {
-      const row =
-        selected.ws.getRow(
-          rowNumber
-        );
-
-      const date =
-        excelDate(
-          getValue(
-            row,
-            selected.header.map,
-            'date'
-          )
-        );
-
-      const partNumber =
-        cleanText(
-          getValue(
-            row,
-            selected.header.map,
-            'partNumber'
-          ),
-          120
-        );
-
-      const quantity =
-        numberOr(
-          getValue(
-            row,
-            selected.header.map,
-            'quantity'
-          ),
-          0
-        );
-
-      if (
-        !date &&
-        !partNumber &&
-        !quantity
-      ) {
-        continue;
-      }
-
-      read++;
-
-      if (
-        !date ||
-        !partNumber ||
-        quantity <= 0
-      ) {
-        skipped++;
-        continue;
-      }
-
-      const product =
-        lookup.get(
-          normalizePartKey(
-            partNumber
-          )
-        );
-
-      if (!product) {
-        skipped++;
-
-        unmatched.add(
-          partNumber
-        );
-
-        continue;
-      }
-
-      const key =
-        `${product.id}|${date}`;
-
-      const existing =
-        aggregate.get(
-          key
-        ) ||
-        {
-          product_id:
-            product.id,
-
-          occurred_on:
-            date,
-
-          quantity:
-            0,
-
-          partNumber
-        };
-
-      existing.quantity +=
-        quantity;
-
-      aggregate.set(
-        key,
-        existing
-      );
-    }
-
-    const rows = [
-      ...aggregate.values()
-    ].map(
-      item => ({
-        product_id:
-          item.product_id,
-
-        occurred_on:
-          item.occurred_on,
-
-        quantity:
-          Number(
-            item.quantity
-              .toFixed(4)
-          ),
-
-        source:
-          'imported_training_data',
-
-        source_reference:
-          `training:${batch.id}:${cleanText(
-            selected.ws.name,
-            80
-          )}:${cleanText(
-            item.partNumber,
-            120
-          )}`
-      })
-    );
-
-    if (!rows.length) {
-      const error =
-        new Error(
-          'No training rows matched the current Inventory. Import the inventory spreadsheet first, then upload the demand-training spreadsheet again.'
-        );
-
-      error.status = 422;
-
-      throw error;
-    }
-
-    const cleared =
-      await adminDb
-        .from(
-          'demand_observations'
-        )
-        .delete()
-        .eq(
-          'source',
-          'imported_training_data'
-        );
-
-    if (
-      cleared.error
-    ) {
-      throw cleared.error;
-    }
-
-    for (
-      let index = 0;
-      index <
-        rows.length;
-
-      index += 500
-    ) {
-      const chunk =
-        rows.slice(
-          index,
-          index + 500
-        );
-
-      const {
-        error
-      } =
-        await adminDb
-          .from(
-            'demand_observations'
-          )
-          .insert(
-            chunk
-          );
-
-      if (error) {
-        throw error;
-      }
-
-      imported +=
-        chunk.length;
-    }
-
-    if (
-      unmatched.size
-    ) {
-      warnings.push(
-        `${
-          unmatched.size
-        } part number(s) were not found in Inventory and were skipped. Examples: ${
-          [
-            ...unmatched
-          ]
-            .slice(
-              0,
-              8
-            )
-            .join(', ')
-        }`
-      );
-    }
-
-    warnings.push(
-      `Automatically selected "${selected.ws.name}" because it contains the strongest usable Date + Part Number + Demand Quantity dataset. The uploaded filename was not used to determine the dataset type.`
-    );
-
-    if (workbook.worksheets.length > 1) {
-      warnings.push(
-        `Only the dated part quantities in "${selected.ws.name}" were imported. The other ${workbook.worksheets.length - 1} worksheet(s) were not imported; financial amounts and suggested quantities are not converted into sales quantities.`
-      );
-    }
-
-    await completeBatch(
-      batch.id,
-      {
-        read,
-        imported,
-        skipped,
-        warnings
-      }
-    );
-
-    return {
-      batchId:
-        batch.id,
-
-      detectedType:
-        'demand-training',
-
-      selectedSheet:
-        selected.ws.name,
-
-      rowsRead:
-        read,
-
-      rowsImported:
-        imported,
-
-      rowsSkipped:
-        skipped,
-
-      matchedProducts:
-        new Set(
-          rows.map(
-            item =>
-              item.product_id
-          )
-        ).size,
-
-      warnings
-    };
-
-  } catch (error) {
-    await failBatch(
-      batch.id,
-      warnings,
-      error
-    );
-
-    throw error;
-  }
+export async function importDemandTrainingWorkbook(buffer,fileName,userId,parsedWorkbook=null,options={}) {
+ const workbook=parsedWorkbook??await loadSpreadsheet(buffer,fileName,{rejectSimulated:true});
+ if(containsSimulatedDemand(workbook))throw simulatedDemandError();
+ const selected=bestDemandSheet(workbook);
+ if(!selected)throw Object.assign(new Error('No demand-training table was found. Expected Date, Part Number, and Demand Quantity columns.'),{status:422});
+ const products=await fetchAll(()=>adminDb.from('products').select('id,part_number,description').eq('active',true).order('id'));
+ const lookup=new Map(),ambiguous=new Set();
+ for(const product of products){
+  const key=normalizePartKey(product.part_number);
+  if(!key)continue;
+  if(lookup.has(key))ambiguous.add(key);
+  else lookup.set(key,product);
+ }
+ const aggregate=new Map(),issues=[];
+ let read=0,zeroRows=0;
+ const today=demandImportDay();
+ for(let index=selected.header.row+1;index<=selected.ws.rowCount;index++){
+  const row=selected.ws.getRow(index);
+  const rawDate=getValue(row,selected.header.map,'date'),rawPart=getValue(row,selected.header.map,'partNumber'),rawQuantity=getValue(row,selected.header.map,'quantity');
+  if([rawDate,rawPart,rawQuantity].every(value=>value==null||String(value).trim()===''))continue;
+  read++;
+  const date=demandImportDate(rawDate),part=String(rawPart??'').trim(),cents=demandImportCents(rawQuantity);
+  let problem=!date?'Use a valid YYYY-MM-DD sale date.':date>today?'The sale date is in the future.':!part||part.length>120?'Enter an existing part number of at most 120 characters.':cents==null?'Use a nonnegative sold quantity with at most 2 decimal places.':null;
+  const key=normalizePartKey(part),product=lookup.get(key);
+  if(!problem&&ambiguous.has(key))problem=`Part ${part} matches more than one active inventory product.`;
+  if(!problem&&!product)problem=`Part ${part} was not found in active Inventory.`;
+  if(problem){issues.push(`Row ${index}: ${problem}`);continue;}
+  if(cents===0){zeroRows++;continue;}
+  const dailyKey=product.id+'|'+date;
+  const item=aggregate.get(dailyKey)||{product_id:product.id,part_number:product.part_number,occurred_on:date,cents:0};
+  item.cents+=cents;
+  if(!Number.isSafeInteger(item.cents)||item.cents>MAX_DEMAND_CENTS){issues.push(`Row ${index}: the combined daily sold quantity is too large.`);continue;}
+  aggregate.set(dailyKey,item);
+ }
+ if(issues.length)throw Object.assign(new Error(`Import rejected: ${issues.slice(0,5).join(' ')}${issues.length>5?` ${issues.length-5} more row(s) need correction.`:''} No history was changed.`),{status:422,safe:true,code:'IMPORT_VALIDATION_FAILED'});
+ if(!aggregate.size)throw Object.assign(new Error('No positive sales quantities matched the current Inventory. Existing history was not changed.'),{status:422,safe:true,code:'IMPORT_VALIDATION_FAILED'});
+ if(aggregate.size>MAX_DEMAND_IMPORT_ROWS)throw Object.assign(new Error(`Use at most ${MAX_DEMAND_IMPORT_ROWS.toLocaleString('en-PH')} daily part quantities per complete history file. Existing history was not changed.`),{status:422,safe:true,code:'IMPORT_VALIDATION_FAILED'});
+ const warnings=[`Selected "${selected.ws.name}" using its dated part-quantity columns. Different transactions for the same part and date are combined; do not repeat the same transaction.`];
+ if(zeroRows)warnings.push(`${zeroRows} zero-sale day(s) were checked but not saved as positive sold quantities.`);
+ if(read-zeroRows>aggregate.size)warnings.push(`${read-zeroRows} positive sales rows were combined into ${aggregate.size} daily part quantities.`);
+ if(workbook.worksheets.length>1)warnings.push(`Only the dated part quantities in "${selected.ws.name}" will replace imported history. The other ${workbook.worksheets.length-1} worksheet(s) are not imported; financial amounts and suggested quantities are not converted into sales quantities.`);
+ const rows=[...aggregate.values()].sort((a,b)=>a.product_id.localeCompare(b.product_id)||a.occurred_on.localeCompare(b.occurred_on)).map(({cents,...row})=>({...row,quantity:(cents/100).toFixed(2)}));
+ const plan={sheetName:cleanText(selected.ws.name,80),rows,rowsRead:read,zeroRows,warnings};
+ const hash=spreadsheetHash(buffer);
+ if(options.preview)return reviewDemandImport(plan,userId,hash);
+ return commitDemandImport(plan,userId,cleanText(fileName,255),hash,options.previewToken);
 }
 
 export async function importSpreadsheetAuto(
@@ -2595,7 +2268,8 @@ export async function importSpreadsheetAuto(
   fileName,
   userId,
   requestedType = 'auto',
-  useProxy = false
+  useProxy = false,
+  options = {}
 ) {
   const workbook = await loadSpreadsheet(buffer,fileName,{rejectSimulated:true});
   if(containsSimulatedDemand(workbook))throw simulatedDemandError();
@@ -2607,6 +2281,8 @@ export async function importSpreadsheetAuto(
           workbook
         )
       : requestedType;
+
+  if(options.preview&&!['demand-training','demand_training'].includes(type))return {detectedType:type,requiresConfirmation:false};
 
   if (
     type === 'inventory'
@@ -2644,7 +2320,8 @@ export async function importSpreadsheetAuto(
       buffer,
       fileName,
       userId,
-      workbook
+      workbook,
+      options
     );
   }
 

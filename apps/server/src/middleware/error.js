@@ -65,6 +65,6 @@ export function errorHandler(err, req, res, next) {
   res.status(status).json({
     error: message,
     ...(diagnostics?{diagnostics}:{}),
-    ...(err?.safe&&/^(GMAIL_|SUPPLIER_EMAIL_|CAPTCHA_)[A-Z_]+$/.test(err?.code||'')?{code:err.code}:{})
+    ...(err?.safe&&/^(GMAIL_|SUPPLIER_EMAIL_|CAPTCHA_|IMPORT_)[A-Z_]+$/.test(err?.code||'')?{code:err.code}:{})
 });
 }

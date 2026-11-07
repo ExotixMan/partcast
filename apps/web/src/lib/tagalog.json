@@ -1682,5 +1682,13 @@
   "Stock added": "Nadagdag na stock",
   "Opening stock": "Panimulang stock",
   "Recorded sales and estimated demand": "Naitalang benta at tinatayang demand",
-  "The stock summary assumes no future deliveries.": "Walang kasamang inaasahang delivery sa buod ng stock."
+  "The stock summary assumes no future deliveries.": "Walang kasamang inaasahang delivery sa buod ng stock.",
+  "A forecasting import replaces previously imported training history. Use one complete file. You will review the row counts before confirming; invalid rows stop the replacement.": "Pinapalitan ng forecasting import ang dating imported history. Gumamit ng isang kumpletong file. Makikita muna ang bilang ng mga tala bago kumpirmahin; hindi tutuloy ang pagpapalit kung may invalid na row.",
+  "Choose one complete forecasting history file at a time. No files were imported.": "Pumili lang ng isang kumpletong forecasting history file sa bawat import. Walang file na na-import.",
+  "Replace {v0} imported history rows with {v1} daily quantities from {v2}? The {v3} recorded sales rows and stock balances will stay unchanged. Use a complete history file.": "Palitan ang {v0} imported history row ng {v1} daily quantity mula sa {v2}? Mananatili ang {v3} recorded sales row at ang kasalukuyang stock. Gumamit ng kumpletong history file.",
+  "Import cancelled. No history was changed.": "Kinansela ang import. Walang history na binago.",
+  "The import review could not be confirmed. No import was requested.": "Hindi makumpirma ang import review. Walang import na ipinadala.",
+  "No import was requested.": "Walang import na ipinadala.",
+  "Choose Excel or CSV files. For forecasting history, choose one complete file.": "Pumili ng Excel o CSV file. Para sa forecasting history, pumili ng isang kumpletong file.",
+  "For forecasting history, review the replacement counts and confirm before saving.": "Para sa forecasting history, suriin ang bilang ng papalitang tala at kumpirmahin bago i-save."
 }

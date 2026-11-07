@@ -4,7 +4,7 @@ Use the SQL Editor in the intended project: **`ragdjkdcrvexqfadlqbf`**, whose AP
 
 These files install the complete PartCast schema on a fresh project, or upgrade a recognized existing PartCast schema. They replace application access policies/functions and preserve Auth accounts, inventory, sales, customer debts/payments, photos, saved encrypted connections and synchronization receipts. They do not reset or delete the database. Unrecognized/partial schemas stop with an error rather than guessing how to change your records.
 
-**For an existing store through 0011, run [0012_sale_financial_integrity.sql](../migrations/0012_sale_financial_integrity.sql).** It checks rounded sale amounts and credit due dates inside the database. Older stores must apply their missing migrations in order first. The updates preserve accounts, inventory, balances and old transactions. Both complete installer files already include the latest migrations. See [Store workflows](../../docs/STORE_WORKFLOWS.md).
+**For an existing store through 0014, run [0015_atomic_demand_import.sql](../migrations/0015_atomic_demand_import.sql).** It installs atomic forecasting-history replacement and blocks the old unsafe direct-write path. Deploy the updated `production-v2` API and website afterward. Older stores must apply their missing migrations in order first. The migration preserves accounts, inventory, balances and sales. Both complete installer files include the latest migrations. See [safe forecasting imports](../../docs/SAFE_FORECAST_IMPORTS.md).
 
 ## Run the full scripts in order
 

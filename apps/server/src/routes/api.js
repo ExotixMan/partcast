@@ -433,13 +433,22 @@ router.post('/forecast/train',rolesAdmin,async(req,res,next)=>{
  }catch(e){next(e);}
 });
 
+router.post('/imports/spreadsheet/preview',rolesAdmin,upload.single('file'),async(req,res,next)=>{
+  try{
+    if(!req.file)return res.status(400).json({error:'Attach an .xlsx, .xlsm, or .csv spreadsheet.'});
+    const kind=z.enum(['auto','inventory','legacy-sales','demand-training']).default('auto').parse(req.body.kind||'auto');
+    res.json(await importSpreadsheetAuto(req.file.buffer,req.file.originalname,req.user.id,kind,false,{preview:true}));
+  }catch(error){next(error);}
+});
+
 router.post('/imports/spreadsheet', rolesAdmin, upload.single('file'), async (req,res,next) => {
   try {
     if (!req.file) return res.status(400).json({error:'Attach an .xlsx, .xlsm, or .csv spreadsheet.'});
     const kind = z.enum(['auto','inventory','legacy-sales','demand-training']).default('auto').parse(req.body.kind || 'auto');
     const useProxy = String(req.body.useProxy || 'false') === 'true';
-    const result = await importSpreadsheetAuto(req.file.buffer, req.file.originalname, req.user.id, kind, useProxy);
-    await audit(req,'import','spreadsheet',result.batchId,{file:req.file.originalname,detectedType:result.detectedType,rows:result.rowsImported});
+    const options={preview:String(req.body.preview||'false')==='true',previewToken:typeof req.body.previewToken==='string'?req.body.previewToken:undefined};
+    const result = await importSpreadsheetAuto(req.file.buffer, req.file.originalname, req.user.id, kind, useProxy,options);
+    if(!options.preview)await audit(req,'import','spreadsheet',result.batchId,{file:req.file.originalname,detectedType:result.detectedType,rows:result.rowsImported}).catch(()=>console.error('Completed spreadsheet import audit could not be saved.'));
     res.json(result);
   } catch(e){ next(e); }
 });
@@ -447,8 +456,9 @@ router.post('/imports/spreadsheet', rolesAdmin, upload.single('file'), async (re
 router.post('/imports/demand-training', rolesAdmin, upload.single('file'), async (req,res,next) => {
   try {
     if (!req.file) return res.status(400).json({error:'Attach a demand-training spreadsheet.'});
-    const result = await importDemandTrainingWorkbook(req.file.buffer, req.file.originalname, req.user.id);
-    await audit(req,'import','demand_training_workbook',result.batchId,{file:req.file.originalname,rows:result.rowsImported});
+    const options={preview:String(req.body.preview||'false')==='true',previewToken:typeof req.body.previewToken==='string'?req.body.previewToken:undefined};
+    const result = await importDemandTrainingWorkbook(req.file.buffer, req.file.originalname, req.user.id,null,options);
+    if(!options.preview)await audit(req,'import','demand_training_workbook',result.batchId,{file:req.file.originalname,rows:result.rowsImported}).catch(()=>console.error('Completed demand import audit could not be saved.'));
     res.json(result);
   } catch(e){ next(e); }
 });

@@ -54,15 +54,20 @@ test('recorded quantity reports import only dated part evidence and leave planni
  for(let i=0;i<100;i++)planning.addRow(['2026-10-12','00123',1]);
  const estimated=book.addWorksheet('Estimates');
  estimated.addRows([['Date','Part Number','Estimated Quantity'],['2026-10-12','00123',999]]);
- const original=adminDb.from,products=[{id:'fixture-part',part_number:'00123',description:'Fuel filter'}],writes=[];
+ const original=adminDb.from,originalRpc=adminDb.rpc,products=[{id:'fixture-part',part_number:'00123',description:'Fuel filter'}],writes=[];
  adminDb.from=table=>{
   assert(['products','import_batches','demand_observations'].includes(table));
-  return {select(){return this;},eq(){return this;},range(){return this;},
+  return {select(){return this;},eq(){return this;},order(){return this;},range(){return this;},
    insert(payload){assert.notEqual(table,'products');writes.push({table,action:'insert',payload});return this;},
    update(payload){assert.equal(table,'import_batches');writes.push({table,action:'update',payload});return this;},
    delete(){assert.equal(table,'demand_observations');writes.push({table,action:'delete'});return this;},
    single:async()=>({data:{id:'fixture-batch'},error:null}),
    then(resolve,reject){return Promise.resolve({data:table==='products'?products:[],error:null}).then(resolve,reject);}};
+ };
+ adminDb.rpc=async(name,payload)=>{
+  if(name==='demand_import_snapshot')return {data:{row_count:5,actual_rows:2,fingerprint:'a'.repeat(64)},error:null};
+  assert.equal(name,'replace_imported_demand');writes.push({table:'demand_observations',action:'atomic-replacement',payload:payload.p_rows});
+  return {data:{batchId:payload.p_request_id,rowsImported:payload.p_rows.length,rowsRead:payload.p_rows_read,rowsSkipped:0},error:null};
  };
  try {
   for(const heading of ['Recorded Qty','Recorded Quantity','Actual Qty','Actual Quantity']){
@@ -70,14 +75,16 @@ test('recorded quantity reports import only dated part evidence and leave planni
    const data=Buffer.from(await book.xlsx.writeBuffer());
    assert.equal(await detectSpreadsheetType(data,'owner-report.xlsx'),'demand-training');
   }
-  const result=await importSpreadsheetAuto(Buffer.from(await book.xlsx.writeBuffer()),'owner-report.xlsx','fixture-owner');
+  const data=Buffer.from(await book.xlsx.writeBuffer());
+  const review=await importSpreadsheetAuto(data,'owner-report.xlsx','fixture-owner','auto',false,{preview:true});
+  const result=await importSpreadsheetAuto(data,'owner-report.xlsx','fixture-owner','auto',false,{previewToken:review.previewToken});
   assert.equal(result.selectedSheet,'Actual Qty Evidence');
   assert.equal(result.rowsRead,2);assert.equal(result.rowsImported,2);assert.equal(result.rowsSkipped,0);
-  const imported=writes.find(write=>write.table==='demand_observations'&&write.action==='insert').payload;
-  assert.deepEqual(imported.map(row=>[row.product_id,row.occurred_on,row.quantity]),[['fixture-part','2026-09-01',2],['fixture-part','2026-10-12',3]]);
+  const imported=writes.find(write=>write.action==='atomic-replacement').payload;
+  assert.deepEqual(imported.map(row=>[row.product_id,row.occurred_on,Number(row.quantity)]),[['fixture-part','2026-09-01',2],['fixture-part','2026-10-12',3]]);
   assert(result.warnings.some(message=>/other 3 worksheet/.test(message)));
   assert(writes.every(write=>['import_batches','demand_observations'].includes(write.table)));
- }finally{adminDb.from=original;}
+ }finally{adminDb.from=original;adminDb.rpc=originalRpc;}
 });
 
 test('recorded quantity aliases retain simulation checks on evidence labels before any database calls',async()=>{
