@@ -98,6 +98,10 @@ test('chart omits projected stock and saved daily timing diagnostics are not ren
  await expect(chart.getByText('Projected stock',{exact:true})).toHaveCount(0);
  await page.getByText('Sales data and update history',{exact:true}).click();
  await page.getByText('14-day historical test results',{exact:true}).click();
+ await expect(page.getByText('Fit score (R²)',{exact:true})).toHaveCount(0);
+ await expect(page.getByText('Average error (MAE)',{exact:true})).toBeVisible();
+ await expect(page.getByText('Larger-error measure (RMSE)',{exact:true})).toBeVisible();
+ await expect(page.getByText('Overall error (WAPE)',{exact:true})).toBeVisible();
  await expect(page.getByText('Daily timing test',{exact:true})).toHaveCount(0);
  await expect(page.getByText('Uniform allocation MAE / RMSE',{exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Summary',exact:true}).click();

@@ -61,7 +61,7 @@ For each tested product-period, let `A` be recorded units, `F` forecast units, a
 - `MAE = sum(abs(A - F)) / N`, measured in units per product-period.
 - `RMSE = sqrt(sum((A - F)^2) / N)`, also in units; larger misses receive more weight.
 - `WAPE = sum(abs(A - F)) / sum(A) × 100`. It is undefined when total recorded demand is zero. It is not an accuracy percentage, and `100 − WAPE` is not a validated accuracy score.
-- `R² = 1 − sum((A - F)^2) / sum((A - mean(A))^2)`. It can be negative and is undefined when the actual quantities have no variation.
+- `R² = 1 − sum((A - F)^2) / sum((A - mean(A))^2)` is retained as an internal saved diagnostic. It is no longer displayed in the demand planning results. It can be negative and is undefined when the actual quantities have no variation.
 - `Recorded / forecast units` are `sum(A) / sum(F)` across the same tests. They are totals, not software unit-test counts.
 
 The same part tested in two different historical periods contributes two product-periods. Repeating an already saved test does not create a new independent period.
