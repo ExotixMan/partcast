@@ -32,7 +32,7 @@ async function fixture(context){
   }else if(url.pathname==='/api/forecast/recorded-sales')body={mode:'recorded_sales',record_count:3,part_count:1,last_sale_date:'2026-11-06',data:[{product_id:part,part_number:'TEST-001',description:'Fixture filter',recorded_quantity:total,sale_days:2,actual_records:2,imported_records:1,first_sale_date:'2026-11-05',last_sale_date:'2026-11-06',unit:'pc'}]};
   return route.fulfill({headers,json:body});
  });
- return {writes,setTotal(value){total=value;}};
+ return {writes,setTotal(value){total=value;},setStock(value){products[0].current_stock=value;}};
 }
 
 test('90 days is absent and the summary shows bounded stock coverage using the selected run',async({page,context})=>{
@@ -89,16 +89,19 @@ test('inventory separates opening quantities from increases and reductions used 
 });
 
 
-test('chart omits projected stock and saved daily timing diagnostics are not rendered',async({page,context})=>{
+test('chart restores projected stock while removed diagnostics stay hidden',async({page,context})=>{
  await fixture(context);await page.goto('/forecast');
  const chart=page.getByRole('img',{name:/Estimated daily sales for/});await expect(chart).toBeVisible();
- await expect(chart.locator('.recharts-line')).toHaveCount(2);
+ await expect(chart.locator('.recharts-line')).toHaveCount(3);
  await expect(chart.locator('.recharts-legend-wrapper')).toContainText('Recorded sales');
  await expect(chart.locator('.recharts-legend-wrapper')).toContainText('Estimated demand');
- await expect(chart.getByText('Projected stock',{exact:true})).toHaveCount(0);
+ await expect(chart.locator('.recharts-legend-wrapper')).toContainText('Projected stock');
+ await chart.locator('.recharts-line-dot[stroke="#059669"]').last().hover({force:true});
+ await expect(chart.locator('.recharts-tooltip-wrapper')).toContainText('Projected stock');
  await page.getByText('Sales data and update history',{exact:true}).click();
  await page.getByText('14-day historical test results',{exact:true}).click();
- await expect(page.getByText('Fit score (R²)',{exact:true})).toHaveCount(0);
+ await expect(page.getByText('Fit score (R²)',{exact:true})).toBeVisible();
+ await expect(page.getByText('14-day historical test results',{exact:true}).locator('..').getByText('0.7',{exact:true})).toBeVisible();
  await expect(page.getByText('Average error (MAE)',{exact:true})).toBeVisible();
  await expect(page.getByText('Larger-error measure (RMSE)',{exact:true})).toBeVisible();
  await expect(page.getByText('Overall error (WAPE)',{exact:true})).toBeVisible();
@@ -106,4 +109,19 @@ test('chart omits projected stock and saved daily timing diagnostics are not ren
  await expect(page.getByText('Uniform allocation MAE / RMSE',{exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Summary',exact:true}).click();
  await expect(page.getByRole('article',{name:'Demand forecast summary'})).toContainText('Projected remaining stock');
+});
+
+test('projected stock refreshes after another tab changes inventory without requesting new predictions',async({page,context})=>{
+ const api=await fixture(context);await page.goto('/forecast');
+ const chart=page.getByRole('img',{name:/Estimated daily sales for/});await expect(chart).toBeVisible();
+ const path=chart.locator('.recharts-line').nth(2).locator('.recharts-line-curve');
+ await expect(path).toHaveAttribute('d',/.+/);const previous=await path.getAttribute('d');
+ api.setStock(100);
+ const other=await context.newPage();await other.goto('/inventory');
+ await other.evaluate(({user})=>{const channel=new BroadcastChannel(`partcast-data:${user}`);channel.postMessage(['products']);channel.close();},{user});
+ await expect(path).not.toHaveAttribute('d',previous);
+ await chart.locator('.recharts-line-dot[stroke="#059669"]').last().hover({force:true});
+ const tooltip=chart.locator('.recharts-tooltip-wrapper');
+ await expect(tooltip).toContainText('Projected stock');await expect(tooltip).toContainText('60.3');
+ expect(api.writes).toEqual([]);
 });

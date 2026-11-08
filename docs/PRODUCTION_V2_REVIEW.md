@@ -9,7 +9,7 @@ This branch starts from `b56be6d40627b7edc76287e1341c96c8ae410a0d`. It retains t
 - Sales labels use **Total sold**, **Recorded transactions**, and **Days with recorded sales**. Counts, quantities and data-source labels keep their separate meanings. Generated demo data remains labelled as samples.
 - Inventory uses **Opening stock quantity** and **Increase/Reduce stock count**. Corrections report that the stock count was corrected rather than claiming that a supplier delivery arrived.
 - The Summary bar uses **Stock coverage**, bounded from 0 to 100%. Small shortages are retained to four decimals. A period's estimated shortfall is not presented as the next supplier order.
-- Chart, Daily list, Summary and the selected run's metrics use the same run. Missing forecasts are unavailable, not zero-demand forecasts. Current stock and recorded sales refresh independently of forecasting; the selected part has a five-second online/visible fallback when live events are missed. The chart contains Recorded sales and Estimated demand only. Projected stock has been removed from chart data, tooltip and legend; Summary still shows current stock, projected remaining stock, coverage and shortfall.
+- Chart, Daily list, Summary and the selected run's metrics use the same run. Missing forecasts are unavailable, not zero-demand forecasts. Current stock and recorded sales refresh independently of forecasting; the selected part has a five-second online/visible fallback when live events are missed. The chart contains Recorded sales, Estimated demand and Projected stock, including the stock legend and tooltip. Projection starts from the current balance and subtracts cumulative future demand in date order, stopping at zero and assuming no future deliveries. An unknown current balance leaves the stock series unavailable. Summary also shows current stock, projected remaining stock, coverage and shortfall.
 - Forecasting uses the original recursive daily XGBoost implementation from `b56be6d`. The additional Daily timing test panel and learned daily-allocation implementation have been removed. Source rules exclude declared/generated records and de-duplicate referenced imports without deleting database records. Failed updates retain a safe stage/reference; they do not display fabricated accuracy results or replace a completed forecast.
 - Forecasting-history replacement requires a signed review, rejects invalid rows, and commits the entire history, receipt and refresh request in one database transaction. Migration 0015 also blocks the old direct-write path. Retry receipts and stale-review checks protect newer imports. See [safe forecasting imports](SAFE_FORECAST_IMPORTS.md) for deployment and limits.
 
@@ -61,7 +61,7 @@ For each tested product-period, let `A` be recorded units, `F` forecast units, a
 - `MAE = sum(abs(A - F)) / N`, measured in units per product-period.
 - `RMSE = sqrt(sum((A - F)^2) / N)`, also in units; larger misses receive more weight.
 - `WAPE = sum(abs(A - F)) / sum(A) × 100`. It is undefined when total recorded demand is zero. It is not an accuracy percentage, and `100 − WAPE` is not a validated accuracy score.
-- `R² = 1 − sum((A - F)^2) / sum((A - mean(A))^2)` is retained as an internal saved diagnostic. It is no longer displayed in the demand planning results. It can be negative and is undefined when the actual quantities have no variation.
+- `R² = 1 − sum((A - F)^2) / sum((A - mean(A))^2)` is displayed with MAE, RMSE and WAPE in the historical test results. It can be negative and is undefined when the actual quantities have no variation; it is not an accuracy percentage.
 - `Recorded / forecast units` are `sum(A) / sum(F)` across the same tests. They are totals, not software unit-test counts.
 
 The same part tested in two different historical periods contributes two product-periods. Repeating an already saved test does not create a new independent period.
@@ -78,7 +78,7 @@ In the supplied screenshot, `4.4703` means about 4.47 units of average absolute 
 
 Using the displayed example of 39.7 estimated units and 2 on hand, coverage is approximately `2 / 39.7 × 100 = 5.0%`. The earlier roughly 1,986% figure represented demand relative to stock; it was not forecast error or a usable percentage-filled stock bar. Exact calculations use unrounded estimates.
 
-`remaining stock = max(0, current stock − cumulative future estimated demand)`. This remains a Summary calculation; it is not a chart series.
+`remaining stock = max(0, current stock − cumulative future estimated demand)`. The green Projected stock series applies this calculation to each future day. Summary shows the remaining balance for the whole displayed forecast period. Both assume no future deliveries.
 
 `period shortfall = max(0, estimated demand − current stock)`; the whole-unit planning gap rounds this shortfall upward. This is the period's expected gap. The next order still follows the store's small-purchase policy and staff review in Restock. No future deliveries are assumed.
 
