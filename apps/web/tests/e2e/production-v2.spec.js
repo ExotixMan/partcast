@@ -3,7 +3,7 @@ test.use({locale:'de-DE'});
 const user='11111111-1111-4111-8111-111111111111',session='77777777-7777-4777-8777-777777777777',part='33333333-3333-4333-8333-333333333333',empty='44444444-4444-4444-8444-444444444444';
 const token=`e30.${Buffer.from(JSON.stringify({session_id:session,amr:[{method:'password'}]})).toString('base64url')}.fixture`;
 
-async function fixture(context){
+async function fixture(context,{legacyR2=false}={}){
  await context.addInitScript(({user,token})=>{
   localStorage.setItem('sb-ragdjkdcrvexqfadlqbf-auth-token',JSON.stringify({access_token:token,refresh_token:'fixture-refresh',expires_at:4102444800,expires_in:3600,token_type:'bearer',user:{id:user,email:'owner@example.test',aud:'authenticated'}}));
   localStorage.setItem('partcast-language','en');
@@ -12,6 +12,12 @@ async function fixture(context){
  {id:empty,product_id:empty,part_number:'TEST-002',description:'Fixture without history',current_stock:0,forecast_days:0,predicted_total:0,unit:'pc',category:'parts',photo_paths:[],search_aliases:[],stock_status:'out'}];
  const validation={horizon_days:14,status:'no_improvement_over_recent_average',window_count:209,tested_product_count:10,nonzero_window_count:209,model:{mae:4.4703,rmse:7,r2:.7,wape_percent:26.7934,actual_recorded_units:3487,predicted_units:3068.006},recent_average:{mae:4}};
  const run={id:'fixture-run',status:'completed',horizon_days:14,started_at:'2026-11-06T16:01:00Z',completed_at:'2026-11-06T16:02:00Z',metrics:{daily_values_follow_learned_pattern:true,daily_validation:{day_count:900,model:{mae:.0957,rmse:.4974,wape_percent:20.3081},uniform_allocation:{mae:.8223,rmse:2.0517}},horizon_validation:validation}};
+ if(legacyR2){
+  delete validation.model.r2;
+  validation.window_count=2;
+  validation.windows=[{actual_recorded_units:10,predicted_units:12},{actual_recorded_units:20,predicted_units:18}];
+  run.metrics.r2=.1234; // Next-day holdout score must never replace period R².
+ }
  let total=9;const writes=[];
  await context.route('http://localhost:10000/**',async route=>{
   const request=route.request(),url=new URL(request.url()),headers={'access-control-allow-origin':'*'};
@@ -123,5 +129,16 @@ test('projected stock refreshes after another tab changes inventory without requ
  await chart.locator('.recharts-line-dot[stroke="#059669"]').last().hover({force:true});
  const tooltip=chart.locator('.recharts-tooltip-wrapper');
  await expect(tooltip).toContainText('Projected stock');await expect(tooltip).toContainText('60.3');
+ expect(api.writes).toEqual([]);
+});
+
+test('old saved tests show period R² without retraining or mixing in next-day metrics',async({page,context})=>{
+ const api=await fixture(context,{legacyR2:true});await page.goto('/forecast');
+ await page.getByText('Sales data and update history',{exact:true}).click();
+ const heading=page.getByText('14-day historical test results',{exact:true});await heading.click();
+ const details=heading.locator('..');
+ await expect(details.getByText('Fit score (R²)',{exact:true})).toBeVisible();
+ await expect(details.getByText('0.84',{exact:true})).toBeVisible();
+ await expect(details.getByText('0.1234',{exact:true})).toHaveCount(0);
  expect(api.writes).toEqual([]);
 });

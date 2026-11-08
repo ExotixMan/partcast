@@ -70,6 +70,8 @@ The model is refitted before each historical test period. Sales in the tested pe
 
 The original one-day holdout can have the same scores for several requested forecast horizons when its historical training/test data is unchanged. Whole-period errors can differ because those tests evaluate the chosen horizon. The engine also retains its original MAPE and bias diagnostics.
 
+The original `b56be6d` planning-period aggregate does not save an R² field. For those runs, the website calculates R² from all saved actual/forecast period pairs, provided the pair count matches the recorded test count. It never substitutes the separate next-day holdout R². This also displays existing historical results without retraining, changing the original ML source, or rewriting database records. Tests with fewer than two pairs, no actual variation, or incomplete pairs keep an unavailable score.
+
 In the supplied screenshot, `4.4703` means about 4.47 units of average absolute error per tested product-period. `26.7934%` is WAPE, not a 73.2066% accuracy claim. `3,487 / 3,068.006` means 3,487 recorded units and 3,068.006 forecast units in those tests. The rounded screenshot alone does not supply the original error pairs or test count needed to independently recompute every value. The UI now uses Philippine number formatting, so decimal points and thousands separators do not depend on an unrelated browser locale.
 
 ## What does Stock coverage mean?
