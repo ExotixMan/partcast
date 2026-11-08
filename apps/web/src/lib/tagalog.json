@@ -1685,5 +1685,6 @@
   "The forecast update could not be published.": "Hindi nailathala ang bagong forecast.",
   "The forecast update could not finish.": "Hindi natapos ang pag-update ng forecast.",
   "This update could not finish. Automatic retry is pending.": "Hindi natapos ang update na ito. Nakatakdang subukan muli.",
-  "Parts shown": "Mga ipinapakitang piyesa"
+  "Parts shown": "Mga ipinapakitang piyesa",
+  "Fit score (R²)": "Sukat ng pagtugma (R²)"
 }
