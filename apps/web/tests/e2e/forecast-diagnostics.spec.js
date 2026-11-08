@@ -33,6 +33,8 @@ for(const nested of [false,true])test(`daily timing diagnostics are omitted from
  const details=heading.locator('..');
  await expect(details.getByText('Average error (MAE)',{exact:true})).toBeVisible();
  await expect(details.getByText('Overall error (WAPE)',{exact:true})).toBeVisible();
+ await expect(details.getByText('Larger-error measure (RMSE)',{exact:true})).toBeVisible();
+ await expect(page.getByText('Fit score (R²)',{exact:true})).toHaveCount(0);
  await expect(details).toContainText('4.4');await expect(details).toContainText('10%');
  for(const text of ['Daily timing test','Daily average error (MAE)','Daily larger-error measure (RMSE)','Daily quantity error (WAPE)','Uniform allocation MAE / RMSE'])await expect(page.getByText(text,{exact:true})).toHaveCount(0);
  await expect(page.getByText(/Compared 450 part-days/)).toHaveCount(0);
